@@ -1,105 +1,238 @@
-# COT Bench
+<p align="center">
+  <h1 align="center">COT Bench</h1>
+  <p align="center">
+    Open agent evaluation leaderboard with multi-judge scoring, CLEAR-aligned metrics, and full transparency.
+    <br />
+    <a href="https://conorbronsdon.github.io/cot-bench">View Leaderboard</a> · <a href="docs/methodology.md">Methodology</a> · <a href="docs/contributing.md">Contribute</a>
+  </p>
+</p>
 
-Open agent evaluation leaderboard with multi-judge scoring, CLEAR-aligned metrics, and full transparency.
+<p align="center">
+  <a href="https://github.com/conorbronsdon/cot-bench/actions/workflows/ci.yml"><img src="https://github.com/conorbronsdon/cot-bench/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/conorbronsdon/cot-bench/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
+  <a href="https://github.com/conorbronsdon/cot-bench/blob/master/eval/scoring/rubrics.py"><img src="https://img.shields.io/badge/rubrics-published-brightgreen.svg" alt="Rubrics"></a>
+</p>
 
-From the makers of [Chain of Thought](https://www.yourpodcast.com).
+---
 
-## What makes COT Bench different
+Most agent benchmarks measure one thing — accuracy — and publish results once. COT Bench measures what actually matters for production agents, stays fresh with automated weekly runs, and publishes every score from every judge so you can verify our work.
 
-- **Multi-dimensional scoring** — not just accuracy. We measure Efficacy, Cost, Reliability, and Latency ([CLEAR framework](https://arxiv.org/abs/2511.14136)-aligned).
-- **Vendor-neutral judging** — three independent judges (Qwen3-235B, DeepSeek-V3, Claude Opus) score every scenario. Open-source judges run on [Modular MAX](https://www.modular.com/max). All scores published.
-- **Published rubrics** — our scoring criteria are in the code, not a black box. See [`eval/scoring/rubrics.py`](eval/scoring/rubrics.py).
-- **Automated & fresh** — weekly evaluation runs keep results current as models update.
-- **OpenInference traces** — every eval run emits traces compatible with [Arize Phoenix](https://github.com/Arize-ai/phoenix) and any OTel backend.
+From the [Chain of Thought](https://www.linkedin.com/in/conorbronsdon/) podcast. Open-source judge models served on [Modular MAX](https://www.modular.com/max).
+
+## Why COT Bench?
+
+| Problem with existing benchmarks | How COT Bench solves it |
+|----------------------------------|------------------------|
+| Only measure accuracy | **4 CLEAR dimensions**: Efficacy, Cost, Reliability, Latency |
+| Single judge = single point of bias | **3 independent judges** (2 open-source + 1 frontier), all scores published |
+| Scoring criteria are a black box | **Rubrics are code** — read them in [`eval/scoring/rubrics.py`](eval/scoring/rubrics.py) |
+| Results go stale within weeks | **Automated weekly runs** via GitHub Actions |
+| OpenAI judges OpenAI models | **Vendor-neutral**: open-source judges on [Modular MAX](https://www.modular.com/max) |
+| No way to reproduce results | **OpenInference traces** for every run, compatible with [Arize Phoenix](https://github.com/Arize-ai/phoenix) |
+
+## Latest Results
+
+> Results will appear here after the first evaluation run. See the [live leaderboard](https://conorbronsdon.github.io/cot-bench) for interactive results.
+
+| Rank | Model | CLEAR Score | Efficacy | $/Task | Reliability | Latency |
+|------|-------|-------------|----------|--------|-------------|---------|
+| — | *Evaluation pending* | — | — | — | — | — |
 
 ## Metrics
 
-| Dimension | What it measures | How |
-|-----------|-----------------|-----|
-| **Efficacy** | Task completion + tool selection accuracy | Multi-judge LLM evaluation |
-| **Cost** | Dollars per task | Token count × published pricing |
-| **Reliability** | Consistency across runs | Pass@k over repeated evaluations |
-| **Latency** | Speed of completion | Wall-clock time per scenario |
+COT Bench aligns with the [CLEAR framework](https://arxiv.org/abs/2511.14136), which showed that accuracy-only evaluation correlates just 0.41 with production success, while multi-dimensional evaluation achieves 0.83.
 
-## Models evaluated
+| Dimension | Weight | What it measures | How |
+|-----------|--------|-----------------|-----|
+| **Efficacy** | 35% | Task completion + tool selection accuracy | Multi-judge LLM evaluation (consensus of 3 judges) |
+| **Reliability** | 25% | Consistency across repeated runs | Pass@3 — same scenario run 3×, measuring score variance |
+| **Cost** | 20% | Dollars per task | Token count × published per-token pricing |
+| **Latency** | 20% | Speed of task completion | Wall-clock time across all agent turns |
 
-V1 targets 10 models across 2 domains (banking, customer success):
+**CLEAR Score** = weighted composite of all four dimensions, normalized across evaluated models. See [`scripts/aggregate_results.py`](scripts/aggregate_results.py) for the exact calculation.
 
-GPT-4.1, GPT-4.1-mini, Claude Sonnet 4.6, Claude Haiku 4.5, Gemini 2.5 Pro, Gemini 2.5 Flash, DeepSeek-V3, Qwen3-235B, Llama 4 Maverick, Mistral Large
+## Judge Panel
 
-## Quick start
+Every scenario is scored independently by three judges. We publish all individual scores plus consensus and agreement rates.
+
+| Judge | Type | Served via | Purpose |
+|-------|------|------------|---------|
+| **Qwen3-235B** | Open-source | [Modular MAX](https://www.modular.com/max) | Primary open judge |
+| **DeepSeek-V3** | Open-source | [Modular MAX](https://www.modular.com/max) | Second open judge (different training paradigm) |
+| **Claude Opus 4.6** | Frontier | Anthropic API | Reference judge for calibration |
+
+Using two open-source judges from different training paradigms (Qwen from Alibaba, DeepSeek from DeepSeek AI) means disagreements surface genuine ambiguity rather than shared biases.
+
+## Models Evaluated
+
+V1 targets 10 models across 2 domains:
+
+| Model | Provider | Category |
+|-------|----------|----------|
+| GPT-4.1 | OpenAI | Frontier |
+| GPT-4.1-mini | OpenAI | Efficient |
+| Claude Sonnet 4.6 | Anthropic | Frontier |
+| Claude Haiku 4.5 | Anthropic | Efficient |
+| Gemini 2.5 Pro | Google | Frontier |
+| Gemini 2.5 Flash | Google | Efficient |
+| DeepSeek-V3 | DeepSeek | Open-source |
+| Qwen3-235B | Alibaba | Open-source |
+| Llama 4 Maverick | Meta (via Together) | Open-source |
+| Mistral Large | Mistral | Open-source |
+
+## Domains
+
+| Domain | Description | Why it's interesting |
+|--------|-------------|---------------------|
+| **Banking** | Account management, transactions, fraud detection, compliance | Structured, tool-heavy, strict correctness requirements |
+| **Customer Success** | CRM, ticketing, health scoring, escalation, onboarding | Ambiguous goals, empathy matters, multi-system coordination |
+
+Each domain has 5 scenario categories: adaptive tool use, scope management, empathetic resolution, extreme scenario recovery, and adversarial input mitigation.
+
+## Quick Start
+
+### Installation
 
 ```bash
-# Install
-pip install -e .
+git clone https://github.com/conorbronsdon/cot-bench.git
+cd cot-bench
+pip install -e ".[dev]"
+```
 
-# Set API keys
-export OPENAI_API_KEY="..."
-export ANTHROPIC_API_KEY="..."
+### Set API keys
 
-# Start MAX judge servers (requires GPU)
-python -m infra.max_serve
+```bash
+cp .env.example .env
+# Edit .env with your API keys
+source .env  # or use direnv/dotenv
+```
 
-# Run evaluation
-python -m scripts.run_eval --domains banking --models "GPT-4.1" "Claude Sonnet 4.6"
+### Generate evaluation scenarios
+
+```bash
+# Generate tools, personas, and scenarios for a domain
+python -m scripts.generate_data --domain banking --scenarios-per-category 20
+python -m scripts.generate_data --domain customer_success --scenarios-per-category 20
+```
+
+### Run evaluation
+
+```bash
+# Evaluate specific models on one domain (frontier judge only — no GPU needed)
+python -m scripts.run_eval \
+  --domains banking \
+  --models "GPT-4.1" "Claude Sonnet 4.6" \
+  --judges opus
+
+# Full evaluation with all judges (requires MAX + GPU for open-source judges)
+python -m scripts.run_eval
+
+# Evaluate models in parallel (2 at a time)
+python -m scripts.run_eval --parallel-models 2
+```
+
+### Generate leaderboard
+
+```bash
+python -m scripts.aggregate_results
+# Outputs: data/results/leaderboard.json + data/results/latest.csv
+```
+
+### Start MAX judge servers (for open-source judges)
+
+```bash
+# Requires GPU — see docs/max-setup.md for hardware requirements
+pip install modular
+max serve --model Qwen/Qwen3-235B --port 8010 &
+max serve --model deepseek-ai/DeepSeek-V3-0324 --port 8011 &
 ```
 
 ## Architecture
 
 ```
-Simulation Loop (per scenario):
-  User Simulator (GPT-4.1-mini) → Agent Under Test → Tool Simulator (GPT-4.1-mini)
-  └── repeats up to 10 turns until goals met
-
-Scoring (per scenario):
-  Transcript → 3 independent judges → consensus score + agreement rate
-  ├── Qwen3-235B    (via MAX, localhost:8010)
-  ├── DeepSeek-V3   (via MAX, localhost:8011)
-  └── Claude Opus   (via API)
-
-Metrics:
-  Efficacy  = 0.5 × task_completion + 0.5 × tool_selection (judge consensus)
-  Cost      = input_tokens × $/M + output_tokens × $/M
-  Reliability = pass@3 (3 runs per scenario, score consistency)
-  Latency   = total wall-clock ms across all agent turns
+┌─────────────────────────────────────────────────────────────────┐
+│ Simulation Loop (per scenario, up to 10 turns)                  │
+│                                                                  │
+│  User Simulator ──→ Agent Under Test ──→ Tool Simulator         │
+│  (GPT-4.1-mini)     (model being         (GPT-4.1-mini)        │
+│                      evaluated)                                  │
+│  ← ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ → │
+│  Repeats until all user goals met or max turns reached          │
+└─────────────────────────┬───────────────────────────────────────┘
+                          │ transcript
+┌─────────────────────────▼───────────────────────────────────────┐
+│ Scoring (concurrent, per scenario)                               │
+│                                                                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
+│  │  Qwen3-235B  │  │ DeepSeek-V3  │  │ Claude Opus  │          │
+│  │   (MAX)      │  │   (MAX)      │  │   (API)      │          │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘          │
+│         └──────────────────┼──────────────────┘                  │
+│                    consensus score                                │
+│                  + agreement rate                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Project structure
+## Project Structure
 
 ```
 cot-bench/
-├── eval/
-│   ├── config.py              # Domains, models, judges, costs
-│   ├── tracing.py             # OpenInference trace emission
+├── eval/                          # Core evaluation library
+│   ├── config.py                  # Domains, models, judges, token costs
+│   ├── tracing.py                 # OpenInference/OTel trace emission
 │   ├── scoring/
-│   │   ├── rubrics.py         # Published evaluation rubrics
-│   │   └── judge.py           # Multi-judge orchestration
+│   │   ├── rubrics.py             # Published evaluation rubrics (the IP)
+│   │   └── judge.py              # Concurrent multi-judge orchestration
 │   ├── simulation/
-│   │   └── runner.py          # Multi-turn conversation simulation
+│   │   └── runner.py             # Multi-turn conversation engine
 │   └── providers/
-│       └── registry.py        # Model provider registry
+│       └── registry.py           # Config-driven model provider registry
 ├── data/
-│   ├── domains/               # Domain configurations
-│   ├── scenarios/             # Generated test scenarios
-│   └── results/               # Evaluation results (parquet + csv)
-├── infra/
-│   └── max_serve.py           # MAX judge server management
+│   ├── domains/                   # Domain tool + persona definitions
+│   ├── scenarios/                 # Test scenarios (generated JSON)
+│   └── results/                   # Evaluation outputs (parquet + csv + json)
 ├── scripts/
-│   └── run_eval.py            # CLI entry point
-└── frontend/                  # Leaderboard UI (coming soon)
+│   ├── run_eval.py               # Main evaluation CLI
+│   ├── generate_data.py          # Synthetic scenario generation
+│   └── aggregate_results.py      # Leaderboard computation
+├── infra/
+│   └── max_serve.py              # MAX judge server lifecycle management
+├── frontend/
+│   └── index.html                # Leaderboard UI (GitHub Pages)
+├── tests/                         # 30 tests covering scoring, parsing, config
+├── docs/                          # Detailed documentation
+└── .github/workflows/             # CI + weekly eval + GitHub Pages deploy
 ```
 
-## Methodology
+## Documentation
 
-COT Bench uses synthetic multi-turn conversations to evaluate agents. Each scenario has:
-- A **persona** with specific communication style and context
-- **5-8 interconnected goals** that require tool use
-- **Domain-specific tools** with realistic schemas
+- **[Methodology](docs/methodology.md)** — detailed explanation of evaluation approach, scoring rubrics, and statistical methods
+- **[Contributing](docs/contributing.md)** — how to add models, domains, or improve the evaluation
+- **[MAX Setup](docs/max-setup.md)** — hardware requirements and setup for running open-source judge models
 
-The simulation runs the agent through the conversation, then three independent judges score the transcript on task completion and tool selection quality. Scenarios run 3× for reliability measurement.
+## How It Works
 
-Synthetic data generation approach adapted from [Galileo's agent-leaderboard](https://github.com/rungalileo/agent-leaderboard) (Apache 2.0).
+1. **Scenario generation**: LLM-powered synthetic data creates realistic multi-turn conversations with 5-8 interconnected user goals per scenario, across diverse personas and difficulty levels.
+
+2. **Simulation**: Each model runs through every scenario in a multi-turn loop. A user simulator drives the conversation, the model under test responds and makes tool calls, and a tool simulator returns realistic responses.
+
+3. **Scoring**: Three independent judges evaluate the transcript against published rubrics for task completion and tool selection quality. Scores are averaged for consensus, with agreement rates published for transparency.
+
+4. **Reliability**: Each scenario runs 3 times to measure consistency. A model that scores 0.9 once but 0.3 the next time is less useful than one that consistently scores 0.7.
+
+5. **Aggregation**: All four CLEAR dimensions are normalized and weighted into a composite score, broken down by domain, category, and individual judge.
+
+## Acknowledgments
+
+- Evaluation methodology inspired by [Galileo's agent-leaderboard](https://github.com/rungalileo/agent-leaderboard) (Apache 2.0)
+- Metrics framework aligned with the [CLEAR paper](https://arxiv.org/abs/2511.14136) (Simmering et al., 2025)
+- Open-source judge inference powered by [Modular MAX](https://www.modular.com/max)
+- Trace format follows [OpenInference](https://github.com/Arize-ai/openinference) semantic conventions
 
 ## License
 
-Apache 2.0
+[Apache 2.0](LICENSE)
+
+---
+
+Built by [Conor Bronsdon](https://github.com/conorbronsdon) · [Chain of Thought](https://www.linkedin.com/in/conorbronsdon/)
