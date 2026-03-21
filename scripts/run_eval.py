@@ -3,19 +3,16 @@
 import argparse
 import json
 import logging
-import sys
 from pathlib import Path
 
 import pandas as pd
 
 from eval.config import (
-    DOMAIN_CONFIGS,
     JUDGES,
     MODELS_UNDER_TEST,
     RELIABILITY_RUNS,
     TOKEN_COSTS,
     Domain,
-    Metric,
 )
 from eval.providers.registry import ModelSpec
 from eval.scoring.judge import score_with_all_judges
@@ -73,7 +70,10 @@ def evaluate_scenario(runner, scenario, agent_spec, tracer):
     sim_result = runner.run(scenario, agent_spec)
     transcript = format_transcript(sim_result.turns)
 
-    tools_desc = json.dumps([{"name": t.get("name"), "description": t.get("description")} for t in scenario.tools])
+    tools_desc = json.dumps([
+        {"name": t.get("name"), "description": t.get("description")}
+        for t in scenario.tools
+    ])
 
     # Score: Task Completion
     tc_prompt = TASK_COMPLETION_RUBRIC.format(

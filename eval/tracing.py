@@ -4,15 +4,14 @@ Emits traces in OpenInference format so results can be ingested by
 Arize Phoenix or any OTel-compatible backend.
 """
 
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
-
 # OpenInference semantic conventions
 from openinference.semconv.trace import (
     SpanAttributes,
 )
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
 
 _provider: TracerProvider | None = None
 _exporter: InMemorySpanExporter | None = None

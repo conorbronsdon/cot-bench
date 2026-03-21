@@ -11,8 +11,6 @@ from pathlib import Path
 
 import pandas as pd
 
-from eval.config import MODELS_UNDER_TEST, Domain
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 

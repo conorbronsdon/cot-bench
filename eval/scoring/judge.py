@@ -40,19 +40,15 @@ class ConsensusResult:
     max_disagreement: float
 
 
-def _build_client(judge: JudgeConfig) -> OpenAI:
-    """Create an OpenAI-compatible client for a judge model."""
+def _build_client(judge: JudgeConfig) -> OpenAI | None:
+    """Create an OpenAI-compatible client for a judge model.
+
+    Returns None for Anthropic (handled separately via their SDK).
+    """
     if judge.provider == "max":
         return OpenAI(base_url=judge.endpoint, api_key="not-needed")
     elif judge.provider == "anthropic":
-        # Use Anthropic's OpenAI-compatible endpoint
-        import os
-
-        return OpenAI(
-            base_url="https://api.anthropic.com/v1/",
-            api_key=os.environ["ANTHROPIC_API_KEY"],
-            default_headers={"anthropic-version": "2023-06-01"},
-        )
+        return None  # Handled via Anthropic SDK in score_with_judge
     else:
         raise ValueError(f"Unknown judge provider: {judge.provider}")
 
@@ -74,21 +70,36 @@ def score_with_judge(
     Returns:
         JudgeResult with score and reasoning.
     """
-    client = _build_client(judge)
-
     start = time.perf_counter()
-    response = client.chat.completions.create(
-        model=judge.model_id,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": rubric_prompt},
-        ],
-        temperature=judge.temperature,
-        max_tokens=judge.max_tokens,
-    )
-    latency_ms = (time.perf_counter() - start) * 1000
 
-    content = response.choices[0].message.content
+    if judge.provider == "anthropic":
+        import os
+
+        import anthropic
+
+        anth_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        response = anth_client.messages.create(
+            model=judge.model_id,
+            system=system_prompt,
+            messages=[{"role": "user", "content": rubric_prompt}],
+            temperature=judge.temperature,
+            max_tokens=judge.max_tokens,
+        )
+        content = response.content[0].text
+    else:
+        client = _build_client(judge)
+        response = client.chat.completions.create(
+            model=judge.model_id,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": rubric_prompt},
+            ],
+            temperature=judge.temperature,
+            max_tokens=judge.max_tokens,
+        )
+        content = response.choices[0].message.content
+
+    latency_ms = (time.perf_counter() - start) * 1000
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError:

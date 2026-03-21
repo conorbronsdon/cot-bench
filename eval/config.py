@@ -1,6 +1,6 @@
 """COT Bench configuration — domains, models, metrics, and judge settings."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 
 

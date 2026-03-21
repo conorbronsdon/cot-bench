@@ -41,3 +41,9 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+# Allow long lines in prompts/templates and config descriptions
+"eval/scoring/rubrics.py" = ["E501"]
+"scripts/generate_data.py" = ["E501"]
+"eval/config.py" = ["E501"]

@@ -2,7 +2,7 @@
 
 import pytest
 
-from eval.scoring.rubrics import compute_reliability, EFFICACY_WEIGHTS
+from eval.scoring.rubrics import EFFICACY_WEIGHTS, compute_reliability
 
 
 class TestComputeReliability:
