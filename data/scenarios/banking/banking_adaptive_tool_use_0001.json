@@ -1,0 +1,112 @@
+{
+  "id": "banking_adaptive_tool_use_0001",
+  "category": "adaptive_tool_use",
+  "persona": {
+    "name": "Margaret Chen",
+    "age": 58,
+    "occupation": "Small business owner",
+    "personality_traits": ["detail-oriented", "impatient", "direct"],
+    "tone": "formal and no-nonsense",
+    "detail_level": "moderate",
+    "background": "Runs a catering business for 20 years. Has both personal and business accounts at the bank. Not very tech-savvy but knows exactly what she wants."
+  },
+  "user_goals": [
+    "Check the current balance of her business checking account",
+    "Review the last 5 transactions on the business account for any she doesn't recognize",
+    "Transfer $2,500 from business savings to business checking to cover upcoming payroll",
+    "Set up a recurring weekly transfer of $500 from checking to savings starting next Monday",
+    "Ask about the current interest rate on business savings accounts",
+    "Report a suspicious $47.99 charge from 'DIGITAL_SVC_LLC' she doesn't recognize"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
+        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true},
+        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+      ]
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true}
+      ],
+      "response_schema": {
+        "current_balance": "number",
+        "available_balance": "number",
+        "pending_transactions": "number",
+        "as_of": "string"
+      }
+    },
+    {
+      "name": "get_transaction_history",
+      "description": "Retrieve transaction history for an account",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
+        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false},
+        {"name": "end_date", "type": "string", "description": "End date (YYYY-MM-DD)", "required": false}
+      ]
+    },
+    {
+      "name": "initiate_transfer",
+      "description": "Transfer funds between accounts",
+      "parameters": [
+        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
+        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
+        {"name": "amount", "type": "number", "description": "Amount in USD", "required": true},
+        {"name": "memo", "type": "string", "description": "Transfer memo/description", "required": false}
+      ]
+    },
+    {
+      "name": "setup_recurring_transfer",
+      "description": "Set up a recurring automatic transfer",
+      "parameters": [
+        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
+        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
+        {"name": "amount", "type": "number", "description": "Amount per transfer in USD", "required": true},
+        {"name": "frequency", "type": "string", "description": "Frequency: 'daily', 'weekly', 'biweekly', 'monthly'", "required": true},
+        {"name": "start_date", "type": "string", "description": "First transfer date (YYYY-MM-DD)", "required": true}
+      ]
+    },
+    {
+      "name": "get_interest_rates",
+      "description": "Get current interest rates for account types",
+      "parameters": [
+        {"name": "account_type", "type": "string", "description": "Type: 'savings', 'checking', 'cd', 'money_market'", "required": true},
+        {"name": "customer_segment", "type": "string", "description": "Segment: 'personal', 'business', 'premium'", "required": false}
+      ]
+    },
+    {
+      "name": "report_suspicious_transaction",
+      "description": "Flag a transaction as potentially fraudulent",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account with the suspicious transaction", "required": true},
+        {"name": "transaction_id", "type": "string", "description": "ID of the suspicious transaction", "required": true},
+        {"name": "reason", "type": "string", "description": "Why the customer believes it's suspicious", "required": true}
+      ]
+    },
+    {
+      "name": "get_fraud_case_status",
+      "description": "Check status of a fraud investigation",
+      "parameters": [
+        {"name": "case_id", "type": "string", "description": "Fraud case identifier", "required": true}
+      ]
+    }
+  ],
+  "initial_message": "Hello, I need to check on my business account. There are several things I need to take care of today and I don't have a lot of time.",
+  "difficulty": "medium",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "get_account_balance",
+    "get_transaction_history",
+    "initiate_transfer",
+    "setup_recurring_transfer",
+    "get_interest_rates",
+    "report_suspicious_transaction"
+  ]
+}

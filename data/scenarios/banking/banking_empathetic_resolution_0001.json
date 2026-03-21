@@ -1,0 +1,115 @@
+{
+  "id": "banking_empathetic_resolution_0001",
+  "category": "empathetic_resolution",
+  "persona": {
+    "name": "James Okafor",
+    "age": 34,
+    "occupation": "Freelance graphic designer",
+    "personality_traits": ["anxious", "polite", "easily overwhelmed"],
+    "tone": "worried but courteous",
+    "detail_level": "verbose",
+    "background": "Lives paycheck to paycheck as a freelancer. Just discovered his rent payment bounced and is panicking about overdraft fees and his landlord's reaction."
+  },
+  "user_goals": [
+    "Understand why his rent payment of $1,850 was declined",
+    "Check if there are any overdraft fees on his account",
+    "Find out when his pending freelance deposit of $3,200 will clear",
+    "Get the overdraft fee waived since it's his first one this year",
+    "Set up low balance alerts so this doesn't happen again",
+    "Get a letter or confirmation he can show his landlord proving funds are now available"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
+        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true},
+        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+      ]
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true}
+      ]
+    },
+    {
+      "name": "get_transaction_history",
+      "description": "Retrieve transaction history for an account",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
+        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false}
+      ]
+    },
+    {
+      "name": "get_pending_deposits",
+      "description": "Check pending deposits and their expected clearing dates",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true}
+      ],
+      "response_schema": {
+        "pending_deposits": [{"amount": "number", "source": "string", "expected_clear_date": "string"}]
+      }
+    },
+    {
+      "name": "get_fee_history",
+      "description": "Retrieve fees charged to an account",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "fee_type", "type": "string", "description": "Type: 'overdraft', 'maintenance', 'wire', 'all'", "required": false},
+        {"name": "period_months", "type": "integer", "description": "Look back period in months", "required": false}
+      ]
+    },
+    {
+      "name": "request_fee_waiver",
+      "description": "Submit a request to waive a specific fee",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "fee_transaction_id", "type": "string", "description": "Transaction ID of the fee", "required": true},
+        {"name": "reason", "type": "string", "description": "Reason for waiver request", "required": true}
+      ],
+      "response_schema": {
+        "status": "string",
+        "waiver_approved": "boolean",
+        "message": "string"
+      }
+    },
+    {
+      "name": "setup_account_alerts",
+      "description": "Configure account alerts and notifications",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "alert_type", "type": "string", "description": "Type: 'low_balance', 'large_transaction', 'deposit', 'withdrawal'", "required": true},
+        {"name": "threshold", "type": "number", "description": "Threshold amount for the alert", "required": false},
+        {"name": "notification_method", "type": "string", "description": "Method: 'email', 'sms', 'push', 'all'", "required": true}
+      ]
+    },
+    {
+      "name": "generate_account_statement",
+      "description": "Generate an official account statement or confirmation letter",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true},
+        {"name": "date_range_start", "type": "string", "description": "Start date", "required": false},
+        {"name": "date_range_end", "type": "string", "description": "End date", "required": false},
+        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true}
+      ]
+    }
+  ],
+  "initial_message": "Hi, I'm really sorry to bother you but I'm kind of freaking out right now. I just got a text from my landlord saying my rent payment bounced and I don't understand what happened. Can you please help me figure this out?",
+  "difficulty": "hard",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "get_account_balance",
+    "get_transaction_history",
+    "get_fee_history",
+    "get_pending_deposits",
+    "request_fee_waiver",
+    "setup_account_alerts",
+    "generate_account_statement"
+  ]
+}

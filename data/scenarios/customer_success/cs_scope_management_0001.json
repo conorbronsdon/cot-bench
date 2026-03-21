@@ -1,0 +1,94 @@
+{
+  "id": "cs_scope_management_0001",
+  "category": "scope_management",
+  "persona": {
+    "name": "Derek Thompson",
+    "age": 28,
+    "occupation": "Junior account manager at a marketing agency",
+    "personality_traits": ["enthusiastic", "unfocused", "prone to scope creep", "friendly"],
+    "tone": "casual and chatty",
+    "detail_level": "verbose",
+    "background": "New to the account manager role. Tends to ask for things outside the platform's capabilities. Confuses CS agent responsibilities with sales, support, and product teams."
+  },
+  "user_goals": [
+    "Get a list of his inactive users so he can reach out to re-engage them",
+    "Ask the CS agent to directly email his inactive users for him (out of scope)",
+    "Request a custom feature that doesn't exist yet (custom dashboard)",
+    "Find training resources for his team on advanced features",
+    "Ask for a discount on renewal because of the inactive users (should be redirected to sales)",
+    "Get help understanding a usage report he downloaded but can't interpret"
+  ],
+  "tools": [
+    {
+      "name": "get_user_list",
+      "description": "List all users under a customer account with their status and last activity",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "status_filter", "type": "string", "description": "Filter: 'active', 'inactive', 'invited', 'all'", "required": false},
+        {"name": "sort_by", "type": "string", "description": "Sort: 'last_active', 'name', 'role'", "required": false}
+      ]
+    },
+    {
+      "name": "get_usage_analytics",
+      "description": "Get product usage metrics for an account or specific users",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "period", "type": "string", "description": "Time period: 'last_7d', 'last_30d', 'last_90d', 'custom'", "required": true},
+        {"name": "group_by", "type": "string", "description": "Group by: 'user', 'feature', 'team', 'day'", "required": false}
+      ]
+    },
+    {
+      "name": "search_knowledge_base",
+      "description": "Search the knowledge base for articles, guides, and tutorials",
+      "parameters": [
+        {"name": "query", "type": "string", "description": "Search query", "required": true},
+        {"name": "category", "type": "string", "description": "Filter by category: 'getting_started', 'advanced', 'troubleshooting', 'best_practices'", "required": false}
+      ]
+    },
+    {
+      "name": "schedule_meeting",
+      "description": "Schedule a meeting between the customer and their CS team",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "meeting_type", "type": "string", "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'", "required": true},
+        {"name": "preferred_dates", "type": "array", "description": "List of preferred date/time slots", "required": true},
+        {"name": "notes", "type": "string", "description": "Meeting agenda or notes", "required": false}
+      ]
+    },
+    {
+      "name": "submit_feature_request",
+      "description": "Submit a feature request to the product team",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "title", "type": "string", "description": "Feature request title", "required": true},
+        {"name": "description", "type": "string", "description": "Detailed description of the requested feature", "required": true},
+        {"name": "priority", "type": "string", "description": "Priority: 'low', 'medium', 'high', 'critical'", "required": true}
+      ]
+    },
+    {
+      "name": "create_internal_note",
+      "description": "Add an internal note to the customer's account for the CS team",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "note", "type": "string", "description": "Note content", "required": true},
+        {"name": "tag", "type": "string", "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'", "required": false}
+      ]
+    },
+    {
+      "name": "get_account_health_score",
+      "description": "Retrieve the health score and risk indicators for a customer account",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true}
+      ]
+    }
+  ],
+  "initial_message": "Hey! So I'm trying to figure out this whole usage situation with my team. A bunch of people stopped logging in and I need to fix that before my boss notices lol. Can you help me out?",
+  "difficulty": "medium",
+  "expected_tool_sequence": [
+    "get_user_list",
+    "get_usage_analytics",
+    "search_knowledge_base",
+    "submit_feature_request",
+    "create_internal_note"
+  ]
+}

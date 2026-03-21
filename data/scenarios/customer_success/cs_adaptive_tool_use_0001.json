@@ -1,0 +1,130 @@
+{
+  "id": "cs_adaptive_tool_use_0001",
+  "category": "adaptive_tool_use",
+  "persona": {
+    "name": "Priya Sharma",
+    "age": 41,
+    "occupation": "VP of Operations at a mid-size SaaS company",
+    "personality_traits": ["strategic", "data-driven", "time-pressed", "assertive"],
+    "tone": "professional and efficient",
+    "detail_level": "brief",
+    "background": "Manages a team of 45. Her company has been a customer for 18 months. Recently noticed declining usage in her team and is evaluating whether to renew their enterprise contract next quarter."
+  },
+  "user_goals": [
+    "Get an overview of her company's product usage trends over the last 3 months",
+    "Identify which team members have stopped using the product",
+    "Understand why the onboarding completion rate for new hires is only 40%",
+    "Get the CS team to schedule a training session for her team next week",
+    "Review what's included in their current plan vs the tier above",
+    "Escalate a bug her team reported 2 weeks ago that hasn't been resolved"
+  ],
+  "tools": [
+    {
+      "name": "get_account_health_score",
+      "description": "Retrieve the health score and risk indicators for a customer account",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "include_history", "type": "boolean", "description": "Include historical health scores", "required": false}
+      ],
+      "response_schema": {
+        "health_score": "number",
+        "risk_level": "string",
+        "key_indicators": ["object"],
+        "trend": "string"
+      }
+    },
+    {
+      "name": "get_usage_analytics",
+      "description": "Get product usage metrics for an account or specific users",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "period", "type": "string", "description": "Time period: 'last_7d', 'last_30d', 'last_90d', 'custom'", "required": true},
+        {"name": "group_by", "type": "string", "description": "Group by: 'user', 'feature', 'team', 'day'", "required": false},
+        {"name": "user_ids", "type": "array", "description": "Filter to specific user IDs", "required": false}
+      ]
+    },
+    {
+      "name": "get_user_list",
+      "description": "List all users under a customer account with their status and last activity",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "status_filter", "type": "string", "description": "Filter: 'active', 'inactive', 'invited', 'all'", "required": false},
+        {"name": "sort_by", "type": "string", "description": "Sort: 'last_active', 'name', 'role'", "required": false}
+      ]
+    },
+    {
+      "name": "get_onboarding_status",
+      "description": "Check onboarding completion rates and stuck points",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "period", "type": "string", "description": "Time period for new users", "required": false}
+      ],
+      "response_schema": {
+        "total_invited": "number",
+        "completed_onboarding": "number",
+        "completion_rate": "number",
+        "stuck_at_step": {"step_name": "number"},
+        "average_completion_days": "number"
+      }
+    },
+    {
+      "name": "schedule_meeting",
+      "description": "Schedule a meeting between the customer and their CS team",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "meeting_type", "type": "string", "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'", "required": true},
+        {"name": "preferred_dates", "type": "array", "description": "List of preferred date/time slots", "required": true},
+        {"name": "attendees", "type": "array", "description": "Email addresses of attendees", "required": false},
+        {"name": "notes", "type": "string", "description": "Meeting agenda or notes", "required": false}
+      ]
+    },
+    {
+      "name": "get_subscription_details",
+      "description": "Get current subscription plan details and available upgrades",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "include_upgrade_options", "type": "boolean", "description": "Include details of higher tiers", "required": false}
+      ]
+    },
+    {
+      "name": "search_support_tickets",
+      "description": "Search for support tickets by account, status, or keyword",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "status", "type": "string", "description": "Status: 'open', 'pending', 'resolved', 'all'", "required": false},
+        {"name": "keyword", "type": "string", "description": "Search keyword", "required": false},
+        {"name": "created_after", "type": "string", "description": "Filter tickets after date", "required": false}
+      ]
+    },
+    {
+      "name": "escalate_ticket",
+      "description": "Escalate a support ticket to a higher priority or different team",
+      "parameters": [
+        {"name": "ticket_id", "type": "string", "description": "Support ticket identifier", "required": true},
+        {"name": "escalation_level", "type": "string", "description": "Level: 'priority', 'engineering', 'management'", "required": true},
+        {"name": "reason", "type": "string", "description": "Reason for escalation", "required": true}
+      ]
+    },
+    {
+      "name": "create_knowledge_base_article",
+      "description": "Create or suggest a knowledge base article for common issues",
+      "parameters": [
+        {"name": "title", "type": "string", "description": "Article title", "required": true},
+        {"name": "content", "type": "string", "description": "Article content in markdown", "required": true},
+        {"name": "category", "type": "string", "description": "Category: 'getting_started', 'troubleshooting', 'best_practices', 'faq'", "required": true}
+      ]
+    }
+  ],
+  "initial_message": "Hi, I need to review our account. We have renewal coming up and I'm seeing some concerning usage trends. Can you pull up our account?",
+  "difficulty": "hard",
+  "expected_tool_sequence": [
+    "get_account_health_score",
+    "get_usage_analytics",
+    "get_user_list",
+    "get_onboarding_status",
+    "schedule_meeting",
+    "get_subscription_details",
+    "search_support_tickets",
+    "escalate_ticket"
+  ]
+}

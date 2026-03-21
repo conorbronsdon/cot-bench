@@ -1,0 +1,88 @@
+name: Weekly Evaluation Run
+
+on:
+  schedule:
+    # Every Monday at 6:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      domains:
+        description: 'Domains to evaluate (space-separated)'
+        required: false
+        default: 'banking customer_success'
+      models:
+        description: 'Models to evaluate (comma-separated, blank for all)'
+        required: false
+        default: ''
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    # Self-hosted runner with GPU recommended for MAX judge models
+    # runs-on: [self-hosted, gpu]
+    timeout-minutes: 360
+
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+      QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      # TODO: Install and start MAX for open-source judges
+      # For now, run with frontier judge only on GitHub Actions
+      # MAX judges require GPU runners
+      # - name: Install Modular MAX
+      #   run: |
+      #     pip install modular --index https://whl.modular.com/nightly/simple/ --prerelease allow
+      # - name: Start MAX judge servers
+      #   run: |
+      #     max serve --model Qwen/Qwen3-235B --port 8010 &
+      #     max serve --model deepseek-ai/DeepSeek-V3-0324 --port 8011 &
+      #     python -c "from infra.max_serve import wait_for_server; wait_for_server(8010); wait_for_server(8011)"
+
+      - name: Run evaluation
+        run: |
+          DOMAINS="${{ github.event.inputs.domains || 'banking customer_success' }}"
+          MODELS="${{ github.event.inputs.models }}"
+
+          ARGS="--domains $DOMAINS --judges opus"
+          if [ -n "$MODELS" ]; then
+            ARGS="$ARGS --models $MODELS"
+          fi
+
+          python -m scripts.run_eval $ARGS \
+            --output data/results/results_$(date +%Y%m%d).parquet
+
+      - name: Generate leaderboard
+        run: python -m scripts.aggregate_results
+
+      - name: Upload results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-${{ github.run_number }}
+          path: |
+            data/results/*.parquet
+            data/results/*.csv
+            data/results/leaderboard.json
+
+      - name: Commit updated results
+        run: |
+          git config user.name "COT Bench Bot"
+          git config user.email "bot@cot-bench.dev"
+          git add data/results/leaderboard.json data/results/latest.csv
+          git diff --staged --quiet || git commit -m "Update leaderboard results $(date +%Y-%m-%d)"
+          git push
