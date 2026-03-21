@@ -11,7 +11,7 @@ from openinference.semconv.trace import (
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 _provider: TracerProvider | None = None
 _exporter: InMemorySpanExporter | None = None

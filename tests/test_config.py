@@ -1,5 +1,7 @@
 """Tests for configuration integrity."""
 
+import importlib
+
 from eval.config import (
     DOMAIN_CONFIGS,
     JUDGES,
@@ -8,6 +10,29 @@ from eval.config import (
     Domain,
     Metric,
 )
+
+# All modules that must import cleanly (catches broken dependencies)
+_ALL_MODULES = [
+    "eval.config",
+    "eval.tracing",
+    "eval.scoring.rubrics",
+    "eval.scoring.judge",
+    "eval.simulation.runner",
+    "eval.providers.registry",
+    "scripts.run_eval",
+    "scripts.aggregate_results",
+    "scripts.validate_scenarios",
+    "scripts.generate_data",
+]
+
+
+class TestImports:
+    def test_all_modules_import(self):
+        for mod in _ALL_MODULES:
+            try:
+                importlib.import_module(mod)
+            except Exception as e:
+                raise AssertionError(f"Failed to import {mod}: {e}") from e
 
 
 class TestConfig:
