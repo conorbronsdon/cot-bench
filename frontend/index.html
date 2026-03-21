@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COT Bench — Agent Leaderboard</title>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --surface: #141414;
+            --border: #262626;
+            --text: #e5e5e5;
+            --text-muted: #737373;
+            --accent: #3b82f6;
+            --accent-dim: #1e3a5f;
+            --green: #22c55e;
+            --yellow: #eab308;
+            --red: #ef4444;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        h1 span { color: var(--accent); }
+
+        .subtitle {
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .meta {
+            display: flex;
+            gap: 2rem;
+            margin-top: 1rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .meta a { color: var(--accent); text-decoration: none; }
+        .meta a:hover { text-decoration: underline; }
+
+        .metrics-legend {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            flex-wrap: wrap;
+        }
+
+        .metrics-legend .metric-tag {
+            padding: 0.25rem 0.5rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+
+        .filters {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .filters select, .filters button {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+
+        .filters button.active {
+            background: var(--accent-dim);
+            border-color: var(--accent);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        thead th {
+            text-align: left;
+            padding: 0.75rem 1rem;
+            border-bottom: 2px solid var(--border);
+            color: var(--text-muted);
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        thead th:hover { color: var(--text); }
+        thead th.sorted { color: var(--accent); }
+
+        tbody tr {
+            border-bottom: 1px solid var(--border);
+            transition: background 0.15s;
+        }
+
+        tbody tr:hover { background: var(--surface); }
+
+        tbody td {
+            padding: 0.75rem 1rem;
+            white-space: nowrap;
+        }
+
+        .rank {
+            font-weight: 700;
+            color: var(--text-muted);
+            width: 3rem;
+        }
+
+        .rank-1 { color: var(--yellow); }
+        .rank-2 { color: var(--text); }
+        .rank-3 { color: #cd7f32; }
+
+        .model-name { font-weight: 600; }
+
+        .score-bar {
+            display: inline-block;
+            height: 6px;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+            vertical-align: middle;
+        }
+
+        .score-high { background: var(--green); }
+        .score-mid { background: var(--yellow); }
+        .score-low { background: var(--red); }
+
+        .clear-score {
+            font-weight: 700;
+            font-size: 1rem;
+        }
+
+        .agreement-badge {
+            display: inline-block;
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            font-size: 0.75rem;
+        }
+
+        .agreement-high { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+        .agreement-med { background: rgba(234, 179, 8, 0.15); color: var(--yellow); }
+        .agreement-low { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+
+        footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        footer a { color: var(--accent); text-decoration: none; }
+
+        .judge-panel {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+            font-size: 0.75rem;
+        }
+
+        .judge-chip {
+            padding: 0.15rem 0.5rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+        }
+
+        .loading { text-align: center; padding: 4rem; color: var(--text-muted); }
+
+        @media (max-width: 768px) {
+            .container { padding: 1rem; }
+            table { font-size: 0.75rem; }
+            tbody td, thead th { padding: 0.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><span>COT</span> Bench</h1>
+            <p class="subtitle">Open agent evaluation leaderboard — multi-judge, multi-dimensional, always fresh</p>
+            <div class="meta">
+                <span>By <a href="https://github.com/conorbronsdon">Conor Bronsdon</a></span>
+                <span>From <a href="#">Chain of Thought</a></span>
+                <span>Judges powered by <a href="https://www.modular.com/max">Modular MAX</a></span>
+                <span id="last-updated"></span>
+            </div>
+            <div class="judge-panel">
+                <span>Judges:</span>
+                <span class="judge-chip">Qwen3-235B (MAX)</span>
+                <span class="judge-chip">DeepSeek-V3 (MAX)</span>
+                <span class="judge-chip">Claude Opus</span>
+            </div>
+        </header>
+
+        <div class="metrics-legend">
+            <span class="metric-tag">CLEAR = Composite (Efficacy 35% + Reliability 25% + Cost 20% + Latency 20%)</span>
+            <span class="metric-tag">Efficacy = Task Completion + Tool Selection</span>
+            <span class="metric-tag">Reliability = Pass@3 consistency</span>
+        </div>
+
+        <div class="filters">
+            <select id="domain-filter">
+                <option value="all">All Domains</option>
+                <option value="banking">Banking</option>
+                <option value="customer_success">Customer Success</option>
+            </select>
+            <button id="sort-clear" class="active" onclick="sortBy('clear_score')">Sort: CLEAR</button>
+            <button id="sort-efficacy" onclick="sortBy('efficacy')">Sort: Efficacy</button>
+            <button id="sort-cost" onclick="sortBy('cost_per_task_usd')">Sort: Cost</button>
+            <button id="sort-reliability" onclick="sortBy('reliability')">Sort: Reliability</button>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Model</th>
+                    <th onclick="sortBy('clear_score')" class="sorted">CLEAR</th>
+                    <th onclick="sortBy('efficacy')">Efficacy</th>
+                    <th onclick="sortBy('task_completion')">Task Comp.</th>
+                    <th onclick="sortBy('tool_selection')">Tool Sel.</th>
+                    <th onclick="sortBy('cost_per_task_usd')">$/Task</th>
+                    <th onclick="sortBy('reliability')">Reliability</th>
+                    <th onclick="sortBy('avg_latency_ms')">Latency</th>
+                    <th>Agreement</th>
+                </tr>
+            </thead>
+            <tbody id="leaderboard-body">
+                <tr><td colspan="10" class="loading">Loading results...</td></tr>
+            </tbody>
+        </table>
+
+        <footer>
+            <p>
+                COT Bench evaluates AI agents on multi-turn tool-calling tasks across real-world domains.
+                Scoring uses three independent judges — two open-source models on
+                <a href="https://www.modular.com/max">Modular MAX</a> and one frontier model — for
+                vendor-neutral, transparent evaluation.
+            </p>
+            <p style="margin-top: 0.5rem;">
+                <a href="https://github.com/conorbronsdon/cot-bench">GitHub</a> ·
+                Rubrics are <a href="https://github.com/conorbronsdon/cot-bench/blob/master/eval/scoring/rubrics.py">published in full</a> ·
+                Methodology adapted from <a href="https://github.com/rungalileo/agent-leaderboard">Galileo Agent Leaderboard</a> (Apache 2.0)
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        let leaderboardData = null;
+        let currentSort = 'clear_score';
+        let sortAsc = false;
+
+        async function loadData() {
+            try {
+                const resp = await fetch('data/results/leaderboard.json');
+                if (!resp.ok) {
+                    // Try demo data
+                    renderDemo();
+                    return;
+                }
+                leaderboardData = await resp.json();
+                document.getElementById('last-updated').textContent = `Updated: ${new Date(leaderboardData.updated).toLocaleDateString()}`;
+                render();
+            } catch (e) {
+                renderDemo();
+            }
+        }
+
+        function renderDemo() {
+            // Demo data for development/preview
+            leaderboardData = {
+                updated: new Date().toISOString(),
+                models: [
+                    { name: "GPT-4.1", clear_score: 0.847, efficacy: 0.89, task_completion: 0.91, tool_selection: 0.87, cost_per_task_usd: 0.0234, reliability: 0.85, avg_latency_ms: 3200, judge_agreement: { task_completion: 0.92, tool_selection: 0.88 }},
+                    { name: "Claude Sonnet 4.6", clear_score: 0.831, efficacy: 0.87, task_completion: 0.89, tool_selection: 0.85, cost_per_task_usd: 0.0412, reliability: 0.82, avg_latency_ms: 2800, judge_agreement: { task_completion: 0.90, tool_selection: 0.85 }},
+                    { name: "Gemini 2.5 Pro", clear_score: 0.819, efficacy: 0.85, task_completion: 0.87, tool_selection: 0.83, cost_per_task_usd: 0.0198, reliability: 0.80, avg_latency_ms: 3500, judge_agreement: { task_completion: 0.89, tool_selection: 0.86 }},
+                    { name: "DeepSeek-V3", clear_score: 0.803, efficacy: 0.82, task_completion: 0.84, tool_selection: 0.80, cost_per_task_usd: 0.0045, reliability: 0.78, avg_latency_ms: 4100, judge_agreement: { task_completion: 0.87, tool_selection: 0.83 }},
+                    { name: "Qwen3-235B", clear_score: 0.795, efficacy: 0.81, task_completion: 0.83, tool_selection: 0.79, cost_per_task_usd: 0.0067, reliability: 0.79, avg_latency_ms: 3800, judge_agreement: { task_completion: 0.85, tool_selection: 0.82 }},
+                    { name: "GPT-4.1-mini", clear_score: 0.782, efficacy: 0.76, task_completion: 0.78, tool_selection: 0.74, cost_per_task_usd: 0.0041, reliability: 0.83, avg_latency_ms: 1900, judge_agreement: { task_completion: 0.91, tool_selection: 0.87 }},
+                    { name: "Gemini 2.5 Flash", clear_score: 0.771, efficacy: 0.74, task_completion: 0.76, tool_selection: 0.72, cost_per_task_usd: 0.0012, reliability: 0.81, avg_latency_ms: 1600, judge_agreement: { task_completion: 0.88, tool_selection: 0.84 }},
+                    { name: "Claude Haiku 4.5", clear_score: 0.758, efficacy: 0.73, task_completion: 0.75, tool_selection: 0.71, cost_per_task_usd: 0.0089, reliability: 0.77, avg_latency_ms: 2100, judge_agreement: { task_completion: 0.86, tool_selection: 0.82 }},
+                    { name: "Llama 4 Maverick", clear_score: 0.741, efficacy: 0.72, task_completion: 0.74, tool_selection: 0.70, cost_per_task_usd: 0.0038, reliability: 0.75, avg_latency_ms: 3400, judge_agreement: { task_completion: 0.83, tool_selection: 0.80 }},
+                    { name: "Mistral Large", clear_score: 0.728, efficacy: 0.71, task_completion: 0.73, tool_selection: 0.69, cost_per_task_usd: 0.0178, reliability: 0.74, avg_latency_ms: 3100, judge_agreement: { task_completion: 0.84, tool_selection: 0.81 }},
+                ],
+            };
+            document.getElementById('last-updated').textContent = 'Demo data — no eval results yet';
+            render();
+        }
+
+        function scoreColor(val, invert = false) {
+            const v = invert ? 1 - val : val;
+            if (v >= 0.8) return 'score-high';
+            if (v >= 0.6) return 'score-mid';
+            return 'score-low';
+        }
+
+        function agreementClass(val) {
+            if (val >= 0.85) return 'agreement-high';
+            if (val >= 0.7) return 'agreement-med';
+            return 'agreement-low';
+        }
+
+        function sortBy(field) {
+            if (currentSort === field) {
+                sortAsc = !sortAsc;
+            } else {
+                currentSort = field;
+                // Lower is better for cost and latency
+                sortAsc = (field === 'cost_per_task_usd' || field === 'avg_latency_ms');
+            }
+
+            document.querySelectorAll('.filters button').forEach(b => b.classList.remove('active'));
+            const btnMap = { clear_score: 'sort-clear', efficacy: 'sort-efficacy', cost_per_task_usd: 'sort-cost', reliability: 'sort-reliability' };
+            if (btnMap[field]) document.getElementById(btnMap[field])?.classList.add('active');
+
+            document.querySelectorAll('thead th').forEach(th => th.classList.remove('sorted'));
+
+            render();
+        }
+
+        function render() {
+            if (!leaderboardData) return;
+
+            const models = [...leaderboardData.models].sort((a, b) => {
+                const av = a[currentSort] ?? 0;
+                const bv = b[currentSort] ?? 0;
+                return sortAsc ? av - bv : bv - av;
+            });
+
+            const tbody = document.getElementById('leaderboard-body');
+            tbody.innerHTML = models.map((m, i) => {
+                const rank = i + 1;
+                const rankClass = rank <= 3 ? `rank rank-${rank}` : 'rank';
+                const avgAgreement = ((m.judge_agreement?.task_completion || 0) + (m.judge_agreement?.tool_selection || 0)) / 2;
+
+                return `<tr>
+                    <td class="${rankClass}">${rank}</td>
+                    <td class="model-name">${m.name}</td>
+                    <td class="clear-score">${m.clear_score.toFixed(3)}<span class="score-bar ${scoreColor(m.clear_score)}" style="width:${m.clear_score * 60}px"></span></td>
+                    <td>${m.efficacy.toFixed(3)}</td>
+                    <td>${m.task_completion.toFixed(3)}</td>
+                    <td>${m.tool_selection.toFixed(3)}</td>
+                    <td>$${m.cost_per_task_usd.toFixed(4)}</td>
+                    <td>${m.reliability.toFixed(3)}<span class="score-bar ${scoreColor(m.reliability)}" style="width:${m.reliability * 40}px"></span></td>
+                    <td>${(m.avg_latency_ms / 1000).toFixed(1)}s</td>
+                    <td><span class="agreement-badge ${agreementClass(avgAgreement)}">${(avgAgreement * 100).toFixed(0)}%</span></td>
+                </tr>`;
+            }).join('');
+        }
+
+        loadData();
+    </script>
+</body>
+</html>

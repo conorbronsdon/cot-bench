@@ -32,6 +32,9 @@ dev = [
 [project.scripts]
 cot-bench = "scripts.run_eval:main"
 
+[tool.setuptools.packages.find]
+include = ["eval*", "scripts*", "infra*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
