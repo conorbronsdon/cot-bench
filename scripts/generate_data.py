@@ -19,10 +19,22 @@ from pydantic import BaseModel, ValidationError
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-# Use OpenAI-compatible API — can point at MAX or any provider
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
-
+# Lazy client — only created when generation functions are called
+_client: OpenAI | None = None
 GENERATION_MODEL = "gpt-4.1"
+
+
+def _get_client() -> OpenAI:
+    """Get or create the OpenAI client."""
+    global _client
+    if _client is None:
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "OPENAI_API_KEY environment variable required for data generation"
+            )
+        _client = OpenAI(api_key=api_key)
+    return _client
 
 
 # --- Pydantic schemas for validation ---
@@ -179,7 +191,7 @@ def generate_tools(domain: str, categories: list[str], count: int = 20) -> list[
         categories=", ".join(categories),
     )
 
-    response = client.chat.completions.create(
+    response = _get_client().chat.completions.create(
         model=GENERATION_MODEL,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.8,
@@ -216,7 +228,7 @@ def generate_personas(
         existing=", ".join(existing_names) if existing_names else "none",
     )
 
-    response = client.chat.completions.create(
+    response = _get_client().chat.completions.create(
         model=GENERATION_MODEL,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.9,
@@ -265,7 +277,7 @@ def generate_scenario(
     )
 
     try:
-        response = client.chat.completions.create(
+        response = _get_client().chat.completions.create(
             model=GENERATION_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=1.0,

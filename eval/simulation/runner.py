@@ -7,6 +7,7 @@ for downstream scoring.
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -18,6 +19,11 @@ from eval.providers.registry import ModelSpec, create_model
 logger = logging.getLogger(__name__)
 
 CONVERSATION_COMPLETE = "[CONVERSATION_COMPLETE]"
+
+# Matches JSON tool_call objects, handling nested braces in arguments
+_TOOL_CALL_RE = re.compile(
+    r'\{\s*"tool_call"\s*:\s*(\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})\s*\}'
+)
 
 
 @dataclass
@@ -180,7 +186,9 @@ class SimulationRunner:
             total_latency_ms += agent_latency
 
             # Check for tool calls in agent response
-            tool_calls_this_turn = self._extract_tool_calls(agent_content, turn_num)
+            tool_calls_this_turn = self._extract_tool_calls(
+                agent_content, turn_num
+            )
 
             # Simulate tool responses if agent made tool calls
             for tc in tool_calls_this_turn:
@@ -234,9 +242,9 @@ class SimulationRunner:
     def _extract_tool_calls(self, content: str, turn: int) -> list[ToolCall]:
         """Extract tool calls from agent response content."""
         calls = []
-        # Look for JSON tool call patterns
+
+        # First try: whole response is a single tool call JSON
         try:
-            # Try parsing the whole response as a tool call
             parsed = json.loads(content)
             if "tool_call" in parsed:
                 tc = parsed["tool_call"]
@@ -248,27 +256,30 @@ class SimulationRunner:
                         result="",
                     )
                 )
+                return calls
         except (json.JSONDecodeError, TypeError):
-            # Try finding embedded JSON tool calls
-            import re
+            pass
 
-            pattern = r'\{"tool_call":\s*\{[^}]*"name":\s*"([^"]*)"[^}]*\}\}'
-            for match in re.finditer(pattern, content):
-                try:
-                    tc_json = json.loads(match.group(0))["tool_call"]
-                    calls.append(
-                        ToolCall(
-                            turn=turn,
-                            tool_name=tc_json.get("name", ""),
-                            arguments=tc_json.get("arguments", {}),
-                            result="",
-                        )
+        # Second try: find embedded tool_call JSON objects (handles nested braces)
+        for match in _TOOL_CALL_RE.finditer(content):
+            try:
+                tc = json.loads(match.group(1))
+                calls.append(
+                    ToolCall(
+                        turn=turn,
+                        tool_name=tc.get("name", ""),
+                        arguments=tc.get("arguments", {}),
+                        result="",
                     )
-                except (json.JSONDecodeError, KeyError):
-                    continue
+                )
+            except (json.JSONDecodeError, KeyError):
+                continue
+
         return calls
 
-    def _simulate_tool(self, tool_call: ToolCall, available_tools: list[dict]) -> str:
+    def _simulate_tool(
+        self, tool_call: ToolCall, available_tools: list[dict]
+    ) -> str:
         """Use an LLM to generate a realistic tool response."""
         tool_schema = next(
             (t for t in available_tools if t.get("name") == tool_call.tool_name),
@@ -276,8 +287,8 @@ class SimulationRunner:
         )
 
         prompt = (
-            f"You are simulating a tool/API response. Generate a realistic, "
-            f"well-formed response for this tool call.\n\n"
+            "You are simulating a tool/API response. Generate a realistic, "
+            "well-formed response for this tool call.\n\n"
             f"Tool: {tool_call.tool_name}\n"
             f"Arguments: {json.dumps(tool_call.arguments)}\n"
         )
@@ -289,7 +300,11 @@ class SimulationRunner:
         )
 
         response = self._tool_sim.invoke([HumanMessage(content=prompt)])
-        return response.content if isinstance(response.content, str) else str(response.content)
+        return (
+            response.content
+            if isinstance(response.content, str)
+            else str(response.content)
+        )
 
     def _simulate_user_turn(
         self,
@@ -298,29 +313,34 @@ class SimulationRunner:
         last_agent_response: str,
     ) -> str:
         """Generate the next user message based on persona and goals."""
+        # Last 10 turns for context window efficiency
         history_text = "\n".join(
-            f"[{t.role}] {t.content}" for t in history[-10:]  # Last 10 turns for context
+            f"[{t.role}] {t.content}" for t in history[-10:]
         )
 
         prompt = (
-            f"You are simulating a user in a conversation with an AI agent.\n\n"
+            "You are simulating a user in a conversation with an AI agent.\n\n"
             f"Persona: {json.dumps(scenario.persona)}\n"
-            f"Goals (pursue these naturally across the conversation):\n"
+            "Goals (pursue these naturally across the conversation):\n"
         )
         for i, goal in enumerate(scenario.user_goals, 1):
             prompt += f"  {i}. {goal}\n"
         prompt += (
             f"\nConversation so far:\n{history_text}\n\n"
             f"Agent's last response:\n{last_agent_response}\n\n"
-            f"Instructions:\n"
-            f"- Respond naturally as this persona would\n"
-            f"- Pursue your remaining unmet goals\n"
-            f"- If ALL goals have been addressed satisfactorily, respond with "
+            "Instructions:\n"
+            "- Respond naturally as this persona would\n"
+            "- Pursue your remaining unmet goals\n"
+            "- If ALL goals have been addressed satisfactorily, respond with "
             f'exactly "{CONVERSATION_COMPLETE}"\n'
-            f"- Do NOT be overly agreeable — push back if the agent's response is "
-            f"incomplete or unsatisfactory\n"
-            f"- Keep responses concise (1-3 sentences typically)\n"
+            "- Do NOT be overly agreeable — push back if the agent's response is "
+            "incomplete or unsatisfactory\n"
+            "- Keep responses concise (1-3 sentences typically)\n"
         )
 
         response = self._user_sim.invoke([HumanMessage(content=prompt)])
-        return response.content if isinstance(response.content, str) else str(response.content)
+        return (
+            response.content
+            if isinstance(response.content, str)
+            else str(response.content)
+        )

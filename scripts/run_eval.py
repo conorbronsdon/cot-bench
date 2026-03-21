@@ -3,6 +3,7 @@
 import argparse
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import pandas as pd
@@ -26,13 +27,19 @@ from eval.scoring.rubrics import (
 from eval.simulation.runner import Scenario, SimulationRunner
 from eval.tracing import get_tracer, init_tracing, trace_judge_evaluation
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 
 def load_scenarios(domain: Domain) -> list[Scenario]:
     """Load scenarios from data directory."""
     scenario_dir = Path(f"data/scenarios/{domain.value}")
+    if not scenario_dir.exists():
+        logger.warning("Scenario directory not found: %s", scenario_dir)
+        return []
     scenarios = []
     for path in sorted(scenario_dir.glob("*.json")):
         with open(path) as f:
@@ -55,18 +62,21 @@ def format_transcript(turns) -> str:
     """Format conversation turns into a readable transcript for judges."""
     lines = []
     for t in turns:
-        prefix = {"user": "USER", "agent": "AGENT", "tool": "TOOL"}.get(t.role, t.role.upper())
+        prefix = {"user": "USER", "agent": "AGENT", "tool": "TOOL"}.get(
+            t.role, t.role.upper()
+        )
         lines.append(f"[Turn {t.turn_number} - {prefix}]: {t.content}")
         for tc in t.tool_calls:
-            lines.append(f"  -> Tool Call: {tc.tool_name}({json.dumps(tc.arguments)})")
+            lines.append(
+                f"  -> Tool Call: {tc.tool_name}({json.dumps(tc.arguments)})"
+            )
             if tc.result:
                 lines.append(f"  <- Tool Result: {tc.result[:500]}")
     return "\n".join(lines)
 
 
-def evaluate_scenario(runner, scenario, agent_spec, tracer):
+def evaluate_scenario(runner, scenario, agent_spec, tracer, judge_keys):
     """Run simulation + multi-judge scoring for one scenario, one model."""
-    # Run simulation
     sim_result = runner.run(scenario, agent_spec)
     transcript = format_transcript(sim_result.turns)
 
@@ -83,7 +93,8 @@ def evaluate_scenario(runner, scenario, agent_spec, tracer):
         transcript=transcript,
     )
     tc_result = score_with_all_judges(
-        JUDGE_SYSTEM_PROMPT, tc_prompt, "task_completion", scenario.id
+        JUDGE_SYSTEM_PROMPT, tc_prompt, "task_completion", scenario.id,
+        judge_keys=judge_keys,
     )
 
     # Score: Tool Selection
@@ -93,7 +104,8 @@ def evaluate_scenario(runner, scenario, agent_spec, tracer):
         transcript=transcript,
     )
     ts_result = score_with_all_judges(
-        JUDGE_SYSTEM_PROMPT, ts_prompt, "tool_selection", scenario.id
+        JUDGE_SYSTEM_PROMPT, ts_prompt, "tool_selection", scenario.id,
+        judge_keys=judge_keys,
     )
 
     # Trace judge evaluations
@@ -145,6 +157,46 @@ def evaluate_scenario(runner, scenario, agent_spec, tracer):
     }
 
 
+def _run_model_scenarios(
+    model_cfg, domains, scenarios_by_domain, reliability_runs, judge_keys, tracer
+):
+    """Evaluate a single model across all domains/scenarios. Runs in a thread."""
+    agent_spec = ModelSpec(
+        name=model_cfg["name"],
+        model_id=model_cfg["model_id"],
+        provider=model_cfg["provider"],
+    )
+    # Each model gets its own runner (owns its own simulator model instances)
+    runner = SimulationRunner()
+    results = []
+
+    for domain, scenarios in scenarios_by_domain.items():
+        logger.info("Evaluating %s on %s", agent_spec.name, domain.value)
+        for scenario in scenarios:
+            run_scores = []
+            for run_idx in range(reliability_runs):
+                logger.info(
+                    "  %s / %s, run %d/%d",
+                    agent_spec.name,
+                    scenario.id,
+                    run_idx + 1,
+                    reliability_runs,
+                )
+                result = evaluate_scenario(
+                    runner, scenario, agent_spec, tracer, judge_keys
+                )
+                result["run_index"] = run_idx
+                results.append(result)
+                run_scores.append(result["efficacy"])
+
+            reliability = compute_reliability(run_scores)
+            for r in results[-reliability_runs:]:
+                r["reliability_pass_rate"] = reliability["pass_rate"]
+                r["reliability_consistency"] = reliability["consistency"]
+
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser(description="COT Bench — Agent Evaluation")
     parser.add_argument(
@@ -174,6 +226,12 @@ def main():
         help="Number of repeated runs for reliability scoring",
     )
     parser.add_argument(
+        "--parallel-models",
+        type=int,
+        default=2,
+        help="Number of models to evaluate concurrently",
+    )
+    parser.add_argument(
         "--output",
         type=str,
         default="data/results/results.parquet",
@@ -185,47 +243,51 @@ def main():
     init_tracing()
     tracer = get_tracer()
 
-    runner = SimulationRunner()
-    all_results = []
+    # Load scenarios for all requested domains
+    scenarios_by_domain: dict[Domain, list[Scenario]] = {}
+    for domain_str in args.domains:
+        domain = Domain(domain_str)
+        scenarios = load_scenarios(domain)
+        if scenarios:
+            scenarios_by_domain[domain] = scenarios
+            logger.info("Loaded %d scenarios for %s", len(scenarios), domain.value)
+        else:
+            logger.warning("No scenarios found for %s, skipping", domain.value)
+
+    if not scenarios_by_domain:
+        logger.error("No scenarios loaded. Run generate_data.py first.")
+        return
 
     # Filter models
     models = MODELS_UNDER_TEST
     if args.models:
         models = [m for m in models if m["name"] in args.models]
 
-    for domain_str in args.domains:
-        domain = Domain(domain_str)
-        scenarios = load_scenarios(domain)
-        logger.info("Loaded %d scenarios for %s", len(scenarios), domain.value)
-
-        for model_cfg in models:
-            agent_spec = ModelSpec(
-                name=model_cfg["name"],
-                model_id=model_cfg["model_id"],
-                provider=model_cfg["provider"],
-            )
-            logger.info("Evaluating %s on %s", agent_spec.name, domain.value)
-
-            for scenario in scenarios:
-                # Run multiple times for reliability
-                run_scores = []
-                for run_idx in range(args.reliability_runs):
-                    logger.info(
-                        "  Scenario %s, run %d/%d",
-                        scenario.id,
-                        run_idx + 1,
-                        args.reliability_runs,
-                    )
-                    result = evaluate_scenario(runner, scenario, agent_spec, tracer)
-                    result["run_index"] = run_idx
-                    all_results.append(result)
-                    run_scores.append(result["efficacy"])
-
-                # Compute reliability for this scenario
-                reliability = compute_reliability(run_scores)
-                for r in all_results[-args.reliability_runs :]:
-                    r["reliability_pass_rate"] = reliability["pass_rate"]
-                    r["reliability_consistency"] = reliability["consistency"]
+    # Run models in parallel
+    all_results = []
+    with ThreadPoolExecutor(max_workers=args.parallel_models) as executor:
+        futures = {
+            executor.submit(
+                _run_model_scenarios,
+                model_cfg,
+                args.domains,
+                scenarios_by_domain,
+                args.reliability_runs,
+                args.judges,
+                tracer,
+            ): model_cfg["name"]
+            for model_cfg in models
+        }
+        for future in as_completed(futures):
+            model_name = futures[future]
+            try:
+                results = future.result()
+                all_results.extend(results)
+                logger.info(
+                    "Completed %s: %d results", model_name, len(results)
+                )
+            except Exception:
+                logger.exception("Failed evaluating %s", model_name)
 
     # Save results
     output_path = Path(args.output)

@@ -21,8 +21,11 @@ def init_tracing(service_name: str = "cot-bench") -> TracerProvider:
     """Initialize OpenTelemetry tracing with OpenInference conventions."""
     global _provider, _exporter
 
+    from opentelemetry.sdk.resources import Resource
+
+    resource = Resource.create({"service.name": service_name})
     _exporter = InMemorySpanExporter()
-    _provider = TracerProvider()
+    _provider = TracerProvider(resource=resource)
     _provider.add_span_processor(SimpleSpanProcessor(_exporter))
     trace.set_tracer_provider(_provider)
 

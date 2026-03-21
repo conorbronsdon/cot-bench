@@ -1,14 +1,18 @@
 """Multi-judge orchestration for COT Bench.
 
-Runs each scenario through all configured judges independently,
+Runs each scenario through all configured judges concurrently,
 then computes consensus scores and inter-judge agreement.
 """
 
 import json
 import logging
+import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from functools import lru_cache
 
+import anthropic
 from openai import OpenAI
 
 from eval.config import JUDGES, JudgeConfig
@@ -40,17 +44,51 @@ class ConsensusResult:
     max_disagreement: float
 
 
-def _build_client(judge: JudgeConfig) -> OpenAI | None:
-    """Create an OpenAI-compatible client for a judge model.
+@lru_cache(maxsize=8)
+def _get_openai_client(base_url: str, api_key: str) -> OpenAI:
+    """Cached OpenAI-compatible client factory."""
+    return OpenAI(base_url=base_url, api_key=api_key)
 
-    Returns None for Anthropic (handled separately via their SDK).
-    """
-    if judge.provider == "max":
-        return OpenAI(base_url=judge.endpoint, api_key="not-needed")
-    elif judge.provider == "anthropic":
-        return None  # Handled via Anthropic SDK in score_with_judge
-    else:
-        raise ValueError(f"Unknown judge provider: {judge.provider}")
+
+@lru_cache(maxsize=1)
+def _get_anthropic_client() -> anthropic.Anthropic:
+    """Cached Anthropic client factory."""
+    return anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+
+def _parse_judge_response(content: str) -> dict:
+    """Parse JSON from judge response, handling markdown code blocks."""
+    import re
+
+    # Try direct parse
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        pass
+
+    # Try extracting from markdown code block (```json or bare ```)
+    code_block = re.search(r"```(?:json)?\s*\n(.*?)\n\s*```", content, re.DOTALL)
+    if code_block:
+        try:
+            return json.loads(code_block.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+
+    # Last resort: find first { ... } or [ ... ] boundary
+    for start_ch, end_ch in [("{", "}"), ("[", "]")]:
+        start = content.find(start_ch)
+        end = content.rfind(end_ch)
+        if start != -1 and end > start:
+            try:
+                return json.loads(content[start : end + 1])
+            except json.JSONDecodeError:
+                continue
+
+    logger.error("Failed to parse judge JSON: %s", content[:200])
+    return {
+        "overall_score": 0.0,
+        "overall_reasoning": "Failed to parse judge response",
+    }
 
 
 def score_with_judge(
@@ -73,12 +111,8 @@ def score_with_judge(
     start = time.perf_counter()
 
     if judge.provider == "anthropic":
-        import os
-
-        import anthropic
-
-        anth_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-        response = anth_client.messages.create(
+        client = _get_anthropic_client()
+        response = client.messages.create(
             model=judge.model_id,
             system=system_prompt,
             messages=[{"role": "user", "content": rubric_prompt}],
@@ -87,7 +121,9 @@ def score_with_judge(
         )
         content = response.content[0].text
     else:
-        client = _build_client(judge)
+        # MAX and any other OpenAI-compatible providers
+        base_url = judge.endpoint or "http://localhost:8000/v1"
+        client = _get_openai_client(base_url, "not-needed")
         response = client.chat.completions.create(
             model=judge.model_id,
             messages=[
@@ -100,18 +136,7 @@ def score_with_judge(
         content = response.choices[0].message.content
 
     latency_ms = (time.perf_counter() - start) * 1000
-    try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError:
-        # Try extracting JSON from markdown code block
-        if "```" in content:
-            json_str = content.split("```json")[-1].split("```")[0].strip()
-            if not json_str:
-                json_str = content.split("```")[-2].strip()
-            parsed = json.loads(json_str)
-        else:
-            logger.error("Judge %s returned non-JSON: %s", judge.name, content[:200])
-            parsed = {"overall_score": 0.0, "overall_reasoning": "Failed to parse judge response"}
+    parsed = _parse_judge_response(content)
 
     return JudgeResult(
         judge_name=judge.name,
@@ -130,7 +155,7 @@ def score_with_all_judges(
     scenario_id: str,
     judge_keys: list[str] | None = None,
 ) -> ConsensusResult:
-    """Score a scenario with all judges and compute consensus.
+    """Score a scenario with all judges concurrently and compute consensus.
 
     Args:
         system_prompt: The judge system prompt.
@@ -143,22 +168,30 @@ def score_with_all_judges(
         ConsensusResult with individual and aggregated scores.
     """
     keys = judge_keys or list(JUDGES.keys())
-    results = []
+    results: list[JudgeResult] = []
 
-    for key in keys:
-        judge = JUDGES[key]
-        try:
-            result = score_with_judge(judge, system_prompt, rubric_prompt, rubric_type)
-            results.append(result)
-            logger.info(
-                "Judge %s scored %.2f for %s (%s)",
-                judge.name,
-                result.overall_score,
-                scenario_id,
-                rubric_type,
-            )
-        except Exception:
-            logger.exception("Judge %s failed on %s", judge.name, scenario_id)
+    # Run judges concurrently — they're independent API calls
+    with ThreadPoolExecutor(max_workers=len(keys)) as executor:
+        futures = {
+            executor.submit(
+                score_with_judge, JUDGES[key], system_prompt, rubric_prompt, rubric_type
+            ): key
+            for key in keys
+        }
+        for future in as_completed(futures):
+            key = futures[future]
+            try:
+                result = future.result()
+                results.append(result)
+                logger.info(
+                    "Judge %s scored %.2f for %s (%s)",
+                    result.judge_name,
+                    result.overall_score,
+                    scenario_id,
+                    rubric_type,
+                )
+            except Exception:
+                logger.exception("Judge %s failed on %s", key, scenario_id)
 
     if not results:
         return ConsensusResult(
