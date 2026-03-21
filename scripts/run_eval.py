@@ -153,6 +153,12 @@ def evaluate_scenario(runner, scenario, agent_spec, tracer, judge_keys):
         "completed": sim_result.completed,
         "tc_agreement": round(tc_result.agreement_rate, 4),
         "ts_agreement": round(ts_result.agreement_rate, 4),
+        "tc_max_disagreement": round(tc_result.max_disagreement, 4),
+        "ts_max_disagreement": round(ts_result.max_disagreement, 4),
+        "high_disagreement": (
+            tc_result.max_disagreement > 0.3
+            or ts_result.max_disagreement > 0.3
+        ),
         # Per-judge scores for transparency
         **{
             f"tc_{jr.judge_name}": round(jr.overall_score, 4)

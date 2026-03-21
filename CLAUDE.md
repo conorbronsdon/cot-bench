@@ -10,7 +10,7 @@ Open agent evaluation leaderboard. Part of the Chain of Thought brand.
 - `docs/` — methodology, contributing guide, MAX setup guide
 - `.github/workflows/` — CI, weekly eval runs, GitHub Pages deploy
 - `frontend/` — static leaderboard UI (deployed to GitHub Pages)
-- `tests/` — 36 tests covering scoring, parsing, config, validation
+- `tests/` — 38 tests covering scoring, parsing, config, validation
 
 ## Key design decisions
 - **Multi-judge scoring**: Qwen3-235B + DeepSeek-V3 (on Modular MAX) + Claude Opus (frontier reference)

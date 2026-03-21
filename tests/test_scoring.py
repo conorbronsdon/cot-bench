@@ -9,7 +9,8 @@ class TestComputeReliability:
     def test_all_passing(self):
         result = compute_reliability([0.9, 0.85, 0.8])
         assert result["pass_rate"] == 1.0
-        assert result["consistency"] > 0.8
+        # consistency = 1.0 - (0.9 - 0.8) = 0.9
+        assert result["consistency"] == pytest.approx(0.9)
 
     def test_all_failing(self):
         result = compute_reliability([0.3, 0.2, 0.4])
@@ -37,6 +38,12 @@ class TestComputeReliability:
     def test_custom_threshold(self):
         result = compute_reliability([0.6, 0.5, 0.4], threshold=0.5)
         assert result["pass_rate"] == pytest.approx(2 / 3)
+
+    def test_consistency_clamped_at_zero(self):
+        # Scores outside [0, 1] shouldn't produce negative consistency
+        result = compute_reliability([0.0, 1.0, 0.0])
+        assert result["consistency"] == 0.0
+        assert result["consistency"] >= 0.0
 
 
 class TestEfficacyWeights:

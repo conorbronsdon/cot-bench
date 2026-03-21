@@ -153,8 +153,10 @@ def compute_reliability(run_scores: list[float], threshold: float = 0.7) -> dict
     mean = sum(run_scores) / len(run_scores)
     variance = sum((s - mean) ** 2 for s in run_scores) / len(run_scores)
 
+    consistency = max(0.0, 1.0 - (max(run_scores) - min(run_scores)))
+
     return {
         "pass_rate": passes / len(run_scores),
-        "consistency": 1.0 - (max(run_scores) - min(run_scores)),
+        "consistency": consistency,
         "score_variance": variance,
     }

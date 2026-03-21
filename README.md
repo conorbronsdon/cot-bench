@@ -209,6 +209,7 @@ cot-bench/
 - **[Methodology](docs/methodology.md)** — detailed explanation of evaluation approach, scoring rubrics, and statistical methods
 - **[Contributing](docs/contributing.md)** — how to add models, domains, or improve the evaluation
 - **[MAX Setup](docs/max-setup.md)** — hardware requirements and setup for running open-source judge models
+- **[Roadmap](docs/roadmap.md)** — planned improvements and feature priorities
 
 ## How It Works
 

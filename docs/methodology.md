@@ -20,7 +20,7 @@ Every evaluation produces four CLEAR-aligned dimensions (Efficacy, Cost, Reliabi
 Each scenario consists of:
 
 - **Persona**: A synthetic user with specific personality traits, communication style, and background context. Personas range from cooperative to adversarial, tech-savvy to confused.
-- **Goals**: 5-8 interconnected goals the user wants to accomplish. Goals are designed so completing one reveals information needed for another.
+- **Goals**: 3-10 interconnected goals the user wants to accomplish (typically 5-8). Goals are designed so completing one reveals information needed for another.
 - **Tools**: A subset of domain-specific tools with full JSON schemas, including parameter types, required fields, and response formats.
 - **Initial message**: An in-character opening message that naturally leads toward the goals.
 

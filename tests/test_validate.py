@@ -67,6 +67,13 @@ class TestValidateScenario:
         errors = validate_scenario(path)
         assert any("goals" in e.lower() for e in errors)
 
+    def test_too_many_goals(self):
+        goals = [f"Goal {i}" for i in range(12)]
+        data = {**VALID_SCENARIO, "user_goals": goals}
+        path = _write_scenario(data)
+        errors = validate_scenario(path)
+        assert any("goals" in e.lower() for e in errors)
+
     def test_invalid_category(self):
         data = {**VALID_SCENARIO, "category": "nonexistent"}
         path = _write_scenario(data)
