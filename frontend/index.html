@@ -201,6 +201,105 @@
 
         .loading { text-align: center; padding: 4rem; color: var(--text-muted); }
 
+        /* Efficiency frontier scatter plot */
+        .scatter-container {
+            margin: 2rem 0;
+            padding: 1.5rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .scatter-container h2 {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .scatter-container p {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+        }
+
+        .scatter-plot {
+            position: relative;
+            width: 100%;
+            height: 300px;
+            border-left: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .scatter-dot {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent);
+            transform: translate(-50%, 50%);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .scatter-dot:hover {
+            width: 14px;
+            height: 14px;
+            box-shadow: 0 0 8px var(--accent);
+        }
+
+        .scatter-dot.frontier { background: var(--green); }
+
+        .scatter-label {
+            position: absolute;
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            transform: translate(-50%, -100%);
+            white-space: nowrap;
+            pointer-events: none;
+            padding-bottom: 4px;
+        }
+
+        .axis-label {
+            position: absolute;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+
+        .axis-label.x {
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .axis-label.y {
+            left: -40px;
+            top: 50%;
+            transform: rotate(-90deg) translateX(50%);
+            transform-origin: left center;
+        }
+
+        /* Changelog section */
+        .changelog {
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .changelog h2 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .changelog-entry {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
+        }
+
+        .changelog-entry .date {
+            color: var(--text-muted);
+            margin-right: 1rem;
+        }
+
         @media (max-width: 768px) {
             .container { padding: 1rem; }
             table { font-size: 0.75rem; }
@@ -265,6 +364,25 @@
             </tbody>
         </table>
 
+        <!-- Efficiency Frontier: Efficacy vs Cost -->
+        <div class="scatter-container">
+            <h2>Efficiency Frontier: Efficacy vs. Cost per Task</h2>
+            <p>Models in the top-left are the most efficient — high efficacy at low cost. Green dots mark the efficiency frontier.</p>
+            <div class="scatter-plot" id="scatter-plot">
+                <span class="axis-label x">Cost per Task (USD) &rarr;</span>
+                <span class="axis-label y">&uarr; Efficacy</span>
+            </div>
+        </div>
+
+        <!-- Changelog -->
+        <div class="changelog">
+            <h2>Changelog</h2>
+            <div class="changelog-entry">
+                <span class="date">2026-03-20</span>
+                COT Bench v0.1.0 launched. 10 models, 2 domains (banking, customer success), 3 judges (Qwen3-235B, DeepSeek-V3, Claude Opus). CLEAR-aligned metrics.
+            </div>
+        </div>
+
         <footer>
             <p>
                 COT Bench evaluates AI agents on multi-turn tool-calling tasks across real-world domains.
@@ -296,6 +414,7 @@
                 leaderboardData = await resp.json();
                 document.getElementById('last-updated').textContent = `Updated: ${new Date(leaderboardData.updated).toLocaleDateString()}`;
                 render();
+                renderScatter();
             } catch (e) {
                 renderDemo();
             }
@@ -320,6 +439,7 @@
             };
             document.getElementById('last-updated').textContent = 'Demo data — no eval results yet';
             render();
+            renderScatter();
         }
 
         function scoreColor(val, invert = false) {
@@ -381,6 +501,51 @@
                     <td><span class="agreement-badge ${agreementClass(avgAgreement)}">${(avgAgreement * 100).toFixed(0)}%</span></td>
                 </tr>`;
             }).join('');
+        }
+
+        function renderScatter() {
+            if (!leaderboardData) return;
+            const plot = document.getElementById('scatter-plot');
+            // Clear existing dots
+            plot.querySelectorAll('.scatter-dot, .scatter-label').forEach(el => el.remove());
+
+            const models = leaderboardData.models;
+            if (!models.length) return;
+
+            const maxCost = Math.max(...models.map(m => m.cost_per_task_usd)) * 1.15;
+            const minEff = Math.min(...models.map(m => m.efficacy)) * 0.95;
+            const maxEff = Math.max(...models.map(m => m.efficacy)) * 1.02;
+            const effRange = maxEff - minEff;
+
+            // Find efficiency frontier (Pareto-optimal: higher efficacy at same or lower cost)
+            const sorted = [...models].sort((a, b) => a.cost_per_task_usd - b.cost_per_task_usd);
+            const frontier = new Set();
+            let bestEff = -1;
+            for (const m of sorted) {
+                if (m.efficacy > bestEff) {
+                    frontier.add(m.name);
+                    bestEff = m.efficacy;
+                }
+            }
+
+            models.forEach(m => {
+                const x = (m.cost_per_task_usd / maxCost) * 92 + 4; // % from left
+                const y = ((m.efficacy - minEff) / effRange) * 85 + 5; // % from bottom
+
+                const dot = document.createElement('div');
+                dot.className = 'scatter-dot' + (frontier.has(m.name) ? ' frontier' : '');
+                dot.style.left = x + '%';
+                dot.style.bottom = y + '%';
+                dot.title = `${m.name}: Efficacy=${m.efficacy.toFixed(3)}, Cost=$${m.cost_per_task_usd.toFixed(4)}`;
+                plot.appendChild(dot);
+
+                const label = document.createElement('div');
+                label.className = 'scatter-label';
+                label.style.left = x + '%';
+                label.style.bottom = (y + 2) + '%';
+                label.textContent = m.name.replace('Claude ', '').replace('Gemini ', '');
+                plot.appendChild(label);
+            });
         }
 
         loadData();

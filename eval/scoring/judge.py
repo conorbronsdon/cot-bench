@@ -194,12 +194,15 @@ def score_with_all_judges(
                 logger.exception("Judge %s failed on %s", key, scenario_id)
 
     if not results:
+        logger.warning(
+            "All judges failed for %s (%s)", scenario_id, rubric_type
+        )
         return ConsensusResult(
             scenario_id=scenario_id,
             rubric_type=rubric_type,
             judge_results=[],
             consensus_score=0.0,
-            agreement_rate=0.0,
+            agreement_rate=0.0,  # No judges = no agreement, not perfect agreement
             max_disagreement=0.0,
         )
 

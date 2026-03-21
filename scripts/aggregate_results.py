@@ -152,6 +152,25 @@ def main():
         json.dump(leaderboard, f, indent=2)
     logger.info("Leaderboard saved to %s", leaderboard_path)
 
+    # Append to history for trend tracking
+    history_path = RESULTS_DIR / "history.jsonl"
+    snapshot = {
+        "timestamp": leaderboard["updated"],
+        "models": {
+            m["name"]: {
+                "clear_score": m["clear_score"],
+                "efficacy": m["efficacy"],
+                "cost_per_task_usd": m["cost_per_task_usd"],
+                "reliability": m["reliability"],
+                "avg_latency_ms": m["avg_latency_ms"],
+            }
+            for m in leaderboard["models"]
+        },
+    }
+    with open(history_path, "a") as f:
+        f.write(json.dumps(snapshot) + "\n")
+    logger.info("Appended snapshot to %s", history_path)
+
     # Save human-readable CSV
     csv_path = RESULTS_DIR / "latest.csv"
     models_df = pd.DataFrame(leaderboard["models"])

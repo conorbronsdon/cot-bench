@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -123,7 +124,14 @@ def evaluate_scenario(runner, scenario, agent_spec, tracer, judge_keys):
     )
 
     # Compute cost
-    costs = TOKEN_COSTS.get(agent_spec.model_id, {"input": 0, "output": 0})
+    costs = TOKEN_COSTS.get(agent_spec.model_id)
+    if costs is None:
+        logger.warning(
+            "No token costs for %s — cost will be $0. "
+            "Add pricing to eval/config.py TOKEN_COSTS.",
+            agent_spec.model_id,
+        )
+        costs = {"input": 0, "output": 0}
     cost_usd = (
         sim_result.total_input_tokens * costs["input"] / 1_000_000
         + sim_result.total_output_tokens * costs["output"] / 1_000_000
@@ -186,6 +194,7 @@ def _run_model_scenarios(
                     runner, scenario, agent_spec, tracer, judge_keys
                 )
                 result["run_index"] = run_idx
+                result["evaluated_at"] = datetime.now(timezone.utc).isoformat()
                 results.append(result)
                 run_scores.append(result["efficacy"])
 
@@ -232,6 +241,12 @@ def main():
         help="Number of models to evaluate concurrently",
     )
     parser.add_argument(
+        "--scenario-limit",
+        type=int,
+        default=0,
+        help="Limit scenarios per domain (0 = all, useful for quick tests)",
+    )
+    parser.add_argument(
         "--output",
         type=str,
         default="data/results/results.parquet",
@@ -249,6 +264,8 @@ def main():
         domain = Domain(domain_str)
         scenarios = load_scenarios(domain)
         if scenarios:
+            if args.scenario_limit > 0:
+                scenarios = scenarios[: args.scenario_limit]
             scenarios_by_domain[domain] = scenarios
             logger.info("Loaded %d scenarios for %s", len(scenarios), domain.value)
         else:

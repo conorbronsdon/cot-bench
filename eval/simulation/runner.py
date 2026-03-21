@@ -179,8 +179,18 @@ class SimulationRunner:
 
             # Track tokens from response metadata
             usage = getattr(agent_response, "usage_metadata", None)
-            turn_input = usage.get("input_tokens", 0) if usage else 0
-            turn_output = usage.get("output_tokens", 0) if usage else 0
+            if usage:
+                turn_input = usage.get("input_tokens", 0)
+                turn_output = usage.get("output_tokens", 0)
+            else:
+                turn_input = 0
+                turn_output = 0
+                if turn_num == 0:
+                    logger.warning(
+                        "No usage_metadata from %s — token counts and "
+                        "cost estimates will be inaccurate",
+                        agent_spec.name,
+                    )
             total_input_tokens += turn_input
             total_output_tokens += turn_output
             total_latency_ms += agent_latency

@@ -6,6 +6,7 @@ for COT Bench's domain structure and scenario design.
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -287,8 +288,11 @@ def generate_scenario(
         raw = _extract_json(response.choices[0].message.content)
         scenario_data = json.loads(raw)
 
-        # Ensure required fields
-        scenario_data["id"] = f"{domain}_{category}_{index:04d}"
+        # Ensure required fields — use content hash for unique IDs
+        content_hash = hashlib.sha256(
+            json.dumps(scenario_data, sort_keys=True).encode()
+        ).hexdigest()[:8]
+        scenario_data["id"] = f"{domain}_{category}_{index:04d}_{content_hash}"
         scenario_data["category"] = category
 
         # Attach full tool definitions (not just summaries)
