@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Data (generated, not committed)
+data/scenarios/*.json
+data/results/*.parquet
+data/results/*.csv
+
+# Keep domain definitions
+!data/domains/**/*.json
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Traces
+traces/

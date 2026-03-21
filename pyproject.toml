@@ -1,0 +1,40 @@
+[project]
+name = "cot-bench"
+version = "0.1.0"
+description = "Open agent evaluation leaderboard with multi-judge scoring on Modular MAX"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+authors = [
+    { name = "Conor Bronsdon", email = "conor@conorbronsdon.com" },
+]
+
+dependencies = [
+    "langchain-core>=0.3",
+    "langchain-openai>=0.3",
+    "langchain-anthropic>=0.3",
+    "openai>=1.60",
+    "pandas>=2.2",
+    "pyarrow>=18.0",
+    "pydantic>=2.10",
+    "tqdm>=4.67",
+    "openinference-semantic-conventions>=0.1",
+    "opentelemetry-api>=1.28",
+    "opentelemetry-sdk>=1.28",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.8",
+]
+
+[project.scripts]
+cot-bench = "scripts.run_eval:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
