@@ -32,16 +32,12 @@ VALID_SCENARIO = {
         {
             "name": "tool_a",
             "description": "Does thing A",
-            "parameters": [
-                {"name": "x", "type": "string", "description": "input"}
-            ],
+            "parameters": [{"name": "x", "type": "string", "description": "input"}],
         },
         {
             "name": "tool_b",
             "description": "Does thing B",
-            "parameters": [
-                {"name": "y", "type": "integer", "description": "count"}
-            ],
+            "parameters": [{"name": "y", "type": "integer", "description": "count"}],
         },
     ],
     "initial_message": "Hi, I need help with something today.",
@@ -81,9 +77,7 @@ class TestValidateScenario:
         assert any("category" in e.lower() for e in errors)
 
     def test_invalid_json(self):
-        f = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        )
+        f = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
         f.write("not json {{{")
         f.close()
         errors = validate_scenario(Path(f.name))

@@ -196,9 +196,7 @@ class SimulationRunner:
             total_latency_ms += agent_latency
 
             # Check for tool calls in agent response
-            tool_calls_this_turn = self._extract_tool_calls(
-                agent_content, turn_num
-            )
+            tool_calls_this_turn = self._extract_tool_calls(agent_content, turn_num)
 
             # Simulate tool responses if agent made tool calls
             for tc in tool_calls_this_turn:
@@ -227,9 +225,7 @@ class SimulationRunner:
             )
 
             # Generate next user turn (or detect completion)
-            user_response = self._simulate_user_turn(
-                scenario, turns, agent_content
-            )
+            user_response = self._simulate_user_turn(scenario, turns, agent_content)
 
             if CONVERSATION_COMPLETE in user_response:
                 completed = True
@@ -287,9 +283,7 @@ class SimulationRunner:
 
         return calls
 
-    def _simulate_tool(
-        self, tool_call: ToolCall, available_tools: list[dict]
-    ) -> str:
+    def _simulate_tool(self, tool_call: ToolCall, available_tools: list[dict]) -> str:
         """Use an LLM to generate a realistic tool response."""
         tool_schema = next(
             (t for t in available_tools if t.get("name") == tool_call.tool_name),
@@ -310,11 +304,7 @@ class SimulationRunner:
         )
 
         response = self._tool_sim.invoke([HumanMessage(content=prompt)])
-        return (
-            response.content
-            if isinstance(response.content, str)
-            else str(response.content)
-        )
+        return response.content if isinstance(response.content, str) else str(response.content)
 
     def _simulate_user_turn(
         self,
@@ -324,9 +314,7 @@ class SimulationRunner:
     ) -> str:
         """Generate the next user message based on persona and goals."""
         # Last 10 turns for context window efficiency
-        history_text = "\n".join(
-            f"[{t.role}] {t.content}" for t in history[-10:]
-        )
+        history_text = "\n".join(f"[{t.role}] {t.content}" for t in history[-10:])
 
         prompt = (
             "You are simulating a user in a conversation with an AI agent.\n\n"
@@ -349,8 +337,4 @@ class SimulationRunner:
         )
 
         response = self._user_sim.invoke([HumanMessage(content=prompt)])
-        return (
-            response.content
-            if isinstance(response.content, str)
-            else str(response.content)
-        )
+        return response.content if isinstance(response.content, str) else str(response.content)
