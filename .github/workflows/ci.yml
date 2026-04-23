@@ -45,3 +45,19 @@ jobs:
 
       - name: Check formatting
         run: ruff format --check eval/ scripts/ tests/
+
+  # Matrix aggregator — single check for branch protection to require.
+  # Resilient to matrix changes: add/remove a Python version without touching
+  # branch protection rules. If any matrix leg fails or is skipped, this fails.
+  test-summary:
+    runs-on: ubuntu-latest
+    needs: test
+    if: ${{ always() }}
+    steps:
+      - name: Verify all test matrix jobs succeeded
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "::error::test matrix did not succeed (result: ${{ needs.test.result }})"
+            exit 1
+          fi
+          echo "All test matrix jobs passed."

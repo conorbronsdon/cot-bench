@@ -45,3 +45,9 @@ ruff check eval/ scripts/ tests/
 - `eval/scoring/judge.py` — multi-judge orchestration with concurrent execution
 - `eval/simulation/runner.py` — multi-turn conversation simulation engine
 - MAX judges: localhost:8010 (Qwen3), localhost:8011 (DeepSeek)
+
+## Agent workflow
+- Always work on a branch. Never push directly to the default branch.
+- Create PRs targeting the repository's default branch. CI must pass (test + lint jobs).
+- Keep changes focused — one feature or fix per PR.
+- Run `pytest tests/ -v`, `ruff check eval/ scripts/ tests/`, and `ruff format --check eval/ scripts/ tests/` locally before pushing.

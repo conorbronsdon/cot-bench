@@ -1,14 +1,19 @@
 """Tests for the model provider registry."""
 
-
 from eval.providers.registry import _REGISTRY, ModelSpec, register_provider
 
 
 class TestRegistry:
     def test_all_providers_registered(self):
         expected = [
-            "openai", "anthropic", "google", "max",
-            "deepseek", "qwen", "together", "mistral",
+            "openai",
+            "anthropic",
+            "google",
+            "max",
+            "deepseek",
+            "qwen",
+            "together",
+            "mistral",
         ]
         for provider in expected:
             assert provider in _REGISTRY, f"Provider '{provider}' not registered"

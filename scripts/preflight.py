@@ -26,9 +26,13 @@ def main():
     # 1. Module imports
     print("1. Module imports")
     modules = [
-        "eval.config", "eval.tracing", "eval.scoring.rubrics",
-        "eval.scoring.judge", "eval.simulation.runner",
-        "eval.providers.registry", "scripts.run_eval",
+        "eval.config",
+        "eval.tracing",
+        "eval.scoring.rubrics",
+        "eval.scoring.judge",
+        "eval.simulation.runner",
+        "eval.providers.registry",
+        "scripts.run_eval",
         "scripts.aggregate_results",
     ]
     for mod in modules:
@@ -71,6 +75,7 @@ def main():
     # 4. Scenario validity
     print("\n4. Scenario validation")
     from scripts.validate_scenarios import validate_scenario
+
     for path in sorted(scenario_dir.rglob("*.json")):
         errors = validate_scenario(path)
         name = str(path.relative_to(scenario_dir))
@@ -82,18 +87,19 @@ def main():
     # 5. Config integrity
     print("\n5. Config integrity")
     from eval.config import JUDGES, MODELS_UNDER_TEST, TOKEN_COSTS
+
     check("Models configured", True, f"{len(MODELS_UNDER_TEST)} models")
     check("Judges configured", True, f"{len(JUDGES)} judges")
 
-    missing_costs = [
-        m["model_id"] for m in MODELS_UNDER_TEST
-        if m["model_id"] not in TOKEN_COSTS
-    ]
-    all_ok = check(
-        "Token costs complete",
-        len(missing_costs) == 0,
-        f"missing: {missing_costs}" if missing_costs else "all models have pricing",
-    ) and all_ok
+    missing_costs = [m["model_id"] for m in MODELS_UNDER_TEST if m["model_id"] not in TOKEN_COSTS]
+    all_ok = (
+        check(
+            "Token costs complete",
+            len(missing_costs) == 0,
+            f"missing: {missing_costs}" if missing_costs else "all models have pricing",
+        )
+        and all_ok
+    )
 
     # 6. Quick API connectivity test
     print("\n6. API connectivity (quick check)")
@@ -101,6 +107,7 @@ def main():
     if len(openai_key) > 5:
         try:
             from openai import OpenAI
+
             client = OpenAI()
             client.models.list()
             check("OpenAI API", True, "connected")
@@ -113,6 +120,7 @@ def main():
     if len(anthropic_key) > 5:
         try:
             import anthropic
+
             client = anthropic.Anthropic()
             # Just verify we can create a client — don't make a real call
             check("Anthropic API", True, "client created")
@@ -127,17 +135,17 @@ def main():
         print("All checks passed! Ready to run:")
         print()
         print("  # Quick test (1 model, 1 scenario, Opus judge only):")
-        print('  python -m scripts.run_eval \\')
-        print('    --domains banking \\')
+        print("  python -m scripts.run_eval \\")
+        print("    --domains banking \\")
         print('    --models "GPT-4.1-mini" \\')
-        print('    --judges opus \\')
-        print('    --scenario-limit 1 \\')
-        print('    --reliability-runs 1')
+        print("    --judges opus \\")
+        print("    --scenario-limit 1 \\")
+        print("    --reliability-runs 1")
         print()
         print("  # Full test (2 models, all scenarios, Opus judge):")
-        print('  python -m scripts.run_eval \\')
+        print("  python -m scripts.run_eval \\")
         print('    --models "GPT-4.1-mini" "Claude Haiku 4.5" \\')
-        print('    --judges opus')
+        print("    --judges opus")
     else:
         print("Some checks failed. Fix the issues above before running.")
         sys.exit(1)

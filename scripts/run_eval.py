@@ -63,14 +63,10 @@ def format_transcript(turns) -> str:
     """Format conversation turns into a readable transcript for judges."""
     lines = []
     for t in turns:
-        prefix = {"user": "USER", "agent": "AGENT", "tool": "TOOL"}.get(
-            t.role, t.role.upper()
-        )
+        prefix = {"user": "USER", "agent": "AGENT", "tool": "TOOL"}.get(t.role, t.role.upper())
         lines.append(f"[Turn {t.turn_number} - {prefix}]: {t.content}")
         for tc in t.tool_calls:
-            lines.append(
-                f"  -> Tool Call: {tc.tool_name}({json.dumps(tc.arguments)})"
-            )
+            lines.append(f"  -> Tool Call: {tc.tool_name}({json.dumps(tc.arguments)})")
             if tc.result:
                 lines.append(f"  <- Tool Result: {tc.result[:500]}")
     return "\n".join(lines)
@@ -81,10 +77,9 @@ def evaluate_scenario(runner, scenario, agent_spec, tracer, judge_keys):
     sim_result = runner.run(scenario, agent_spec)
     transcript = format_transcript(sim_result.turns)
 
-    tools_desc = json.dumps([
-        {"name": t.get("name"), "description": t.get("description")}
-        for t in scenario.tools
-    ])
+    tools_desc = json.dumps(
+        [{"name": t.get("name"), "description": t.get("description")} for t in scenario.tools]
+    )
 
     # Score: Task Completion
     tc_prompt = TASK_COMPLETION_RUBRIC.format(
@@ -94,7 +89,10 @@ def evaluate_scenario(runner, scenario, agent_spec, tracer, judge_keys):
         transcript=transcript,
     )
     tc_result = score_with_all_judges(
-        JUDGE_SYSTEM_PROMPT, tc_prompt, "task_completion", scenario.id,
+        JUDGE_SYSTEM_PROMPT,
+        tc_prompt,
+        "task_completion",
+        scenario.id,
         judge_keys=judge_keys,
     )
 
@@ -105,7 +103,10 @@ def evaluate_scenario(runner, scenario, agent_spec, tracer, judge_keys):
         transcript=transcript,
     )
     ts_result = score_with_all_judges(
-        JUDGE_SYSTEM_PROMPT, ts_prompt, "tool_selection", scenario.id,
+        JUDGE_SYSTEM_PROMPT,
+        ts_prompt,
+        "tool_selection",
+        scenario.id,
         judge_keys=judge_keys,
     )
 
@@ -113,8 +114,13 @@ def evaluate_scenario(runner, scenario, agent_spec, tracer, judge_keys):
     for result in [tc_result, ts_result]:
         for jr in result.judge_results:
             trace_judge_evaluation(
-                tracer, jr.judge_name, scenario.id, jr.rubric_type,
-                jr.overall_score, jr.reasoning, jr.latency_ms,
+                tracer,
+                jr.judge_name,
+                scenario.id,
+                jr.rubric_type,
+                jr.overall_score,
+                jr.reasoning,
+                jr.latency_ms,
             )
 
     # Compute efficacy (weighted combination)
@@ -127,8 +133,7 @@ def evaluate_scenario(runner, scenario, agent_spec, tracer, judge_keys):
     costs = TOKEN_COSTS.get(agent_spec.model_id)
     if costs is None:
         logger.warning(
-            "No token costs for %s — cost will be $0. "
-            "Add pricing to eval/config.py TOKEN_COSTS.",
+            "No token costs for %s — cost will be $0. Add pricing to eval/config.py TOKEN_COSTS.",
             agent_spec.model_id,
         )
         costs = {"input": 0, "output": 0}
@@ -155,19 +160,10 @@ def evaluate_scenario(runner, scenario, agent_spec, tracer, judge_keys):
         "ts_agreement": round(ts_result.agreement_rate, 4),
         "tc_max_disagreement": round(tc_result.max_disagreement, 4),
         "ts_max_disagreement": round(ts_result.max_disagreement, 4),
-        "high_disagreement": (
-            tc_result.max_disagreement > 0.3
-            or ts_result.max_disagreement > 0.3
-        ),
+        "high_disagreement": (tc_result.max_disagreement > 0.3 or ts_result.max_disagreement > 0.3),
         # Per-judge scores for transparency
-        **{
-            f"tc_{jr.judge_name}": round(jr.overall_score, 4)
-            for jr in tc_result.judge_results
-        },
-        **{
-            f"ts_{jr.judge_name}": round(jr.overall_score, 4)
-            for jr in ts_result.judge_results
-        },
+        **{f"tc_{jr.judge_name}": round(jr.overall_score, 4) for jr in tc_result.judge_results},
+        **{f"ts_{jr.judge_name}": round(jr.overall_score, 4) for jr in ts_result.judge_results},
     }
 
 
@@ -196,9 +192,7 @@ def _run_model_scenarios(
                     run_idx + 1,
                     reliability_runs,
                 )
-                result = evaluate_scenario(
-                    runner, scenario, agent_spec, tracer, judge_keys
-                )
+                result = evaluate_scenario(runner, scenario, agent_spec, tracer, judge_keys)
                 result["run_index"] = run_idx
                 result["evaluated_at"] = datetime.now(timezone.utc).isoformat()
                 results.append(result)
@@ -306,9 +300,7 @@ def main():
             try:
                 results = future.result()
                 all_results.extend(results)
-                logger.info(
-                    "Completed %s: %d results", model_name, len(results)
-                )
+                logger.info("Completed %s: %d results", model_name, len(results))
             except Exception:
                 logger.exception("Failed evaluating %s", model_name)
 

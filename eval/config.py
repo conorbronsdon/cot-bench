@@ -76,7 +76,11 @@ MODELS_UNDER_TEST = [
     {"name": "Gemini 2.5 Flash", "model_id": "gemini-2.5-flash", "provider": "google"},
     {"name": "DeepSeek-V3", "model_id": "deepseek-chat", "provider": "deepseek"},
     {"name": "Qwen3-235B", "model_id": "qwen3-235b", "provider": "qwen"},
-    {"name": "Llama 4 Maverick", "model_id": "meta-llama/Llama-4-Maverick-17B-128E", "provider": "together"},
+    {
+        "name": "Llama 4 Maverick",
+        "model_id": "meta-llama/Llama-4-Maverick-17B-128E",
+        "provider": "together",
+    },
     {"name": "Mistral Large", "model_id": "mistral-large-latest", "provider": "mistral"},
 ]
 

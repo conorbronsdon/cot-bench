@@ -88,9 +88,7 @@ def validate_scenario(path: Path) -> list[str]:
         tool_names = {t.name for t in scenario.tools}
         for tool_name in scenario.expected_tool_sequence:
             if tool_name not in tool_names:
-                errors.append(
-                    f"Expected tool '{tool_name}' not in available tools"
-                )
+                errors.append(f"Expected tool '{tool_name}' not in available tools")
 
     return errors
 

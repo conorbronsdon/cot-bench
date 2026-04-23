@@ -145,8 +145,7 @@ def create_model(spec: ModelSpec) -> BaseChatModel:
     factory = _REGISTRY.get(spec.provider)
     if factory is None:
         raise ValueError(
-            f"Unknown provider '{spec.provider}'. "
-            f"Registered providers: {list(_REGISTRY.keys())}"
+            f"Unknown provider '{spec.provider}'. Registered providers: {list(_REGISTRY.keys())}"
         )
     return factory(spec)
 
