@@ -283,3 +283,24 @@ def test_resume_aborts_on_corpus_mismatch(tmp_path, monkeypatch):
         run_eval.main()
     # Nothing evaluated — aborted before the run loop.
     assert evaluated == []
+
+
+def test_reconstructed_rows_price_by_requested_model_id(tmp_path):
+    """Review fix on PR #62: resumed rows must price cost_usd by the REQUESTED
+    model id (mapped from the display name through the roster), not by
+    resolved_model -- OpenRouter resolved ids are absent from TOKEN_COSTS and
+    would silently zero the Cost dimension on every resumed row.
+    """
+    from eval.config import MODELS_UNDER_TEST, TOKEN_COSTS
+    from eval.resume import rows_from_artifacts
+
+    roster_model = MODELS_UNDER_TEST[0]
+    costs = TOKEN_COSTS[roster_model["model_id"]]
+    run_id = "results_test"
+    _write_artifact(tmp_path, run_id, roster_model["name"], "banking_x_0000_aaaa1111", 0)
+
+    rows = rows_from_artifacts(tmp_path, run_id, [roster_model["name"]])
+    assert len(rows) == 1
+    expected = 100 * costs["input"] / 1_000_000 + 50 * costs["output"] / 1_000_000
+    assert expected > 0, "roster head model must have nonzero pricing for this test"
+    assert abs(rows[0]["cost_usd"] - expected) < 1e-12

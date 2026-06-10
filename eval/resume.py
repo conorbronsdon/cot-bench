@@ -185,13 +185,25 @@ def rows_from_artifacts(artifacts_root, run_id: str, model_names) -> list[dict]:
 
         # Cost row column is agent-only (CLEAR Cost dimension), recomputed from the
         # persisted agent token counts — the same formula evaluate_scenario uses.
-        from eval.config import TOKEN_COSTS
+        # PRICE BY THE REQUESTED MODEL ID, exactly like the live path: the artifact
+        # stores the display name, so map it back through the roster. Pricing by
+        # resolved_model would zero the Cost dimension for OpenRouter models
+        # (resolved ids are upstream slugs absent from TOKEN_COSTS).
+        from eval.config import MODELS_UNDER_TEST, NULL_AGENT_MODEL, TOKEN_COSTS
 
-        agent_costs = TOKEN_COSTS.get(payload.get("sim_meta", {}).get("resolved_model")) or None
-        # Prefer the agent's *resolved* price if known; the live path prices by the
-        # requested model_id, which the artifact does not store. Falling back to $0
-        # for an unpriced/absent id matches the live $0 fallback.
+        requested_id = next(
+            (
+                m["model_id"]
+                for m in [*MODELS_UNDER_TEST, NULL_AGENT_MODEL]
+                if m["name"] == payload["model"]
+            ),
+            None,
+        )
+        agent_costs = TOKEN_COSTS.get(requested_id) or TOKEN_COSTS.get(
+            payload.get("sim_meta", {}).get("resolved_model")
+        )
         if agent_costs is None:
+            # Matches the live path's $0 fallback for an unpriced model.
             cost_usd = 0.0
         else:
             cost_usd = (
