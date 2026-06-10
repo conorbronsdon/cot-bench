@@ -98,6 +98,27 @@ def scenario_set_hash(scenarios_by_domain: dict) -> tuple[str, list[dict]]:
     return corpus.hexdigest(), entries
 
 
+def holdout_set_hash(holdout_by_domain: dict) -> tuple[str, int]:
+    """Compute the holdout corpus hash and count WITHOUT revealing its content.
+
+    The private holdout (issue #31) is pre-registered so it is tamper-evident —
+    the same set always hashes to the same value, and any change to the holdout
+    (a different scenario, an added/removed one) changes the hash — but its
+    *content* is never published. So, unlike :func:`scenario_set_hash`, this
+    returns only ``(hex_digest, n_scenarios)``: NO scenario IDs and NO
+    per-scenario index. The digest is computed identically to the public corpus
+    hash (per-scenario canonical sha256, sorted by ID, folded into one corpus
+    digest), so the same machinery pins the holdout — the only difference is that
+    the breadcrumbs (IDs, index) that would expose the holdout are dropped on the
+    floor and never written to disk.
+
+    Hashing still binds each scenario's ID to its content digest internally (so a
+    rename or reorder is caught); the ID simply never leaves this function.
+    """
+    corpus_hash, entries = scenario_set_hash(holdout_by_domain)
+    return corpus_hash, len(entries)
+
+
 def _scenario_to_canonical_dict(scenario) -> dict:
     """Extract the content-bearing fields of a Scenario for hashing.
 
@@ -128,6 +149,7 @@ def build_pre_registration(
     judges: dict,
     judge_keys,
     reliability_runs: int,
+    holdout_by_domain: dict | None = None,
     bootstrap_seed: int,
     agent_temperature: float,
     user_simulator_temperature: float,
@@ -145,7 +167,13 @@ def build_pre_registration(
       "Requested" only: which models *complete* is a post-run fact and lives in
       run_manifest.json.
     - ``domains`` and ``scenario_set`` — domains, per-domain scenario IDs, and the
-      corpus-level ``sha256`` over the canonical serialized scenario set.
+      corpus-level ``sha256`` over the canonical serialized PUBLIC scenario set.
+    - ``holdout_set`` — present only when ``holdout_by_domain`` is supplied (issue
+      #31). It records the holdout corpus ``sha256`` and ``n_scenarios`` ONLY —
+      deliberately NO scenario IDs and NO per-scenario index, unlike
+      ``scenario_set``. This pins the private holdout (tamper-evident: any change
+      to the held-out scenarios changes the hash) without revealing what is in it,
+      so the holdout's content never lands in a published artifact.
     - ``judge_panel`` — judges as configured (name + configured model_id +
       provider + temperature). ``resolved_model`` is intentionally absent: it is
       only knowable at call time and is recorded in the post-run artifacts.
@@ -172,6 +200,23 @@ def build_pre_registration(
         for key in judge_keys
     ]
 
+    # Holdout set (issue #31): hash + count ONLY. No IDs, no index — the holdout
+    # is pinned without being revealed. Omitted entirely when no holdout was run.
+    holdout_set = None
+    if holdout_by_domain:
+        holdout_hash, holdout_n = holdout_set_hash(holdout_by_domain)
+        holdout_set = {
+            "sha256": holdout_hash,
+            "n_scenarios": holdout_n,
+            "privacy_note": (
+                "Private holdout (issue #31). Only the corpus sha256 and count are "
+                "recorded — deliberately no scenario IDs and no per-scenario index. "
+                "The hash pins the held-out set (any change to it changes the hash) "
+                "without revealing its content, which is authored and stored outside "
+                "this repository and never published."
+            ),
+        }
+
     return {
         "artifact_type": "pre_registration",
         "run_id": run_id,
@@ -191,6 +236,7 @@ def build_pre_registration(
             "scenario_ids_by_domain": scenario_ids_by_domain,
             "scenario_index": scenario_index,
         },
+        "holdout_set": holdout_set,
         "judge_panel": {
             "judges": judge_panel,
             "resolved_model_note": (

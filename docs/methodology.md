@@ -334,6 +334,12 @@ Real conversation data is hard to obtain, contains PII, and can't be shared open
 - Ground truth goals for scoring
 - No privacy concerns
 
+### Contamination and the private holdout
+
+Synthetic scenarios mean there is no scraped public dataset that could have leaked into a model's training set. But the public corpus is itself on GitHub, so a future model could in principle train on it. The defense is a **private holdout** (issue #31): a fresh scenario subset, authored to the same quality bar and the same v0.2 schema, that is **never published**. It is run alongside the public set via `--holdout-dir` / `COT_BENCH_HOLDOUT_DIR`, and the leaderboard reports each model's public score, holdout score, and the gap between them (`gap = public - holdout`). A model that is strong on the public corpus but weaker on the never-seen holdout shows a positive gap — the overfitting tripwire.
+
+The holdout is **hash-pinned but content-private**. When a run includes a holdout, `pre_registration.json` records the holdout corpus `sha256` and count only — no scenario IDs, no per-scenario index — so the held-out set is fixed and tamper-evident before any score is known, without revealing what it contains. Holdout result rows are split out before aggregation, so the public efficacy/CLEAR rankings are unaffected by it; only the per-model gap is published. No holdout scenario ID, text, ground truth, or per-scenario score ever appears in `leaderboard.json` or `latest.csv`. The mechanism and privacy guarantees are documented in [governance.md §4](governance.md).
+
 ### Why three judges instead of one?
 
 A single judge introduces systematic bias. Using three judges from different labs (Moonshot's Kimi, Zhipu's GLM, Anthropic's Claude) means:
@@ -404,6 +410,7 @@ bench's scores reflect verified work, not the appearance of it.
 - **Temperature 0.0**: Deterministic agent responses miss potential failure modes at higher temperatures
 - **Domain coverage**: V1 covers 2 domains. Agent performance varies significantly by domain
 - **Cost approximation**: Token costs use published pricing; actual costs may vary with volume discounts or cached tokens
+- **Public corpus exposure**: The 92-scenario public corpus is on GitHub and could be trained on. The mitigation is the hash-pinned private holdout and the published public-vs-holdout gap (issue #31; see "Contamination and the private holdout" above), but the holdout caps overfitting *detection*, not its possibility
 
 ## Reproducing Results
 
