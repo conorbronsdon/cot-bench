@@ -24,20 +24,28 @@ from eval.config import MODELS_UNDER_TEST
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-# Default author kept as gpt-4.1 for backward compatibility, but multi-author
-# generation is now first-class (see AUTHOR_MODELS + --author-model).
-GENERATION_MODEL = "gpt-4.1"
+# Default author. Was "gpt-4.1", but GPT-4.1 is now a contestant (the legacy
+# cross-generation anchor in MODELS_UNDER_TEST), so the family-aware guard below
+# blocks it — a contestant must never author its own exam. Default switched to
+# "claude-opus" (anthropic/claude-opus-4.6), which is on neither the contestant
+# list (the Anthropic contestant is claude-opus-4-8) nor matched by the prefix
+# guard, and is a capable scenario author.
+GENERATION_MODEL = "claude-opus"
 
 # --- Author registry: friendly name -> {model_id, provider} ---
 # Providers mirror eval/scoring/judge.py: OpenAI-compatible clients, with
 # OpenRouter served through a different base_url. Authors should ideally be
 # DISJOINT from MODELS_UNDER_TEST (a contestant must never author its own exam);
 # this is enforced as a hard guard at generation time, not just by convention.
+# (Authors MAY overlap with the judge panel — author != judge is fine; only
+# author == contestant is contamination.)
 AUTHOR_MODELS: dict[str, dict[str, str]] = {
-    "gpt-4.1": {"model_id": "gpt-4.1-2025-04-14", "provider": "openai"},
-    # Clean authors on neither the under-test nor judge lists:
-    "gpt-4.5": {"model_id": "gpt-4.5-preview", "provider": "openai"},
-    "claude-opus": {"model_id": "anthropic/claude-opus-4.6", "provider": "openrouter"},
+    # Clean authors — none is a contestant (verified against MODELS_UNDER_TEST
+    # 2026-06-10). Opus 4.8 is deliberately kept OFF the contestant roster because
+    # it authored the v0.2 corpus; that makes it the canonical clean author here.
+    # kimi/glm double as judges, which is allowed (judge-authored scenarios are a
+    # disclosed mild conflict; prefer claude-opus for new authoring).
+    "claude-opus": {"model_id": "anthropic/claude-opus-4.8", "provider": "openrouter"},
     "kimi": {"model_id": "moonshotai/kimi-k2.6", "provider": "openrouter"},
     "glm": {"model_id": "z-ai/glm-4.6", "provider": "openrouter"},
 }
@@ -623,7 +631,7 @@ def main():
         default=GENERATION_MODEL,
         help=(
             "Author friendly name (see AUTHOR_MODELS) or a raw model_id. "
-            "Must NOT be a model under test. Default: gpt-4.1."
+            "Must NOT be a model under test. Default: claude-opus."
         ),
     )
     parser.add_argument("--temperature", type=float, default=1.0)

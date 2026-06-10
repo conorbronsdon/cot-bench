@@ -74,7 +74,7 @@ open frontend/index.html
 ```bash
 # More models
 python -m scripts.run_eval \
-  --models "GPT-4.1" "Claude Sonnet 4.6" "Gemini 2.5 Pro" \
+  --models "GPT-5.5" "Claude Opus 4.8" "Gemini 3.1 Pro" \
   --judges opus
 
 # Both domains

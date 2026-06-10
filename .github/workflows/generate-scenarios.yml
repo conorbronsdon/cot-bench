@@ -1,10 +1,10 @@
 name: Generate Scenarios
 
 # Dispatchable synthetic-scenario generation using repo secrets, so authors
-# that need API keys (gpt-4.5 via OpenAI; kimi/glm/claude-opus via OpenRouter)
-# can run without local credentials. Output lands on a branch as a DRAFT PR —
-# generated scenarios always get human review before merging (multi-author
-# diversification per docs/methodology.md authorship rules).
+# (claude-opus/kimi/glm, all via OpenRouter) can run without local credentials.
+# Output lands on a branch as a DRAFT PR — generated scenarios always get human
+# review before merging (multi-author diversification per docs/methodology.md
+# authorship rules).
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ on:
         description: 'Author model (must NOT be a model under test — enforced by the contamination guard)'
         required: true
         type: choice
-        options: [gpt-4.5, kimi, glm, claude-opus]
+        options: [claude-opus, kimi, glm]
       scenarios_per_category:
         description: 'Scenarios per category (5 categories; e.g. 2 => ~10 raw scenarios)'
         required: false
@@ -38,19 +38,14 @@ jobs:
     timeout-minutes: 60
 
     env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
     steps:
       - name: Check required secrets
         run: |
-          AUTHOR="${{ github.event.inputs.author }}"
-          if [ "$AUTHOR" = "gpt-4.5" ] && [ -z "$OPENAI_API_KEY" ]; then
-            echo "::error::OPENAI_API_KEY repo secret is required for the gpt-4.5 author."
-            exit 1
-          fi
-          if [ "$AUTHOR" != "gpt-4.5" ] && [ -z "$OPENROUTER_API_KEY" ]; then
-            echo "::error::OPENROUTER_API_KEY repo secret is required for the $AUTHOR author."
+          # All current authors (claude-opus/kimi/glm) are served via OpenRouter.
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::error::OPENROUTER_API_KEY repo secret is required for the ${{ github.event.inputs.author }} author."
             exit 1
           fi
 

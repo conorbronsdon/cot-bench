@@ -69,55 +69,79 @@ JUDGES = {
 
 
 # --- Models Under Test ---
-# V1 target: 8-10 top models
+# Roster target: 10-12 current top models across frontier-closed, efficient-
+# closed, and open-weight tiers.
 #
 # Pinning policy (reproducibility): pin to a dated snapshot wherever the
 # provider publishes one. Where no dated snapshot exists, the listed ID is the
-# provider's canonical (most-pinned-available) identifier:
-#   - OpenAI: dated snapshots exist and are pinned below.
-#   - Anthropic: claude-sonnet-4-6 has no dated snapshot — the alias IS the
-#     canonical ID (appending a date 404s). Haiku has one and is pinned.
-#   - Google: gemini-2.5-pro / -flash are the stable (non-preview) IDs.
-#   - OpenRouter: slugs pin the model but NOT the serving provider or
-#     quantization (routing varies per call). The resolved upstream model is
-#     recorded per run in results/artifacts for audit.
+# provider's canonical (most-pinned-available) identifier.
+# Verified against live provider sources on 2026-06-10:
+#   - OpenAI: developers.openai.com/api/docs/models — dated snapshots exist and
+#     are pinned below (gpt-5.5-2026-04-23, gpt-5.4-mini-2026-03-17).
+#   - Anthropic: claude-sonnet-4-6 / claude-opus-4-8 have no dated snapshot —
+#     the alias IS the canonical ID (appending a date 404s). Haiku has one and
+#     is pinned. Pricing from the Anthropic models cache (Opus 4.8 $5/$25,
+#     Sonnet 4.6 $3/$15, Haiku 4.5 $1/$5).
+#   - Google: ai.google.dev/gemini-api/docs/models + /pricing. gemini-3.5-flash
+#     is the stable current-gen Flash. The current-gen Pro is preview-only
+#     (gemini-3.1-pro-preview) — Google has no GA Gemini 3 Pro yet, so the
+#     preview ID is the only non-dated Gemini 3 Pro; shipping gemini-2.5-pro
+#     instead would make the board look a generation behind.
+#   - OpenRouter: openrouter.ai/api/v1/models. Slugs pin the model but NOT the
+#     serving provider or quantization (routing varies per call). The resolved
+#     upstream model is recorded per run in results/artifacts for audit. Every
+#     open-weight slug below was confirmed to advertise `tools` in
+#     supported_parameters (the bench uses native tool calling).
 
 MODELS_UNDER_TEST = [
-    {"name": "GPT-4.1", "model_id": "gpt-4.1-2025-04-14", "provider": "openai"},
-    {"name": "GPT-4.1-mini", "model_id": "gpt-4.1-mini-2025-04-14", "provider": "openai"},
+    # --- Frontier closed ---
+    {"name": "GPT-5.5", "model_id": "gpt-5.5-2026-04-23", "provider": "openai"},
+    {"name": "Gemini 3.1 Pro", "model_id": "gemini-3.1-pro-preview", "provider": "google"},
+    # --- Efficient / mid closed ---
+    {"name": "GPT-5.4-mini", "model_id": "gpt-5.4-mini-2026-03-17", "provider": "openai"},
     {"name": "Claude Sonnet 4.6", "model_id": "claude-sonnet-4-6", "provider": "anthropic"},
     {"name": "Claude Haiku 4.5", "model_id": "claude-haiku-4-5-20251001", "provider": "anthropic"},
-    {"name": "Gemini 2.5 Pro", "model_id": "gemini-2.5-pro", "provider": "google"},
-    {"name": "Gemini 2.5 Flash", "model_id": "gemini-2.5-flash", "provider": "google"},
-    # Open-weight models routed through OpenRouter so one OPENROUTER_API_KEY
-    # covers them all (was four separate provider keys: deepseek/qwen/
-    # together/mistral). GPT/Claude/Gemini stay on their native APIs.
-    {"name": "DeepSeek-V3", "model_id": "deepseek/deepseek-chat-v3-0324", "provider": "openrouter"},
-    {"name": "Qwen3-235B", "model_id": "qwen/qwen3-235b-a22b", "provider": "openrouter"},
+    {"name": "Gemini 3.5 Flash", "model_id": "gemini-3.5-flash", "provider": "google"},
+    # --- Open-weight (via OpenRouter) ---
+    # Routed through OpenRouter so one OPENROUTER_API_KEY covers them all (was
+    # four separate provider keys: deepseek/qwen/together/mistral). GPT/Claude/
+    # Gemini stay on their native APIs.
+    {"name": "DeepSeek-V4 Pro", "model_id": "deepseek/deepseek-v4-pro", "provider": "openrouter"},
+    {"name": "Qwen3.7-Max", "model_id": "qwen/qwen3.7-max", "provider": "openrouter"},
+    {"name": "MiniMax M3", "model_id": "minimax/minimax-m3", "provider": "openrouter"},
     {
-        "name": "Llama 4 Maverick",
-        "model_id": "meta-llama/llama-4-maverick",
+        "name": "Mistral Large 3",
+        "model_id": "mistralai/mistral-large-2512",
         "provider": "openrouter",
     },
-    {"name": "Mistral Large", "model_id": "mistralai/mistral-large", "provider": "openrouter"},
+    # --- Legacy cross-generation anchor ---
+    # One prior-generation model kept so the board shows how far the frontier
+    # moved in ~14 months. NOTE: because GPT-4.1 is now a contestant, it can no
+    # longer be a scenario author — the default AUTHOR_MODELS author was moved
+    # off the gpt-4.1 family (see scripts/generate_data.GENERATION_MODEL).
+    {"name": "GPT-4.1 (anchor)", "model_id": "gpt-4.1-2025-04-14", "provider": "openai"},
 ]
 
 
 # --- Cost per million tokens (input/output) in USD ---
-# Updated March 2026. Used for CLEAR Cost dimension.
+# Verified 2026-06-10 against the live provider sources listed in the pinning
+# policy above. Used for the CLEAR Cost dimension.
 
 TOKEN_COSTS = {
-    "gpt-4.1-2025-04-14": {"input": 2.00, "output": 8.00},
-    "gpt-4.1-mini-2025-04-14": {"input": 0.40, "output": 1.60},
+    # Frontier / efficient closed
+    "gpt-5.5-2026-04-23": {"input": 5.00, "output": 30.00},
+    "gpt-5.4-mini-2026-03-17": {"input": 0.75, "output": 4.50},
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
-    "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.00},
-    "gemini-2.5-pro": {"input": 1.25, "output": 10.00},
-    "gemini-2.5-flash": {"input": 0.15, "output": 0.60},
+    "claude-haiku-4-5-20251001": {"input": 1.00, "output": 5.00},
+    "gemini-3.1-pro-preview": {"input": 2.00, "output": 12.00},
+    "gemini-3.5-flash": {"input": 1.50, "output": 9.00},
     # OpenRouter slugs + pricing (per million tokens, OpenRouter list rates).
-    "deepseek/deepseek-chat-v3-0324": {"input": 0.27, "output": 1.10},
-    "qwen/qwen3-235b-a22b": {"input": 0.50, "output": 2.00},
-    "meta-llama/llama-4-maverick": {"input": 0.27, "output": 0.85},
-    "mistralai/mistral-large": {"input": 2.00, "output": 6.00},
+    "deepseek/deepseek-v4-pro": {"input": 0.435, "output": 0.87},
+    "qwen/qwen3.7-max": {"input": 1.25, "output": 3.75},
+    "minimax/minimax-m3": {"input": 0.30, "output": 1.20},
+    "mistralai/mistral-large-2512": {"input": 0.50, "output": 1.50},
+    # Legacy anchor
+    "gpt-4.1-2025-04-14": {"input": 2.00, "output": 8.00},
 }
 
 

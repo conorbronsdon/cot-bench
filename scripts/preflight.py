@@ -50,8 +50,8 @@ def main():
         "OPENROUTER_API_KEY": "Required for open judges (Kimi, GLM) + open models under test",
         "GOOGLE_API_KEY": (
             "Optional key, but the default model list includes 2 Gemini models — "
-            "unset = Gemini 2.5 Pro + Flash will fail, and the publish-completeness "
-            "gate will block the scheduled leaderboard commit"
+            "unset = Gemini 3.1 Pro + Gemini 3.5 Flash will fail, and the "
+            "publish-completeness gate will block the scheduled leaderboard commit"
         ),
     }
     for key, desc in key_checks.items():
@@ -139,14 +139,14 @@ def main():
         print("  # Quick test (1 model, 1 scenario, Opus judge only):")
         print("  python -m scripts.run_eval \\")
         print("    --domains banking \\")
-        print('    --models "GPT-4.1-mini" \\')
+        print('    --models "GPT-5.4-mini" \\')
         print("    --judges opus \\")
         print("    --scenario-limit 1 \\")
         print("    --reliability-runs 1")
         print()
         print("  # Full test (2 models, all scenarios, Opus judge):")
         print("  python -m scripts.run_eval \\")
-        print('    --models "GPT-4.1-mini" "Claude Haiku 4.5" \\')
+        print('    --models "GPT-5.4-mini" "Claude Haiku 4.5" \\')
         print("    --judges opus")
     else:
         print("Some checks failed. Fix the issues above before running.")
