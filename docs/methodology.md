@@ -300,6 +300,49 @@ One same-lab pairing remains: the Claude Opus 4.6 judge shares a lab (Anthropic)
 
 These weights reflect production priorities: efficacy matters most (a wrong answer at any speed is useless), reliability matters next (inconsistent agents can't be trusted), and cost/latency are important but secondary. Users can re-weight by using per-dimension scores directly.
 
+### Anti-gaming: the do-nothing agent check
+
+The [Berkeley RDI agentic-benchmark audit](https://arxiv.org/abs/2507.10325)
+showed that trivial agents — ones that make no real tool calls and return
+boilerplate — can game several published agentic benchmarks to near-perfect
+scores, usually because the scoring rewards plausible-looking output rather than
+verified task completion. A benchmark that can be gamed this way is not measuring
+agent capability.
+
+COT Bench includes a **do-nothing ("null") agent** as a standing sanity check
+against exactly that failure mode. The null agent
+([`eval/providers/null_agent.py`](../eval/providers/null_agent.py)) is a
+deterministic contestant that makes **no tool calls** and returns a single
+trivial deflecting message every turn (*"I'm not able to help with that right
+now…"*). It requires no API key and spends nothing — that determinism is the
+point: a do-nothing baseline should not move from run to run.
+
+The expectation is that **the bench scores it near zero on both halves of
+Efficacy**:
+
+- **Deterministic state checks → 0.0.** Because the null agent never calls a
+  tool, the canonical world is never mutated. Any v0.2 scenario that expects a
+  state change (a transfer that should land, a recurring transfer that should be
+  created, a fraud case that should be filed, an identity flag that should flip)
+  scores 0.0 — every assertion fails against an unchanged world. This half is
+  judge-independent and not gameable by fluent text. (The lone case where doing
+  nothing is *correct* is a no-unauthorized-mutation scenario with an empty
+  assertion list; there the null agent trivially "passes" precisely because it
+  changed nothing — which is the desired contract, not a gamed score.)
+- **LLM judges → floor.** The transcript shows no tools used and no goals
+  resolved, so task-completion and tool-selection consensus land at the bottom of
+  their rubrics.
+
+The null agent is deliberately **not** in `MODELS_UNDER_TEST` and is excluded
+from the published leaderboard, history, and bootstrap/rank-band math (see
+`exclude_non_contestants` in
+[`scripts/aggregate_results.py`](../scripts/aggregate_results.py)) — it is a
+validation probe, not a ranked model, so it can never appear as a contestant. Run
+it on demand with `python -m scripts.run_eval --include-null-agent` (or
+`--models null-agent`). Publishing the result of a real judged run is a
+methodology credential: evidence that a near-zero floor exists and that the
+bench's scores reflect verified work, not the appearance of it.
+
 ## Limitations
 
 - **Synthetic scenarios**: While carefully designed, synthetic conversations don't capture the full messiness of real-world interactions

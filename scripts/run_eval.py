@@ -14,10 +14,12 @@ from eval.artifacts import write_run_artifact
 from eval.config import (
     JUDGES,
     MODELS_UNDER_TEST,
+    NULL_AGENT_MODEL,
     RELIABILITY_RUNS,
     TOKEN_COSTS,
     Domain,
 )
+from eval.providers.null_agent import NULL_AGENT_NAME
 from eval.providers.registry import ModelSpec
 from eval.scoring.judge import score_with_all_judges, score_with_all_judges_combined
 from eval.scoring.rubrics import (
@@ -459,6 +461,17 @@ def main():
         help="Model names to evaluate (default: all)",
     )
     parser.add_argument(
+        "--include-null-agent",
+        action="store_true",
+        help=(
+            f"Also run the deterministic do-nothing '{NULL_AGENT_NAME}' agent "
+            "(anti-gaming validation). It makes no tool calls and gives only a "
+            "trivial reply, so the bench should score it near zero on both judges "
+            "and the deterministic state checks. It is never on the leaderboard. "
+            f"Equivalent to passing --models {NULL_AGENT_NAME}."
+        ),
+    )
+    parser.add_argument(
         "--judges",
         nargs="+",
         choices=list(JUDGES.keys()),
@@ -550,10 +563,20 @@ def main():
         logger.error("No scenarios loaded. Run generate_data.py first.")
         return
 
-    # Filter models
+    # Filter models. The null agent is NOT in MODELS_UNDER_TEST (so it never
+    # runs as a real contestant); inject it only when explicitly requested via
+    # --include-null-agent or --models null-agent.
     models = MODELS_UNDER_TEST
     if args.models:
         models = [m for m in models if m["name"] in args.models]
+    if args.include_null_agent or (args.models and NULL_AGENT_NAME in args.models):
+        if not any(m["name"] == NULL_AGENT_NAME for m in models):
+            models = [*models, NULL_AGENT_MODEL]
+        logger.info(
+            "Including the deterministic '%s' agent (anti-gaming validation; "
+            "expected to score near zero, excluded from the leaderboard).",
+            NULL_AGENT_NAME,
+        )
 
     # Run models in parallel
     all_results = []

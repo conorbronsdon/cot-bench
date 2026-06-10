@@ -123,6 +123,25 @@ MODELS_UNDER_TEST = [
 ]
 
 
+# --- Null (do-nothing) agent ---
+# Anti-gaming validation contestant (Berkeley RDI motivation): a deterministic
+# agent that makes no tool calls and gives only a trivial deflecting reply. It is
+# DELIBERATELY NOT in MODELS_UNDER_TEST so it never runs as a real contestant and
+# never appears on the published leaderboard (also excluded in
+# scripts/aggregate_results.py). It is injected into a run only on explicit
+# request (run_eval --models null-agent / --include-null-agent) to confirm the
+# bench scores a do-nothing agent near zero on both judges and the deterministic
+# state checks. Its name/provider are the single source of truth in
+# eval/providers/null_agent.py.
+from eval.providers.null_agent import NULL_AGENT_NAME, NULL_AGENT_PROVIDER  # noqa: E402
+
+NULL_AGENT_MODEL = {
+    "name": NULL_AGENT_NAME,
+    "model_id": NULL_AGENT_NAME,
+    "provider": NULL_AGENT_PROVIDER,
+}
+
+
 # --- Cost per million tokens (input/output) in USD ---
 # Verified 2026-06-10 against the live provider sources listed in the pinning
 # policy above. Used for the CLEAR Cost dimension.

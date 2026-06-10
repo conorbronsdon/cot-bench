@@ -119,9 +119,21 @@ def _create_mistral(spec: ModelSpec) -> BaseChatModel:
     )
 
 
+def _create_null(spec: ModelSpec) -> BaseChatModel:
+    """Deterministic do-nothing agent — no API calls. Anti-gaming validation.
+
+    Imported lazily so the null-agent module (and its langchain_core message
+    imports) is only pulled in when actually requested.
+    """
+    from eval.providers.null_agent import create_null_agent
+
+    return create_null_agent(spec)
+
+
 # Provider name -> factory function
 _REGISTRY: dict[str, Any] = {
     "openai": _create_openai,
+    "null": _create_null,
     "anthropic": _create_anthropic,
     "google": _create_google,
     "openrouter": _create_openrouter,
