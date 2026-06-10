@@ -62,6 +62,7 @@ def _serialize_judges(consensus_result) -> list[dict]:
             "overall_score": jr.overall_score,
             "reasoning": jr.reasoning,
             "parse_failed": jr.parse_failed,
+            "resolved_model": getattr(jr, "resolved_model", ""),
             "raw_response": jr.raw_response,
         }
         for jr in consensus_result.judge_results
@@ -103,6 +104,7 @@ def build_artifact(
             "output_tokens": sim_result.total_output_tokens,
             "latency_ms": sim_result.total_latency_ms,
             "error": sim_result.error,
+            "resolved_model": getattr(sim_result, "resolved_model", None),
         },
     }
     if state is not None:

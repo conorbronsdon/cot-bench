@@ -282,6 +282,8 @@ Results may vary slightly due to:
 
 We recommend comparing models within the same evaluation run rather than across runs.
 
+**Model pinning.** Model IDs are pinned to dated snapshots wherever the provider publishes one (OpenAI models and simulators; Claude Haiku). Where no dated snapshot exists, the listed ID is the provider's canonical identifier — Anthropic's `claude-sonnet-4-6` and `claude-opus-4-6` have no dated variants, and Google's `gemini-2.5-pro`/`-flash` are the stable (non-preview) IDs. OpenRouter slugs pin the model but not the serving provider or quantization, so every results row and audit artifact also records the **resolved model** the provider reported actually serving — for the agent under test and for each judge call — making any drift between "requested" and "served" visible after the fact.
+
 ### What every run publishes (for audit)
 
 A published score is only trustworthy if you can inspect the evidence behind it.
