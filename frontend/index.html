@@ -407,12 +407,19 @@
         let currentSort = 'clear_score';
         let sortAsc = false;
 
+        // Demo data renders ONLY with an explicit ?demo=1 query param (for
+        // working on the table/scatter rendering without real results). It
+        // must never be a fallback on the public page: fabricated scores
+        // attached to real model names will be read — and screenshotted —
+        // as real benchmark results, tiny "demo" label or not.
+        const DEMO_MODE = new URLSearchParams(location.search).get('demo') === '1';
+
         async function loadData() {
             try {
                 const resp = await fetch('data/results/leaderboard.json');
                 if (!resp.ok) {
-                    // Try demo data
-                    renderDemo();
+                    if (DEMO_MODE) renderDemo();
+                    else renderEmpty();
                     return;
                 }
                 leaderboardData = await resp.json();
@@ -420,8 +427,24 @@
                 render();
                 renderScatter();
             } catch (e) {
-                renderDemo();
+                if (DEMO_MODE) renderDemo();
+                else renderEmpty();
             }
+        }
+
+        function renderEmpty() {
+            document.getElementById('last-updated').textContent = 'No results yet';
+            const tbody = document.querySelector('table tbody');
+            if (tbody) {
+                tbody.innerHTML =
+                    '<tr><td colspan="10" style="text-align:center; padding: 2.5rem 1rem; color: var(--text-muted);">' +
+                    'No evaluation results yet — the first scored run is pending. ' +
+                    'The <a href="https://github.com/conorbronsdon/cot-bench/blob/master/docs/methodology.md">methodology</a> and ' +
+                    '<a href="https://github.com/conorbronsdon/cot-bench/blob/master/eval/scoring/rubrics.py">rubrics</a> are already published.' +
+                    '</td></tr>';
+            }
+            const scatter = document.querySelector('.scatter-container');
+            if (scatter) scatter.style.display = 'none';
         }
 
         function renderDemo() {
@@ -441,7 +464,7 @@
                     { name: "Mistral Large", clear_score: 0.728, efficacy: 0.71, task_completion: 0.73, tool_selection: 0.69, cost_per_task_usd: 0.0178, reliability: 0.74, avg_latency_ms: 3100, judge_agreement: { task_completion: 0.84, tool_selection: 0.81 }},
                 ],
             };
-            document.getElementById('last-updated').textContent = 'Demo data — no eval results yet';
+            document.getElementById('last-updated').textContent = 'DEMO DATA (?demo=1) — fabricated numbers, not benchmark results';
             render();
             renderScatter();
         }
