@@ -664,6 +664,44 @@ class SimulationRunner:
             return tool_response
         return json.dumps(tool_response)
 
+    @staticmethod
+    def _user_known_facts(scenario: Scenario) -> dict | None:
+        """Customer-side slice of ground_truth the simulated user KNOWS.
+
+        A real customer knows their own identity facts (customer id, SSN last4)
+        and which accounts are theirs — without this, the user simulator invents
+        values when the agent asks verification questions, the stateful tool sim
+        rejects them against ground truth, and every scenario with an identity
+        gate fails for harness reasons rather than agent reasons (found in the
+        first live smoke run).
+
+        Deliberately excluded: server-side state like ``verified`` flags,
+        balances, and transaction details — the user should know who they are,
+        not what the bank's systems currently say.
+        """
+        gt = scenario.ground_truth
+        if not gt:
+            return None
+        known: dict = {}
+        for key in ("customer", "contact", "user_profile"):
+            block = gt.get(key)
+            if isinstance(block, dict):
+                known[key] = {k: v for k, v in block.items() if k != "verified"}
+        accounts = gt.get("accounts")
+        if isinstance(accounts, dict):
+            known["your_accounts"] = {
+                acct_id: (acct.get("type", "") if isinstance(acct, dict) else "")
+                for acct_id, acct in accounts.items()
+            }
+        account = gt.get("account")
+        if isinstance(account, dict):
+            known["your_account"] = {
+                k: account[k]
+                for k in ("account_id", "company_name", "company", "name", "plan", "tier")
+                if k in account
+            }
+        return known or None
+
     def _simulate_user_turn(
         self,
         scenario: Scenario,
@@ -677,8 +715,17 @@ class SimulationRunner:
         prompt = (
             "You are simulating a user in a conversation with an AI agent.\n\n"
             f"Persona: {json.dumps(scenario.persona)}\n"
-            "Goals (pursue these naturally across the conversation):\n"
         )
+        known = self._user_known_facts(scenario)
+        if known:
+            prompt += (
+                "Facts you know about yourself and your accounts — answer from "
+                "these EXACTLY when the agent asks (e.g. for identity "
+                "verification). Never invent different values, and never "
+                "volunteer them unprompted:\n"
+                f"{json.dumps(known)}\n"
+            )
+        prompt += "Goals (pursue these naturally across the conversation):\n"
         for i, goal in enumerate(scenario.user_goals, 1):
             prompt += f"  {i}. {goal}\n"
         prompt += (

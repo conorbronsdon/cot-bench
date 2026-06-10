@@ -493,3 +493,48 @@ class TestLegacyStatelessPath:
         assert result.final_world is None
         tool_turn = next(t for t in result.turns if t.role == "tool")
         assert tool_turn.content == '{"balance": 1234.56}'
+
+
+class TestUserKnownFacts:
+    """The user simulator must know its own identity facts (smoke-run finding:
+    without them it invents verification values and every identity gate fails
+    for harness reasons)."""
+
+    def _scenario(self, gt):
+        from eval.config import Domain
+        from eval.simulation.runner import Scenario
+
+        return Scenario(
+            id="t",
+            domain=Domain.BANKING,
+            persona={"name": "T"},
+            user_goals=["g"],
+            tools=[],
+            category="adaptive_tool_use",
+            initial_message="hi",
+            ground_truth=gt,
+        )
+
+    def test_banking_shape(self):
+        from eval.simulation.runner import SimulationRunner
+
+        gt = {
+            "customer": {"customer_id": "CUST-1", "ssn_last4": "4417", "verified": False},
+            "accounts": {"BUS-CHK-001": {"type": "checking", "balance": 100.0}},
+        }
+        known = SimulationRunner._user_known_facts(self._scenario(gt))
+        assert known["customer"]["ssn_last4"] == "4417"
+        assert "verified" not in known["customer"]  # server-side state stays hidden
+        assert known["your_accounts"] == {"BUS-CHK-001": "checking"}  # ids+types, no balances
+
+    def test_cs_shape(self):
+        from eval.simulation.runner import SimulationRunner
+
+        gt = {"account": {"account_id": "ACCT-9", "company_name": "Acme", "health_score": 58}}
+        known = SimulationRunner._user_known_facts(self._scenario(gt))
+        assert known["your_account"] == {"account_id": "ACCT-9", "company_name": "Acme"}
+
+    def test_legacy_scenario_returns_none(self):
+        from eval.simulation.runner import SimulationRunner
+
+        assert SimulationRunner._user_known_facts(self._scenario(None)) is None
