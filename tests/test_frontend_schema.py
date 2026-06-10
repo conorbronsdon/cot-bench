@@ -309,9 +309,7 @@ def _run_node(state: str, data: dict | None) -> dict:
     # Write the runner to a temp file rather than passing via -e: the assembled
     # script (DOM stub + the whole page <script> + JSON payload) easily exceeds
     # the Windows command-line length limit.
-    with tempfile.NamedTemporaryFile(
-        "w", suffix=".cjs", delete=False, encoding="utf-8"
-    ) as fh:
+    with tempfile.NamedTemporaryFile("w", suffix=".cjs", delete=False, encoding="utf-8") as fh:
         fh.write(runner)
         runner_path = fh.name
     try:
