@@ -261,14 +261,29 @@ spend). Tracked in [issue #33](https://github.com/conorbronsdon/cot-bench/issues
 - **Stratified, seeded sample.** From a run's per-evaluation artifacts, draw 50-80
   transcripts (default 60) stratified by domain x category x difficulty band
   (low/mid/high efficacy, where efficacy is reconstructed from each artifact's
-  judge consensus and deterministic state score). Stratifying by band ensures
-  the labeler sees the full difficulty range — the hard and ambiguous cases, not
-  just easy passes. The draw is seeded and deterministic so the sample is
-  reproducible and auditable.
+  judge consensus and deterministic state score). Domain and category are read
+  from the authoritative fields the eval run persists on each artifact (the
+  scenario's `domain` and `category`), so the strata are the real taxonomy
+  (`banking` / `customer_success` x category) rather than anything inferred from
+  the scenario id. Stratifying by band ensures the labeler sees the full
+  difficulty range — the hard and ambiguous cases, not just easy passes. The draw
+  is seeded and deterministic so the sample is reproducible and auditable.
+- **One transcript per scenario+model.** Reliability repeats of the same
+  (scenario, model) are near-duplicates; labeling several would waste human effort
+  and inject correlated rows into the agreement math (pseudo-replication), biasing
+  the headline alpha. The sampler therefore collapses to a single seeded choice
+  per (scenario, model) by default (`--all-runs` overrides).
+- **Private holdout excluded.** Holdout transcripts (the issue #31 hash-pinned
+  private split) are excluded from the workbook by default, since a workbook may
+  be shared with an external (guest-network) labeler and the holdout must not
+  leak. `--include-holdout` overrides this with a loud warning.
 - **Blind double-labeling.** The sample is emitted as a labeling workbook: one
   markdown sheet per transcript with the conversation rendered readable, the same
   0-1 rubric anchors the judges score against printed inline, and empty score
-  fields. The judge scores are written to a **separate key file kept outside the
+  fields. Each sheet is identified by an opaque token, not the artifact id, so the
+  labeler is blind to which model produced the transcript (avoiding pro/anti-model
+  priors) as well as to the scores. The judge scores, the real artifact id, and
+  the model identity are written to a **separate key file kept outside the
   workbook** — the human never sees them while labeling. Ideally two labelers
   (Conor plus a guest-network expert) score the same sheets independently.
 - **Metrics.** Filled-in labels are scored against the key for human-vs-judge
