@@ -20,6 +20,7 @@ from eval.simulation.runner import (
     Scenario,
     SimulationRunner,
     ToolCall,
+    apply_state_delta,
     tool_to_json_schema,
 )
 
@@ -328,3 +329,167 @@ class TestDataStructures:
         assert turn.latency_ms == 0.0
         assert turn.token_count == 0
         assert turn.tool_call_id == ""
+
+
+# --------------------------------------------------------------------------- #
+# apply_state_delta: nested set, __append__, invalid path skip
+# --------------------------------------------------------------------------- #
+class TestApplyStateDelta:
+    def test_nested_set(self):
+        world = {"accounts": {"A1": {"balance": 100.0}}}
+        apply_state_delta(world, {"accounts.A1.balance": 150.0})
+        assert world["accounts"]["A1"]["balance"] == 150.0
+
+    def test_creates_intermediate_dicts(self):
+        world = {}
+        apply_state_delta(world, {"a.b.c": 7})
+        assert world == {"a": {"b": {"c": 7}}}
+
+    def test_append_to_existing_list(self):
+        world = {"transfers": [{"id": 1}]}
+        apply_state_delta(world, {"transfers": {"__append__": {"id": 2}}})
+        assert world["transfers"] == [{"id": 1}, {"id": 2}]
+
+    def test_append_creates_list_when_absent(self):
+        world = {}
+        apply_state_delta(world, {"fraud_cases": {"__append__": {"txn": "T1"}}})
+        assert world["fraud_cases"] == [{"txn": "T1"}]
+
+    def test_plain_value_replaces_list(self):
+        world = {"x": [1, 2, 3]}
+        apply_state_delta(world, {"x": []})
+        assert world["x"] == []
+
+    def test_invalid_path_descend_into_scalar_is_skipped(self):
+        world = {"a": 5}
+        apply_state_delta(world, {"a.b": 9})
+        # 'a' is a scalar; the delta is skipped, world untouched, no crash.
+        assert world == {"a": 5}
+
+    def test_append_to_non_list_is_skipped(self):
+        world = {"x": {"not": "a list"}}
+        apply_state_delta(world, {"x": {"__append__": 1}})
+        assert world == {"x": {"not": "a list"}}
+
+    def test_non_dict_delta_ignored(self):
+        world = {"a": 1}
+        apply_state_delta(world, ["not", "a", "dict"])
+        assert world == {"a": 1}
+
+
+def _stateful_scenario():
+    """A scenario carrying ground_truth so the stateful tool path engages."""
+    return Scenario(
+        id="state_0001",
+        domain=Domain.BANKING,
+        persona={"name": "Test"},
+        user_goals=["Transfer money"],
+        tools=[
+            {
+                "name": "transfer",
+                "description": "Transfer funds",
+                "parameters": [
+                    {"name": "amount", "type": "number", "required": True},
+                ],
+            }
+        ],
+        category="adaptive_tool_use",
+        initial_message="Move $500 from checking to savings.",
+        ground_truth={
+            "accounts": {
+                "CHK": {"balance": 1000.0},
+                "SAV": {"balance": 0.0},
+            },
+            "transfers": [],
+        },
+        expected_state_changes=[
+            {"assert": "accounts.SAV.balance", "op": "increased_by", "value": 500.0},
+        ],
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Stateful tool simulation: world mutates via state_delta; final_world captured
+# --------------------------------------------------------------------------- #
+class TestStatefulSimulation:
+    def test_world_mutates_and_final_world_captured(self, monkeypatch):
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("transfer", {"amount": 500}, "call_1"),
+                _ai_text("Done, $500 moved."),
+            ]
+        )
+        # Tool-sim returns a structured response + state_delta that mutates SAV.
+        delta_json = (
+            '{"response": {"status": "ok"}, '
+            '"state_delta": {"accounts.SAV.balance": 500.0, '
+            '"accounts.CHK.balance": 500.0, '
+            '"transfers": {"__append__": {"amount": 500}}}}'
+        )
+        runner, _ = _make_runner([], tool_text=delta_json)
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_stateful_scenario(), SPEC)
+
+        assert result.final_world is not None
+        assert result.final_world["accounts"]["SAV"]["balance"] == 500.0
+        assert result.final_world["accounts"]["CHK"]["balance"] == 500.0
+        assert result.final_world["transfers"] == [{"amount": 500}]
+
+    def test_agent_sees_only_response_not_delta(self, monkeypatch):
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("transfer", {"amount": 500}, "call_1"),
+                _ai_text("Done."),
+            ]
+        )
+        delta_json = (
+            '{"response": {"status": "ok", "confirmation": "CONF-1"}, '
+            '"state_delta": {"accounts.SAV.balance": 500.0}}'
+        )
+        runner, _ = _make_runner([], tool_text=delta_json)
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_stateful_scenario(), SPEC)
+        tool_turn = next(t for t in result.turns if t.role == "tool")
+        # The tool result is the serialized response only — no state_delta leak.
+        assert "state_delta" not in tool_turn.content
+        assert "CONF-1" in tool_turn.content
+
+    def test_unparseable_tool_sim_does_not_crash(self, monkeypatch):
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("transfer", {"amount": 500}, "call_1"),
+                _ai_text("Done."),
+            ]
+        )
+        runner, _ = _make_runner([], tool_text="this is not json at all")
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_stateful_scenario(), SPEC)
+        # World unchanged (no delta applied), raw text fed back, run completes.
+        assert result.final_world["accounts"]["SAV"]["balance"] == 0.0
+        tool_turn = next(t for t in result.turns if t.role == "tool")
+        assert "not json" in tool_turn.content
+
+
+# --------------------------------------------------------------------------- #
+# Legacy (no ground_truth) path is unchanged: stateless, final_world is None
+# --------------------------------------------------------------------------- #
+class TestLegacyStatelessPath:
+    def test_legacy_final_world_none_and_raw_tool_result(self, monkeypatch):
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("get_balance", {"account_id": "A1"}, "call_1"),
+                _ai_text("Your balance is $500."),
+            ]
+        )
+        # Stateless sim returns a plain JSON blob; it's fed back verbatim.
+        runner, _ = _make_runner([], tool_text='{"balance": 1234.56}')
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_scenario(), SPEC)  # _scenario() has no ground_truth
+
+        assert result.final_world is None
+        tool_turn = next(t for t in result.turns if t.role == "tool")
+        assert tool_turn.content == '{"balance": 1234.56}'

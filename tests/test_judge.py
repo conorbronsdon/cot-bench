@@ -390,3 +390,37 @@ class TestBuildResultRow:
         assert "tc_Kimi" in row
         # parse-failed judge must NOT emit a misleading 0.0 score column
         assert "tc_Opus" not in row
+
+    def test_state_columns_none_without_state_result(self):
+        # Legacy path: build_result_row called without a state_result.
+        tc = _consensus(judge_results=[_valid("Kimi", 0.8)], consensus_score=0.8, n_judges_valid=1)
+        ts = _consensus(rubric_type="tool_selection", n_judges_valid=0)
+        row = self._build(tc, ts)
+        assert row["state_score"] is None
+        assert row["state_checks_passed"] is None
+        assert row["state_checks_total"] is None
+
+    def test_state_columns_present_with_state_result(self):
+        from scripts.run_eval import build_result_row
+
+        tc = _consensus(judge_results=[_valid("Kimi", 0.8)], consensus_score=0.8, n_judges_valid=1)
+        ts = _consensus(rubric_type="tool_selection", n_judges_valid=1)
+        state_result = {
+            "score": 0.5,
+            "checks": [{"passed": True, "detail": "x"}, {"passed": False, "detail": "y"}],
+            "n_passed": 1,
+            "n_total": 2,
+        }
+        row = build_result_row(
+            _FakeScenario(),
+            _FakeSpec(),
+            _FakeSim(),
+            tc,
+            ts,
+            efficacy=0.5,
+            cost_usd=0.001,
+            state_result=state_result,
+        )
+        assert row["state_score"] == 0.5
+        assert row["state_checks_passed"] == 1
+        assert row["state_checks_total"] == 2

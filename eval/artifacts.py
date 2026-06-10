@@ -75,9 +75,18 @@ def build_artifact(
     sim_result,
     tc_result,
     ts_result,
+    state=None,
 ) -> dict:
-    """Assemble the artifact payload (pure — no I/O, unit-testable)."""
-    return {
+    """Assemble the artifact payload (pure — no I/O, unit-testable).
+
+    ``state`` is the deterministic state-grading result for this run — the dict
+    returned by ``score_state_changes`` (``score`` + ``checks``). It is optional
+    (default ``None``) so the signature stays backward-compatible with callers
+    that have no state grade; when supplied, a ``state`` block carrying the
+    score, per-assertion checks, and the final world is added to the payload so a
+    published state score is auditable back to the world it was computed from.
+    """
+    payload = {
         "scenario_id": scenario_id,
         "model": model,
         "run_index": run_index,
@@ -96,6 +105,13 @@ def build_artifact(
             "error": sim_result.error,
         },
     }
+    if state is not None:
+        payload["state"] = {
+            "score": state.get("score"),
+            "checks": state.get("checks"),
+            "final_world": getattr(sim_result, "final_world", None),
+        }
+    return payload
 
 
 def write_run_artifact(
@@ -107,13 +123,15 @@ def write_run_artifact(
     sim_result,
     tc_result,
     ts_result,
+    state=None,
 ) -> Path:
     """Write one evaluation's artifact to disk and return its path.
 
     ``artifacts_root`` is the directory that holds per-run subdirectories
-    (typically ``data/results/artifacts``).
+    (typically ``data/results/artifacts``). ``state`` is the optional
+    deterministic state-grading result (see :func:`build_artifact`).
     """
-    payload = build_artifact(scenario_id, model, run_index, sim_result, tc_result, ts_result)
+    payload = build_artifact(scenario_id, model, run_index, sim_result, tc_result, ts_result, state)
     out_dir = Path(artifacts_root) / run_id / model_slug(model)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{scenario_id}_run{run_index}.json"

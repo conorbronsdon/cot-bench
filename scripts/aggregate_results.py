@@ -262,6 +262,17 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
         .reset_index()
     )
 
+    # Deterministic state-verification mean (v0.2). Computed separately and
+    # merged so older parquets without a state_score column don't break the agg.
+    # groupby.mean skips NaN, so a model with a mix of state-graded and legacy
+    # scenarios averages only its graded rows; a model with no graded rows is NaN
+    # and published as null (NaN-guarded in the entry below).
+    if "state_score" in df.columns:
+        state_means = df.groupby("model")["state_score"].mean().reset_index()
+        overall = overall.merge(state_means, on="model", how="left")
+    else:
+        overall["state_score"] = np.nan
+
     # Compute composite CLEAR score (normalized, equal weight)
     # Higher is better for efficacy and reliability
     # Lower is better for cost and latency — invert these
@@ -350,6 +361,7 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
             "efficacy_ci": cis.get("efficacy_ci", [None, None]),
             "task_completion": round(row["task_completion"], 4),
             "tool_selection": round(row["tool_selection"], 4),
+            "state_score": _round_or_none(row.get("state_score"), 4),
             "cost_per_task_usd": round(row["cost_per_task"], 6),
             "avg_latency_ms": round(row["avg_latency_ms"], 1),
             "reliability": round(row["reliability"], 4),

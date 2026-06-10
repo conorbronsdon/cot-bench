@@ -21,12 +21,13 @@ from eval.config import (
 from eval.providers.registry import ModelSpec
 from eval.scoring.judge import score_with_all_judges
 from eval.scoring.rubrics import (
-    EFFICACY_WEIGHTS,
     JUDGE_SYSTEM_PROMPT,
     TASK_COMPLETION_RUBRIC,
     TOOL_SELECTION_RUBRIC,
+    compute_efficacy,
     compute_reliability,
 )
+from eval.scoring.state_check import score_state_changes
 from eval.simulation.runner import Scenario, SimulationRunner
 from eval.tracing import (
     get_tracer,
@@ -65,6 +66,8 @@ def load_scenarios(domain: Domain) -> list[Scenario]:
                 tools=data["tools"],
                 category=data["category"],
                 initial_message=data["initial_message"],
+                ground_truth=data.get("ground_truth"),
+                expected_state_changes=data.get("expected_state_changes"),
             )
         )
     return scenarios
@@ -104,14 +107,32 @@ def _round_or_none(value, ndigits):
     return round(value, ndigits)
 
 
-def build_result_row(scenario, agent_spec, sim_result, tc_result, ts_result, efficacy, cost_usd):
+def build_result_row(
+    scenario,
+    agent_spec,
+    sim_result,
+    tc_result,
+    ts_result,
+    efficacy,
+    cost_usd,
+    state_result=None,
+):
     """Assemble the flat results row from simulation + consensus results.
 
     Pure (no I/O) so it can be unit-tested with faked ConsensusResult objects,
     including the None-agreement degraded paths. Parse-failed judges are kept
     in ``judge_results`` for accounting but excluded from the per-judge score
     columns (a parse failure is not a real 0.0 grade).
+
+    ``state_result`` is the deterministic state-grading result (the dict from
+    ``score_state_changes``) or ``None`` for legacy scenarios with no
+    ground_truth. The ``state_score`` / ``state_checks_passed`` /
+    ``state_checks_total`` columns are floats/ints when present and ``None``
+    otherwise (NaN once in a DataFrame), so aggregation must NaN-guard them.
     """
+    state_score = None if state_result is None else round(state_result["score"], 4)
+    state_checks_passed = None if state_result is None else state_result["n_passed"]
+    state_checks_total = None if state_result is None else state_result["n_total"]
     return {
         "scenario_id": scenario.id,
         "domain": scenario.domain.value,
@@ -120,6 +141,9 @@ def build_result_row(scenario, agent_spec, sim_result, tc_result, ts_result, eff
         "efficacy": round(efficacy, 4),
         "task_completion": round(tc_result.consensus_score, 4),
         "tool_selection": round(ts_result.consensus_score, 4),
+        "state_score": state_score,
+        "state_checks_passed": state_checks_passed,
+        "state_checks_total": state_checks_total,
         "cost_usd": round(cost_usd, 6),
         "latency_ms": round(sim_result.total_latency_ms, 1),
         "total_turns": sim_result.total_turns,
@@ -248,11 +272,18 @@ def evaluate_scenario(
                 jr.latency_ms,
             )
 
-    # Compute efficacy (weighted combination)
-    efficacy = (
-        tc_result.consensus_score * EFFICACY_WEIGHTS["task_completion"]
-        + ts_result.consensus_score * EFFICACY_WEIGHTS["tool_selection"]
+    # Deterministic state verification (v0.2). None for legacy scenarios with no
+    # ground_truth, in which case Efficacy renormalizes to judge-only 0.5/0.5.
+    state_result = score_state_changes(
+        scenario.ground_truth,
+        sim_result.final_world,
+        scenario.expected_state_changes,
     )
+    state_score = None if state_result is None else state_result["score"]
+
+    # Compute efficacy (hybrid: judge dimensions + deterministic state, degrading
+    # gracefully to 0.5/0.5 when there is no state score).
+    efficacy = compute_efficacy(tc_result.consensus_score, ts_result.consensus_score, state_score)
 
     # Compute cost
     costs = TOKEN_COSTS.get(agent_spec.model_id)
@@ -281,6 +312,7 @@ def evaluate_scenario(
                 sim_result,
                 tc_result,
                 ts_result,
+                state=state_result,
             )
         except OSError:
             logger.exception(
@@ -291,7 +323,14 @@ def evaluate_scenario(
             )
 
     return build_result_row(
-        scenario, agent_spec, sim_result, tc_result, ts_result, efficacy, cost_usd
+        scenario,
+        agent_spec,
+        sim_result,
+        tc_result,
+        ts_result,
+        efficacy,
+        cost_usd,
+        state_result=state_result,
     )
 
 

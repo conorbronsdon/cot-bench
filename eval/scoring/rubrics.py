@@ -109,12 +109,51 @@ missed call (-0.5 each). Normalize to [0.0, 1.0].\
 
 
 # --- Efficacy: Combined Score ---
-# Task Completion and Tool Selection are weighted equally for the Efficacy dimension.
+# Hybrid Efficacy (schema v0.2): task completion and tool selection are LLM-judge
+# dimensions; state verification is the deterministic, judge-independent third.
+# When a scenario carries no ground_truth, state verification is inapplicable and
+# Efficacy renormalizes to the legacy equal 0.5/0.5 over the two judge dimensions
+# (see ``compute_efficacy``).
 
 EFFICACY_WEIGHTS = {
+    "task_completion": 0.4,
+    "tool_selection": 0.3,
+    "state_verification": 0.3,
+}
+
+# Fallback weights for legacy scenarios with no state score (no ground_truth).
+_LEGACY_EFFICACY_WEIGHTS = {
     "task_completion": 0.5,
     "tool_selection": 0.5,
 }
+
+
+def compute_efficacy(
+    task_completion: float, tool_selection: float, state_score: float | None
+) -> float:
+    """Combine the Efficacy sub-scores, degrading gracefully without state.
+
+    With a state score (scenario has ground_truth)::
+
+        0.4 * task_completion + 0.3 * tool_selection + 0.3 * state_score
+
+    Without one (``state_score is None`` — legacy scenario), the state weight
+    is dropped and the two judge dimensions are renormalized to 0.5/0.5::
+
+        0.5 * task_completion + 0.5 * tool_selection
+
+    Pure function — no I/O — so it is unit-tested directly.
+    """
+    if state_score is None:
+        return (
+            _LEGACY_EFFICACY_WEIGHTS["task_completion"] * task_completion
+            + _LEGACY_EFFICACY_WEIGHTS["tool_selection"] * tool_selection
+        )
+    return (
+        EFFICACY_WEIGHTS["task_completion"] * task_completion
+        + EFFICACY_WEIGHTS["tool_selection"] * tool_selection
+        + EFFICACY_WEIGHTS["state_verification"] * state_score
+    )
 
 
 # --- Judge Meta-Prompt ---
