@@ -85,6 +85,18 @@ jobs:
       - name: Pre-flight check
         run: python -m scripts.preflight
 
+      - name: Assert no private holdout in CI
+        # The private holdout (issue #31) must NEVER run in this public workflow:
+        # the upload step below publishes data/results/artifacts/ — full
+        # transcripts — as a workflow artifact, downloadable by anyone logged in.
+        # Holdout runs are local-only. Do not add COT_BENCH_HOLDOUT_DIR or
+        # --holdout-dir here.
+        run: |
+          if [ -n "$COT_BENCH_HOLDOUT_DIR" ]; then
+            echo "::error::COT_BENCH_HOLDOUT_DIR is set in public CI — holdout content would be published as a workflow artifact. Refusing to run."
+            exit 1
+          fi
+
       - name: Run evaluation
         run: |
           DOMAINS="${{ github.event.inputs.domains || 'banking customer_success' }}"

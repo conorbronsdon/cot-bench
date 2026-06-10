@@ -173,9 +173,11 @@ How it works, and how privacy is guaranteed:
 - **No holdout scenario detail in any published output.** `leaderboard.json` and
   `latest.csv` carry only the per-model holdout aggregates; no holdout scenario
   ID, text, ground truth, or per-scenario score reaches the published surfaces.
-  (Per-scenario results, transcripts, and the public scenario index live only in
-  the run's local/CI artifacts, which are gitignored and not part of the
-  published leaderboard.)
+  (Per-scenario results and transcripts live only in the run's
+  `data/results/artifacts/` output, which is gitignored — never committable to
+  this repository. The public CI workflow additionally refuses to start if a
+  holdout directory is configured, because its workflow-artifact upload would
+  make transcripts downloadable; holdout runs are local-only by construction.)
 
 Count is publishable; content is not. Tracking: issue #31.
 

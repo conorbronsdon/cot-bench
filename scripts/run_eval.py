@@ -110,7 +110,9 @@ def load_holdout_scenarios(holdout_root: Path, domain: Domain) -> list[Scenario]
     """
     domain_dir = holdout_root / domain.value
     if not domain_dir.exists():
-        logger.info("No holdout scenarios for domain %s under %s", domain.value, holdout_root)
+        # Path at DEBUG: CI logs on a public repo are public; don't reveal
+        # where the private holdout lives.
+        logger.debug("No holdout scenarios for domain %s under %s", domain.value, holdout_root)
         return []
     scenarios = []
     for path in sorted(domain_dir.glob("*.json")):
@@ -669,10 +671,11 @@ def main():
             holdout_by_domain[domain] = held
             logger.info("Loaded %d HOLDOUT scenarios for %s", len(held), domain.value)
         if not holdout_by_domain:
+            # No path in the message: public CI logs must not reveal where the
+            # private holdout lives.
             logger.warning(
-                "Holdout dir %s set but no holdout scenarios matched the requested "
-                "domains; running public corpus only.",
-                holdout_root,
+                "Holdout dir set but no holdout scenarios matched the requested "
+                "domains; running public corpus only."
             )
 
     # The run loop evaluates the PUBLIC corpus and the holdout together. Each
