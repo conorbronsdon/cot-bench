@@ -317,8 +317,11 @@ Requirements:
 - expected_state_changes: each item is {{"assert": "<dotted.path into ground_truth>",
   "op": one of equals|increased_by|decreased_by|contains, then "value" (for
   equals/increased_by/decreased_by) or "match" (a partial dict for contains,
-  with "<key>_contains" for substring matches), and an optional "goal" string
-  that must closely paraphrase one of user_goals}}.
+  with "<key>_contains" for substring matches), and an optional "goal" string.
+- CRITICAL: when you include a "goal" field, it must be a VERBATIM COPY of one
+  entry from user_goals — character for character. Do NOT write a description
+  of correct agent behavior there; the validator fuzzy-matches each goal field
+  against user_goals and REJECTS the whole scenario below 0.7 similarity.
 - For "contains", the asserted path must be a LIST in ground_truth.
 - Grade the ACTION, not the OUTCOME, for judgment calls (assert a request was
   SUBMITTED, not that it was approved).
@@ -474,14 +477,45 @@ def generate_scenario(
     )
 
     try:
+        # max_tokens must cover BOTH a complete v0.2 scenario (ground_truth makes
+        # these 3-5k tokens) AND any reasoning tokens: reasoning models served via
+        # OpenRouter (e.g. Kimi K2.6) spend the budget on hidden reasoning first,
+        # and if it runs out, message.content comes back None.
         response = _get_client(author["provider"]).chat.completions.create(
             model=author["model_id"],
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
-            max_tokens=6000,
+            max_tokens=16000,
         )
 
-        raw = _extract_json(response.choices[0].message.content)
+        content = response.choices[0].message.content
+        if not content:
+            # Reasoning-token exhaustion or an empty completion. One fresh retry.
+            logger.warning(
+                "Empty completion from %s for %s_%s_%d — retrying once",
+                author["model_id"],
+                domain,
+                category,
+                index,
+            )
+            response = _get_client(author["provider"]).chat.completions.create(
+                model=author["model_id"],
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+                max_tokens=16000,
+            )
+            content = response.choices[0].message.content
+            if not content:
+                logger.error(
+                    "Empty completion from %s for %s_%s_%d after retry; skipping",
+                    author["model_id"],
+                    domain,
+                    category,
+                    index,
+                )
+                return None
+
+        raw = _extract_json(content)
         scenario_data = json.loads(raw)
 
         # Ensure required fields — use content hash for unique IDs
