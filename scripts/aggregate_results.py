@@ -290,6 +290,31 @@ def compute_judge_alpha(df: pd.DataFrame, judge_columns: list[str]) -> dict:
     }
 
 
+def compute_pass_hat_k_by_model(df: pd.DataFrame) -> dict:
+    """Per-model pass^k (tau-bench) means, keyed by model name.
+
+    Each row carries the per-scenario pass^k estimates in ``reliability_pass_hat_k``
+    columns (one per k, written by run_eval). We mean those across rows per model;
+    since every run-row of a scenario carries that scenario's pass^k, the row-mean
+    is the mean over scenarios of the per-scenario pass^k — the model-level
+    estimate. Returns ``{model: {"k": value, ...}}``; an empty per-model dict when
+    no pass^k columns exist (legacy parquets).
+    """
+    k_cols = sorted(
+        (c for c in df.columns if c.startswith("reliability_pass_hat_")),
+        key=lambda c: int(c.rsplit("_", 1)[1]),
+    )
+    out: dict[str, dict] = {}
+    for model in df["model"].unique():
+        mdf = df[df["model"] == model]
+        block: dict[str, float] = {}
+        for c in k_cols:
+            k = c.rsplit("_", 1)[1]
+            block[k] = _round_or_none(mdf[c].mean(), 4)
+        out[str(model)] = block
+    return out
+
+
 def load_all_results() -> pd.DataFrame:
     """Load the most recent parquet result file.
 
@@ -481,6 +506,10 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
     # secondary readout in each model entry's judge_agreement block.
     judge_alpha = compute_judge_alpha(df, judge_columns)
 
+    # pass^k (tau-bench): per-model mean of the per-scenario pass^k estimates,
+    # one entry per k. Published alongside pass@3 (reliability) and consistency.
+    pass_hat_k = compute_pass_hat_k_by_model(df)
+
     # Build leaderboard JSON
     leaderboard = {
         "updated": pd.Timestamp.now().isoformat(),
@@ -508,6 +537,9 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
             "avg_latency_ms": round(row["avg_latency_ms"], 1),
             "reliability": round(row["reliability"], 4),
             "reliability_consistency": _round_or_none(row["reliability_consistency"], 4),
+            # pass^k (tau-bench): all-k-trials-succeed probability per k, published
+            # alongside pass@3 (``reliability``) and consistency, not replacing them.
+            "reliability_pass_hat_k": pass_hat_k.get(row["model"], {}),
             "avg_turns": round(row["avg_turns"], 1),
             "scenarios_evaluated": int(row["total_scenarios"]),
             "n_scenarios": int(row["total_scenarios"]),

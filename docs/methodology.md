@@ -235,8 +235,11 @@ Each scenario runs 3 times (pass@3). We measure:
 - **Pass rate**: Fraction of runs scoring above 0.7 threshold
 - **Consistency**: 1.0 minus the spread between highest and lowest scores
 - **Variance**: Statistical variance across runs
+- **pass^k**: The probability that *all* k trials succeed (tau-bench style)
 
 A model that scores 0.9, 0.85, 0.88 is more reliable than one that scores 0.95, 0.4, 0.8 — even though the latter has a higher peak.
+
+**pass^k (all-k-succeed).** Borrowed from tau-bench, `pass^k` is the probability that *every one* of k independent trials of a task succeeds — the opposite of `pass@k` (at least one succeeds). For i.i.d. trials it decays as p^k, so a model that passes 2 of 3 runs has `pass^1 = 0.67` but `pass^3 = 0.0`: a single failure across the repeats sinks it. This is a sharper, harder-to-game reliability construct than a pass-rate-above-threshold and directly measures the *autonomy horizon* — can you trust the agent to do the same task right every time, not just once. We estimate it empirically per scenario as the average over all C(n, k) size-k subsets of the n collected trials of the all-pass indicator, which has the closed form `C(c, k) / C(n, k)` for c passing runs out of n (`compute_pass_hat_k` in [`eval/scoring/rubrics.py`](../eval/scoring/rubrics.py)). `pass^1` equals the ordinary pass rate. Each model's leaderboard entry publishes `reliability_pass_hat_k` (one value per k, the mean of the per-scenario estimates) **alongside** — not replacing — `reliability` (pass@3) and `reliability_consistency`. With the current 3 reliability runs, k ranges over 1, 2, 3; running more repeats extends the horizon.
 
 #### Cost (weight: 20%)
 ```

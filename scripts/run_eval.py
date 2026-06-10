@@ -417,6 +417,12 @@ def _run_model_scenarios(
             for r in results[-reliability_runs:]:
                 r["reliability_pass_rate"] = reliability["pass_rate"]
                 r["reliability_consistency"] = reliability["consistency"]
+                # pass^k (tau-bench): one column per k. The headline is k = the
+                # number of runs (all-k-succeed); intermediate k are published
+                # too so the autonomy-horizon decay is visible. Aggregation means
+                # these per-row, which averages the per-scenario pass^k estimates.
+                for k, val in reliability["pass_hat_k"].items():
+                    r[f"reliability_pass_hat_{k}"] = val
 
     return results
 
