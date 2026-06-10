@@ -95,15 +95,26 @@ REAL_CS_ID = "cs_adaptive_tool_use_0001"
 # deliberately SKIP the recurring transfer (3). -> 4/5 = 0.8 state score.
 _BANKING_PLAN = {
     "tool_calls": [
-        ("verify_customer_identity", {"customer_id": "CUST-88421",
-                                      "verification_method": "ssn_last4",
-                                      "verification_value": "4417"}),
-        ("initiate_transfer", {"from_account_id": "BUS-SAV-002",
-                               "to_account_id": "BUS-CHK-001",
-                               "amount": 2500.0}),
-        ("report_suspicious_transaction", {"account_id": "BUS-CHK-001",
-                                           "transaction_id": "TXN-7781",
-                                           "reason": "Unknown DIGITAL_SVC_LLC charge"}),
+        (
+            "verify_customer_identity",
+            {
+                "customer_id": "CUST-88421",
+                "verification_method": "ssn_last4",
+                "verification_value": "4417",
+            },
+        ),
+        (
+            "initiate_transfer",
+            {"from_account_id": "BUS-SAV-002", "to_account_id": "BUS-CHK-001", "amount": 2500.0},
+        ),
+        (
+            "report_suspicious_transaction",
+            {
+                "account_id": "BUS-CHK-001",
+                "transaction_id": "TXN-7781",
+                "reason": "Unknown DIGITAL_SVC_LLC charge",
+            },
+        ),
     ],
     # tool name -> state_delta the fake tool-sim returns for it.
     "deltas": {
@@ -113,8 +124,9 @@ _BANKING_PLAN = {
             "accounts.BUS-SAV-002.balance": 15300.00 - 2500.0,
         },
         "report_suspicious_transaction": {
-            "fraud_cases": {"__append__": {"transaction_id": "TXN-7781",
-                                           "reason": "DIGITAL_SVC_LLC unknown"}}
+            "fraud_cases": {
+                "__append__": {"transaction_id": "TXN-7781", "reason": "DIGITAL_SVC_LLC unknown"}
+            }
         },
     },
 }
@@ -132,8 +144,9 @@ _CS_PLAN = {
         # still a valid non-trivial e2e exercise; we assert state is present, not
         # a specific value, for CS.
         "schedule_meeting": {
-            "meetings": {"__append__": {"customer_id": "CUST-CS-1", "type": "QBR",
-                                        "scheduled": True}}
+            "meetings": {
+                "__append__": {"customer_id": "CUST-CS-1", "type": "QBR", "scheduled": True}
+            }
         },
     },
 }
@@ -247,8 +260,7 @@ class FakeAgentChatModel:
                 return AIMessage(
                     content="",
                     tool_calls=tool_calls,
-                    usage_metadata={"input_tokens": 120, "output_tokens": 40,
-                                    "total_tokens": 160},
+                    usage_metadata={"input_tokens": 120, "output_tokens": 40, "total_tokens": 160},
                     response_metadata={"model_name": self.model_name},
                 )
         # Otherwise: a plain user-facing reply (no tool calls) -> runner hands
@@ -256,9 +268,11 @@ class FakeAgentChatModel:
         reply = "Here is what I did for you. " * (3 if sid == REAL_BANKING_ID else 1)
         return AIMessage(
             content=reply,
-            usage_metadata={"input_tokens": 80,
-                            "output_tokens": 30 if sid == REAL_BANKING_ID else 10,
-                            "total_tokens": 110},
+            usage_metadata={
+                "input_tokens": 80,
+                "output_tokens": 30 if sid == REAL_BANKING_ID else 10,
+                "total_tokens": 110,
+            },
             response_metadata={"model_name": self.model_name},
         )
 
@@ -279,7 +293,7 @@ class FakeToolSim:
         tool_name = ""
         for line in prompt.splitlines():
             if line.startswith("Tool: "):
-                tool_name = line[len("Tool: "):].strip()
+                tool_name = line[len("Tool: ") :].strip()
                 break
         delta = {}
         for plan in (_BANKING_PLAN, _CS_PLAN):
@@ -287,9 +301,10 @@ class FakeToolSim:
                 delta = plan["deltas"][tool_name]
                 break
         body = {"response": {"ok": True, "tool": tool_name}, "state_delta": delta}
-        return AIMessage(content=json.dumps(body),
-                         usage_metadata={"input_tokens": 50, "output_tokens": 20,
-                                         "total_tokens": 70})
+        return AIMessage(
+            content=json.dumps(body),
+            usage_metadata={"input_tokens": 50, "output_tokens": 20, "total_tokens": 70},
+        )
 
 
 class FakeUserSim:
@@ -312,17 +327,19 @@ class FakeUserSim:
         prompt = messages[0].content if messages else ""
         sid = _scenario_from_prompt(prompt)
         if sid in _RUN_TO_MAX_TURNS:
-            return AIMessage(content="Please continue, I have more questions.",
-                             usage_metadata={"input_tokens": 30, "output_tokens": 10,
-                                             "total_tokens": 40})
+            return AIMessage(
+                content="Please continue, I have more questions.",
+                usage_metadata={"input_tokens": 30, "output_tokens": 10, "total_tokens": 40},
+            )
         # Normal/premature end: the distinction (premature vs clean) is decided by
         # the deterministic state-check progress at end, NOT by the sim — exactly
         # the #32 decoupling. We just signal "done talking".
         from eval.simulation.runner import CONVERSATION_COMPLETE
 
-        return AIMessage(content=f"Great, that's all. {CONVERSATION_COMPLETE}",
-                         usage_metadata={"input_tokens": 30, "output_tokens": 5,
-                                         "total_tokens": 35})
+        return AIMessage(
+            content=f"Great, that's all. {CONVERSATION_COMPLETE}",
+            usage_metadata={"input_tokens": 30, "output_tokens": 5, "total_tokens": 35},
+        )
 
 
 def _make_fake_create_model(recorder: _Recorder):
@@ -333,6 +350,7 @@ def _make_fake_create_model(recorder: _Recorder):
     let through to the REAL null-agent factory so its do-nothing behavior — and
     near-zero scoring — is exercised by the same e2e path).
     """
+
     def fake_create_model(spec):
         if spec.name == "user_simulator":
             recorder.model_calls.append("user_simulator")
@@ -442,8 +460,7 @@ def offline_pipeline(tmp_path, monkeypatch):
     recorder = _Recorder()
 
     # Patch the runner seam (agent/user/tool) and the judge seam.
-    monkeypatch.setattr("eval.simulation.runner.create_model",
-                        _make_fake_create_model(recorder))
+    monkeypatch.setattr("eval.simulation.runner.create_model", _make_fake_create_model(recorder))
     monkeypatch.setattr("eval.scoring.judge._call_judge_api", _make_fake_judge(recorder))
     # Belt-and-suspenders offline guard: any path that bypasses the runner seam
     # and hits the registry directly must explode, not dial out.
@@ -480,9 +497,19 @@ def offline_pipeline(tmp_path, monkeypatch):
 
         def run_main(self, extra_argv, stamp="20260610_120000"):
             output = results_dir / f"results_{stamp}.parquet"
-            argv = ["run_eval", "--domains", "banking", "customer_success",
-                    "--reliability-runs", "2", "--parallel-models", "1",
-                    "--output", str(output), *extra_argv]
+            argv = [
+                "run_eval",
+                "--domains",
+                "banking",
+                "customer_success",
+                "--reliability-runs",
+                "2",
+                "--parallel-models",
+                "1",
+                "--output",
+                str(output),
+                *extra_argv,
+            ]
             monkeypatch.setattr("sys.argv", argv)
             run_eval.main()
             return output
@@ -508,9 +535,15 @@ _DUMMY_HOLDOUT = {
     "category": "adaptive_tool_use",
     "schema_version": "0.2",
     "authorship": {"author_model": "human-handwritten"},
-    "persona": {"name": "Synthetic E2E", "age": 33, "occupation": "tester",
-                "personality_traits": ["synthetic"], "tone": "neutral",
-                "detail_level": "low", "background": "Fake persona for the e2e test."},
+    "persona": {
+        "name": "Synthetic E2E",
+        "age": 33,
+        "occupation": "tester",
+        "personality_traits": ["synthetic"],
+        "tone": "neutral",
+        "detail_level": "low",
+        "background": "Fake persona for the e2e test.",
+    },
     "user_goals": ["ask a harmless question", "say thanks"],
     "tools": [{"name": "noop", "description": "does nothing", "parameters": []}],
     "initial_message": "Hi, this is a synthetic E2E holdout opener number ",
@@ -554,10 +587,15 @@ class TestEndToEndOffline:
         # Real public subset (2 scenarios) + synthetic holdout (2) over 2 models,
         # 2 reliability runs each. Small enough to be fast, big enough that every
         # aggregation surface has >1 unit.
-        self.output = self.ctx.run_main([
-            "--models", "GPT-5.5", "Claude Sonnet 4.6",
-            "--holdout-dir", str(self.ctx.holdout_root),
-        ])
+        self.output = self.ctx.run_main(
+            [
+                "--models",
+                "GPT-5.5",
+                "Claude Sonnet 4.6",
+                "--holdout-dir",
+                str(self.ctx.holdout_root),
+            ]
+        )
         self.leaderboard, self.df = self.ctx.aggregate()
 
     # --- pre-registration ----------------------------------------------------
@@ -572,8 +610,10 @@ class TestEndToEndOffline:
         # Public scenario_set: the 2 real public scenarios, WITH index + per-scenario hash.
         assert reg["scenario_set"]["n_scenarios"] == 2
         assert len(reg["scenario_set"]["sha256"]) == 64
-        ids = set(reg["scenario_set"]["scenario_ids_by_domain"]["banking"]
-                  + reg["scenario_set"]["scenario_ids_by_domain"]["customer_success"])
+        ids = set(
+            reg["scenario_set"]["scenario_ids_by_domain"]["banking"]
+            + reg["scenario_set"]["scenario_ids_by_domain"]["customer_success"]
+        )
         assert ids == {REAL_BANKING_ID, REAL_CS_ID}
         for entry in reg["scenario_set"]["scenario_index"]:
             assert len(entry["sha256"]) == 64
@@ -599,12 +639,26 @@ class TestEndToEndOffline:
         # 2 public + 2 holdout scenarios * 2 models * 2 runs = 16.
         assert len(files) == 16
         payload = json.loads(files[0].read_text("utf-8"))
-        for key in ("scenario_id", "model", "run_index", "domain", "category",
-                    "holdout", "transcript", "judges", "sim_meta"):
+        for key in (
+            "scenario_id",
+            "model",
+            "run_index",
+            "domain",
+            "category",
+            "holdout",
+            "transcript",
+            "judges",
+            "sim_meta",
+        ):
             assert key in payload, key
         sm = payload["sim_meta"]
-        for key in ("completed", "ended_by", "state_progress_at_end", "premature_end",
-                    "resolved_model"):
+        for key in (
+            "completed",
+            "ended_by",
+            "state_progress_at_end",
+            "premature_end",
+            "resolved_model",
+        ):
             assert key in sm, key
         # Both judge dimensions present, each a list of per-judge records.
         assert set(payload["judges"]) == {"task_completion", "tool_selection"}
@@ -615,8 +669,11 @@ class TestEndToEndOffline:
         # in the artifact's judge list (parse_failed=True kept for transparency).
         run_id = self.output.stem
         art_root = self.ctx.results_dir / "artifacts" / run_id
-        banking_files = [p for p in art_root.rglob("*.json")
-                         if json.loads(p.read_text("utf-8"))["scenario_id"] == REAL_BANKING_ID]
+        banking_files = [
+            p
+            for p in art_root.rglob("*.json")
+            if json.loads(p.read_text("utf-8"))["scenario_id"] == REAL_BANKING_ID
+        ]
         assert banking_files
         seen_parse_fail = False
         for p in banking_files:
@@ -633,13 +690,32 @@ class TestEndToEndOffline:
         # 4 scenarios * 2 models * 2 runs = 16 rows.
         assert len(df) == 16
         required = {
-            "scenario_id", "domain", "category", "model", "holdout", "efficacy",
-            "task_completion", "tool_selection", "state_score", "state_checks_passed",
-            "state_checks_total", "cost_usd", "latency_ms", "total_turns",
-            "completed", "ended_by", "state_progress_at_end", "premature_end",
-            "tc_n_judges", "ts_n_judges", "tc_parse_failures", "ts_parse_failures",
-            "reliability_pass_rate", "reliability_consistency",
-            "reliability_pass_hat_1", "reliability_pass_hat_2",
+            "scenario_id",
+            "domain",
+            "category",
+            "model",
+            "holdout",
+            "efficacy",
+            "task_completion",
+            "tool_selection",
+            "state_score",
+            "state_checks_passed",
+            "state_checks_total",
+            "cost_usd",
+            "latency_ms",
+            "total_turns",
+            "completed",
+            "ended_by",
+            "state_progress_at_end",
+            "premature_end",
+            "tc_n_judges",
+            "ts_n_judges",
+            "tc_parse_failures",
+            "ts_parse_failures",
+            "reliability_pass_rate",
+            "reliability_consistency",
+            "reliability_pass_hat_1",
+            "reliability_pass_hat_2",
         }
         assert required <= set(df.columns), required - set(df.columns)
         # State grading produced a NON-trivial partial score on banking (4/5=0.8).
@@ -710,6 +786,23 @@ class TestEndToEndOffline:
         assert "9999" not in flat
         assert "e2e0" not in flat
 
+    def test_public_efficacy_pinned_to_public_rows_only(self):
+        # Behavioral leak check (review SHOULD-FIX on PR #52): the published
+        # per-model efficacy must equal the mean over PUBLIC parquet rows
+        # exactly — if holdout rows ever leak into the public aggregate, the
+        # numbers diverge (holdout dummies score state 1.0 vs banking's 0.8,
+        # so a leak moves the mean by construction).
+        df = self.df
+        public = df[~df["holdout"]]
+        for m in self.leaderboard["models"]:
+            expected = public[public["model"] == m["name"]]["efficacy"].mean()
+            leaked = df[df["model"] == m["name"]]["efficacy"].mean()
+            assert abs(expected - leaked) > 1e-9, (
+                "test setup lost its tripwire: public-only and public+holdout "
+                "means must differ for this check to mean anything"
+            )
+            assert abs(m["efficacy"] - expected) < 1e-9
+
     def test_judge_deltas_cover_every_judge(self):
         lb = self.leaderboard
         for m in lb["models"]:
@@ -751,8 +844,9 @@ class TestPublishGateModelsFailed:
         assert check_publish_ready(p, allow_partial=False) == 0
 
     def test_models_failed_blocks(self, tmp_path):
-        p = self._manifest(tmp_path, failed=["Gemini 3.1 Pro"],
-                           counts={"banking": 40, "customer_success": 40})
+        p = self._manifest(
+            tmp_path, failed=["Gemini 3.1 Pro"], counts={"banking": 40, "customer_success": 40}
+        )
         assert check_publish_ready(p, allow_partial=False) == 1
         assert check_publish_ready(p, allow_partial=True) == 0
 
@@ -769,10 +863,13 @@ class TestNullAgentEndToEnd:
 
     def test_null_agent_scores_zero_state_and_is_excluded(self, offline_pipeline):
         ctx = offline_pipeline
-        ctx.run_main([
-            "--models", "GPT-5.5",
-            "--include-null-agent",
-        ])
+        ctx.run_main(
+            [
+                "--models",
+                "GPT-5.5",
+                "--include-null-agent",
+            ]
+        )
         leaderboard, df = ctx.aggregate()
 
         # The null agent IS in the raw parquet (it ran)...
