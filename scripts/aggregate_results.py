@@ -17,6 +17,23 @@ logger = logging.getLogger(__name__)
 RESULTS_DIR = Path("data/results")
 
 
+def _round_or_none(value, ndigits):
+    """round() that returns None on NaN/None.
+
+    judge_agreement columns may be entirely NaN for a model (every row had
+    fewer than 2 valid judges), in which case the grouped mean is NaN and a
+    bare round() would emit NaN into JSON. Publish null instead.
+    """
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return round(value, ndigits)
+
+
 def load_all_results() -> pd.DataFrame:
     """Load and concatenate all parquet result files."""
     parquet_files = sorted(RESULTS_DIR.glob("results_*.parquet"))
@@ -95,9 +112,21 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
         )
         domain_scores[domain] = domain_agg.to_dict("records")
 
-    # Per-judge scores (transparency)
+    # Per-judge scores (transparency). Exclude the consensus accounting columns
+    # (agreement, disagreement, validity counts, failure counts, degraded flags)
+    # — those share the tc_/ts_ prefix but are not per-judge score columns.
+    non_judge_suffixes = (
+        "agreement",
+        "max_disagreement",
+        "n_judges",
+        "parse_failures",
+        "api_failures",
+        "degraded",
+    )
     judge_columns = [c for c in df.columns if c.startswith("tc_") or c.startswith("ts_")]
-    judge_columns = [c for c in judge_columns if c not in ("tc_agreement", "ts_agreement")]
+    judge_columns = [
+        c for c in judge_columns if not any(c.endswith(suffix) for suffix in non_judge_suffixes)
+    ]
     judge_scores = {}
     if judge_columns:
         for col in judge_columns:
@@ -128,8 +157,8 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
             "avg_turns": round(row["avg_turns"], 1),
             "scenarios_evaluated": int(row["total_scenarios"]),
             "judge_agreement": {
-                "task_completion": round(row["judge_agreement_tc"], 4),
-                "tool_selection": round(row["judge_agreement_ts"], 4),
+                "task_completion": _round_or_none(row["judge_agreement_tc"], 4),
+                "tool_selection": _round_or_none(row["judge_agreement_ts"], 4),
             },
         }
         leaderboard["models"].append(model_entry)

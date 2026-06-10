@@ -75,11 +75,27 @@ Each judge evaluates every tool call on five dimensions:
 
 All three judges score independently. We report:
 
-- **Consensus score**: Mean of all judge scores
-- **Agreement rate**: Fraction of judge pairs within 0.2 of each other
+- **Consensus score**: Mean of all *valid* judge scores
+- **Agreement rate**: Fraction of valid judge pairs within 0.2 of each other
 - **Individual scores**: Every judge's score is published for transparency
 
 When judges disagree significantly (>0.3 spread), this often indicates genuine ambiguity in the scenario — these cases are flagged in the results.
+
+##### Judge-failure handling
+
+A judge can fail in two ways, and neither is allowed to silently contaminate the consensus:
+
+- **Parse failure** — the judge returns text we cannot recover valid JSON from (often a truncated or malformed generation). We do *not* treat this as a genuine 0.0 grade, because a fabricated 0.0 would drag the consensus and crater the agreement rate, indistinguishable from a real low score. Instead, the judge is called **once more** (a fresh API call); transient format glitches usually clear on the retry. If parsing still fails, the result is flagged and **excluded** from the consensus score, agreement rate, and max-disagreement. It is still kept in the per-row record for transparency.
+- **API failure** — the judge call raises. The judge name is recorded and the judge is dropped from that row's consensus.
+
+Because failures shrink the panel, every row publishes explicit accounting so consensus quality is auditable rather than hidden:
+
+- `tc_n_judges` / `ts_n_judges` — number of *valid* (scored and parsed) judges that contributed to consensus
+- `tc_parse_failures` / `ts_parse_failures` — count of judges excluded after a failed retry
+- `tc_api_failures` / `ts_api_failures` — count of judges whose API call raised
+- `tc_degraded` / `ts_degraded` — true when fewer than 2 valid judges remained despite 2+ being requested (the consensus is still computed from what's valid, but flagged as low-confidence)
+
+**Agreement is undefined with fewer than 2 valid judges.** Agreement rate and max-disagreement are reported as **null** in that case — a single grader is not "perfect agreement." Downstream aggregation skips these nulls (a model whose rows are all single-judge will show a null judge-agreement rather than a misleading 1.0).
 
 ### 4. CLEAR Dimensions
 
