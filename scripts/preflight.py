@@ -48,7 +48,11 @@ def main():
         "OPENAI_API_KEY": "Required — user/tool simulators + OpenAI models",
         "ANTHROPIC_API_KEY": "Required for Opus judge + Anthropic models",
         "OPENROUTER_API_KEY": "Required for open judges (Kimi, GLM) + open models under test",
-        "GOOGLE_API_KEY": "Optional — only for Gemini models",
+        "GOOGLE_API_KEY": (
+            "Optional key, but the default model list includes 2 Gemini models — "
+            "unset = Gemini 2.5 Pro + Flash will fail, and the publish-completeness "
+            "gate will block the scheduled leaderboard commit"
+        ),
     }
     for key, desc in key_checks.items():
         val = os.environ.get(key, "")

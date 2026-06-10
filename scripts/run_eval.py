@@ -392,6 +392,28 @@ def main():
     df.to_parquet(output_path, index=False)
     logger.info("Results saved to %s (%d rows)", output_path, len(df))
 
+    # Write a run manifest next to the parquet output. The downstream publish
+    # gate (scripts/check_publish_ready.py) reads models_failed to block a
+    # scheduled leaderboard commit that would silently ship missing models.
+    # Overwritten each run; uses only data main() already has in scope.
+    models_requested = [m["name"] for m in models]
+    models_completed = sorted({r["model"] for r in all_results})
+    manifest = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "models_requested": models_requested,
+        "models_completed": models_completed,
+        "models_failed": sorted(failed_models),
+        "domains": [d.value for d in scenarios_by_domain],
+        "scenario_counts": {
+            d.value: len(scenarios) for d, scenarios in scenarios_by_domain.items()
+        },
+        "reliability_runs": args.reliability_runs,
+    }
+    manifest_path = output_path.parent / "run_manifest.json"
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+    logger.info("Run manifest saved to %s", manifest_path)
+
     # Also save CSV for human readability
     csv_path = output_path.with_suffix(".csv")
     df.to_csv(csv_path, index=False)
