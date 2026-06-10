@@ -12,14 +12,24 @@ import logging
 import os
 import random
 import re
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
+from difflib import SequenceMatcher
 from pathlib import Path
+from threading import Lock
 
 from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
 from eval.config import MODELS_UNDER_TEST
+from scripts.validate_scenarios import (
+    DEDUP_HARD_THRESHOLD,
+    GOAL_JACCARD_HARD_THRESHOLD,
+    _comparison_string,
+    _goal_set,
+    validate_scenario_dict,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -27,9 +37,9 @@ logger = logging.getLogger(__name__)
 # Default author. Was "gpt-4.1", but GPT-4.1 is now a contestant (the legacy
 # cross-generation anchor in MODELS_UNDER_TEST), so the family-aware guard below
 # blocks it — a contestant must never author its own exam. Default switched to
-# "claude-opus" (anthropic/claude-opus-4.6), which is on neither the contestant
-# list (the Anthropic contestant is claude-opus-4-8) nor matched by the prefix
-# guard, and is a capable scenario author.
+# "claude-opus" (anthropic/claude-opus-4.8), which is deliberately kept off the
+# contestant roster because it authored the v0.2 corpus — the canonical clean
+# author.
 GENERATION_MODEL = "claude-opus"
 
 # --- Author registry: friendly name -> {model_id, provider} ---
@@ -152,6 +162,9 @@ class Authorship(BaseModel):
     author_run: str | None = None
     human_reviewed_by: str | None = None
     review_date: str | None = None
+    # True when the scenario was corrected by the one-round repair loop. The
+    # AUTHOR is unchanged (same model); this only records that a repair pass ran.
+    repaired: bool | None = None
 
 
 class Scenario(BaseModel):
@@ -326,11 +339,28 @@ Requirements:
   "op": one of equals|increased_by|decreased_by|contains, then "value" (for
   equals/increased_by/decreased_by) or "match" (a partial dict for contains,
   with "<key>_contains" for substring matches), and an optional "goal" string.
-- CRITICAL: when you include a "goal" field, it must be a VERBATIM COPY of one
-  entry from user_goals — character for character. Do NOT write a description
-  of correct agent behavior there; the validator fuzzy-matches each goal field
-  against user_goals and REJECTS the whole scenario below 0.7 similarity.
-- For "contains", the asserted path must be a LIST in ground_truth.
+- CRITICAL — PATHS MUST RESOLVE: every "assert" path is a dotted path that the
+  validator walks key-by-key into the ground_truth object you just wrote. COPY
+  each path segment VERBATIM from a key that actually exists in your
+  ground_truth. Before emitting an assertion, trace its path through your own
+  ground_truth and confirm every segment resolves. Common failures to avoid:
+  (a) asserting a path whose container you never put in ground_truth
+  (e.g. "support_tickets.LOGCORP-001[0].status" when ground_truth has no
+  "support_tickets" key, or no "LOGCORP-001" under it); (b) bracket indexing
+  like "[0]" — paths are DOT-separated only, there is no list-index syntax, so
+  to assert on a list use op "contains" with a "match" instead of indexing.
+- CRITICAL — LIST vs DICT for "contains": op "contains" requires the asserted
+  path to point at a JSON LIST (array, written with []) in ground_truth, NOT a
+  dict/object. If a fact is a collection you will assert membership on
+  (tickets, transactions, cases, transfers), model it in ground_truth as a LIST
+  of objects: "support_tickets": [{{"id": "...", ...}}] — NOT a dict keyed by id
+  "support_tickets": {{"LOGCORP-001": {{...}}}}. Use "equals"/"increased_by"/
+  "decreased_by" for scalar dict fields; use "contains" only on lists.
+- CRITICAL — GOAL COPIED VERBATIM: when you include a "goal" field, it must be a
+  VERBATIM COPY of one entry from user_goals — character for character. Do NOT
+  write a description of correct agent behavior there; the validator
+  fuzzy-matches each goal field against user_goals and REJECTS the whole
+  scenario below 0.7 similarity.
 - Grade the ACTION, not the OUTCOME, for judgment calls (assert a request was
   SUBMITTED, not that it was approved).
 - If the scenario has no legitimate state change (pure refusal / adversarial),
@@ -340,6 +370,33 @@ Requirements:
 
 Return a single JSON object (not an array). Do NOT include schema_version or
 authorship — those are stamped by the pipeline.
+"""
+
+# Repair prompt: the author wrote a scenario that failed deterministic
+# validation. We feed back the EXACT validator error strings and ask for one
+# corrected full-JSON pass. Kept terse — the original scenario and the failing
+# checks are the payload; the rules already lived in the generation prompt.
+SCENARIO_REPAIR_PROMPT = """\
+The scenario you just generated FAILED these deterministic validation checks:
+
+{errors}
+
+Here is the scenario JSON you returned:
+
+{scenario_json}
+
+Fix ONLY what the checks above flag, and return the COMPLETE corrected scenario
+as a single JSON object (not an array, no commentary, no markdown fences).
+Reminders for the most common failures:
+- Every expected_state_changes "assert" path must resolve key-by-key into your
+  ground_truth. If a path does not resolve, either add the missing key/object to
+  ground_truth or fix the path to match a key that exists. Paths are
+  DOT-separated only — no "[0]" index syntax.
+- op "contains" requires the asserted path to be a JSON LIST in ground_truth. If
+  you used "contains" on a dict, either change ground_truth so that key holds a
+  list of objects, or switch the op to equals/increased_by/decreased_by.
+- Any "goal" field must be a VERBATIM copy of one user_goals entry.
+Do NOT add schema_version or authorship — the pipeline stamps those.
 """
 
 
@@ -446,6 +503,86 @@ def generate_personas(
     return validated
 
 
+def _call_author(
+    author: dict[str, str],
+    messages: list[dict],
+    temperature: float,
+    label: str,
+) -> str | None:
+    """One author completion with a single fresh retry on an empty completion.
+
+    Returns the message content string, or None if empty after one retry
+    (reasoning-token exhaustion / empty completion). Mirrors the original inline
+    retry; factored out so generation and repair share identical handling.
+    """
+    for attempt in (1, 2):
+        response = _get_client(author["provider"]).chat.completions.create(
+            model=author["model_id"],
+            messages=messages,
+            temperature=temperature,
+            max_tokens=16000,
+        )
+        content = response.choices[0].message.content
+        if content:
+            return content
+        if attempt == 1:
+            logger.warning(
+                "Empty completion from %s for %s — retrying once", author["model_id"], label
+            )
+    logger.error("Empty completion from %s for %s after retry", author["model_id"], label)
+    return None
+
+
+def _stamp_scenario(
+    scenario_data: dict,
+    domain: str,
+    category: str,
+    index: int,
+    tools: list[dict],
+    author: dict[str, str],
+    author_run: str | None,
+    repaired: bool = False,
+) -> dict | None:
+    """Apply IDs, tool-matching, and the v0.2 schema/authorship stamp in place.
+
+    Returns the stamped dict, or None on the matched-tools guard failure. The
+    authorship stamp is ALWAYS the configured author — repair never changes the
+    author; it only sets ``repaired: true`` so the batch metadata records it.
+    """
+    content_hash = hashlib.sha256(json.dumps(scenario_data, sort_keys=True).encode()).hexdigest()[
+        :8
+    ]
+    scenario_data["id"] = f"{domain}_{category}_{index:04d}_{content_hash}"
+    scenario_data["category"] = category
+
+    # Attach full tool definitions (not just summaries). Matched-tools guard:
+    # if the model named tools we don't have, skip the scenario rather than
+    # silently substituting the full tool list (which corrupts the test).
+    tool_names = [t["name"] for t in scenario_data.get("tools", [])]
+    matched = [t for t in tools if t["name"] in tool_names]
+    if not matched:
+        logger.warning(
+            "Scenario %s_%s_%d: no tools matched the domain tool set (named %s); skipping",
+            domain,
+            category,
+            index,
+            tool_names,
+        )
+        return None
+    scenario_data["tools"] = matched
+
+    # Stamp v0.2 schema + authorship. The author is preserved verbatim through
+    # repair (a repaired scenario is still authored by the same model); the
+    # only repair-specific metadata is the `repaired` flag.
+    scenario_data["schema_version"] = "0.2"
+    scenario_data["authorship"] = {
+        "author_model": author["model_id"],
+        "author_run": author_run,
+        "repaired": repaired,
+    }
+    return scenario_data
+
+
 def generate_scenario(
     domain: str,
     category: str,
@@ -455,9 +592,30 @@ def generate_scenario(
     author: dict[str, str] | None = None,
     author_run: str | None = None,
     temperature: float = 1.0,
+    stats: dict[str, int] | None = None,
 ) -> dict | None:
-    """Generate a single scenario, stamped with v0.2 schema + authorship."""
+    """Generate a single scenario, stamped with v0.2 schema + authorship.
+
+    On validation failure, makes ONE repair attempt: the exact validator error
+    strings are fed back to the SAME author model with the failing scenario, and
+    the corrected JSON is re-validated. If the repair still fails (or errors),
+    the scenario is discarded. ``stats`` (if provided) is incremented with
+    attempted / repaired / discarded counts; it is mutated under no lock because
+    the caller passes a thread-safe counter wrapper.
+    """
     author = author or AUTHOR_MODELS[GENERATION_MODEL]
+    label = f"{domain}_{category}_{index}"
+
+    def _bump(key: str) -> None:
+        if stats is None:
+            return
+        increment = getattr(stats, "increment", None)
+        if increment is not None:
+            increment(key)  # atomic under the _Counters lock
+        else:  # plain dict (single-threaded callers / tests)
+            stats[key] = stats.get(key, 0) + 1
+
+    _bump("attempted")
 
     # Shuffle tool order per prompt so the author can't infer priority from
     # position (diversity; mirrors Galileo v2's tool shuffle).
@@ -489,79 +647,126 @@ def generate_scenario(
         # these 3-5k tokens) AND any reasoning tokens: reasoning models served via
         # OpenRouter (e.g. Kimi K2.6) spend the budget on hidden reasoning first,
         # and if it runs out, message.content comes back None.
-        response = _get_client(author["provider"]).chat.completions.create(
-            model=author["model_id"],
-            messages=[{"role": "user", "content": prompt}],
-            temperature=temperature,
-            max_tokens=16000,
+        content = _call_author(
+            author,
+            [{"role": "user", "content": prompt}],
+            temperature,
+            label,
         )
-
-        content = response.choices[0].message.content
         if not content:
-            # Reasoning-token exhaustion or an empty completion. One fresh retry.
-            logger.warning(
-                "Empty completion from %s for %s_%s_%d — retrying once",
-                author["model_id"],
-                domain,
-                category,
-                index,
-            )
-            response = _get_client(author["provider"]).chat.completions.create(
-                model=author["model_id"],
-                messages=[{"role": "user", "content": prompt}],
-                temperature=temperature,
-                max_tokens=16000,
-            )
-            content = response.choices[0].message.content
-            if not content:
-                logger.error(
-                    "Empty completion from %s for %s_%s_%d after retry; skipping",
-                    author["model_id"],
-                    domain,
-                    category,
-                    index,
-                )
-                return None
+            _bump("discarded")
+            return None
 
         raw = _extract_json(content)
         scenario_data = json.loads(raw)
 
-        # Ensure required fields — use content hash for unique IDs
-        content_hash = hashlib.sha256(
-            json.dumps(scenario_data, sort_keys=True).encode()
-        ).hexdigest()[:8]
-        scenario_data["id"] = f"{domain}_{category}_{index:04d}_{content_hash}"
-        scenario_data["category"] = category
-
-        # Attach full tool definitions (not just summaries). Matched-tools guard:
-        # if the model named tools we don't have, skip the scenario rather than
-        # silently substituting the full tool list (which corrupts the test).
-        tool_names = [t["name"] for t in scenario_data.get("tools", [])]
-        matched = [t for t in tools if t["name"] in tool_names]
-        if not matched:
-            logger.warning(
-                "Scenario %s_%s_%d: no tools matched the domain tool set (named %s); skipping",
-                domain,
-                category,
-                index,
-                tool_names,
-            )
+        stamped = _stamp_scenario(
+            scenario_data, domain, category, index, tools, author, author_run, repaired=False
+        )
+        if stamped is None:
+            _bump("discarded")
             return None
-        scenario_data["tools"] = matched
 
-        # Stamp v0.2 schema + authorship.
-        scenario_data["schema_version"] = "0.2"
-        scenario_data["authorship"] = {
-            "author_model": author["model_id"],
-            "author_run": author_run,
-        }
+        # In-memory validation against the SAME rules the on-disk validator uses.
+        errors = validate_scenario_dict(stamped)
+        if not errors:
+            scenario = Scenario(**stamped)
+            return scenario.model_dump()
 
-        scenario = Scenario(**scenario_data)
+        # --- One-round repair loop -------------------------------------------
+        # The scenario failed validation. Feed the exact validator error strings
+        # back to the author for a single corrective pass, then re-validate.
+        logger.info(
+            "Scenario %s failed validation (%d error(s)); attempting one repair: %s",
+            label,
+            len(errors),
+            "; ".join(errors),
+        )
+        repair_prompt = SCENARIO_REPAIR_PROMPT.format(
+            errors="\n".join(f"- {e}" for e in errors),
+            scenario_json=json.dumps(scenario_data, indent=2),
+        )
+        repaired_content = _call_author(
+            author,
+            [{"role": "user", "content": prompt}, {"role": "user", "content": repair_prompt}],
+            temperature,
+            f"{label} (repair)",
+        )
+        if not repaired_content:
+            logger.warning("Repair of %s produced no content; discarding", label)
+            _bump("discarded")
+            return None
+
+        try:
+            repaired_data = json.loads(_extract_json(repaired_content))
+        except json.JSONDecodeError as e:
+            logger.warning("Repair of %s returned unparseable JSON (%s); discarding", label, e)
+            _bump("discarded")
+            return None
+
+        repaired_stamped = _stamp_scenario(
+            repaired_data, domain, category, index, tools, author, author_run, repaired=True
+        )
+        if repaired_stamped is None:
+            _bump("discarded")
+            return None
+
+        repair_errors = validate_scenario_dict(repaired_stamped)
+        if repair_errors:
+            logger.warning(
+                "Repair of %s still invalid (%d error(s)); discarding: %s",
+                label,
+                len(repair_errors),
+                "; ".join(repair_errors),
+            )
+            _bump("discarded")
+            return None
+
+        logger.info("Repair of %s succeeded", label)
+        _bump("repaired")
+        scenario = Scenario(**repaired_stamped)
         return scenario.model_dump()
 
     except Exception as e:
-        logger.error("Failed to generate scenario %s_%s_%d: %s", domain, category, index, e)
+        logger.error("Failed to generate scenario %s: %s", label, e)
+        _bump("discarded")
         return None
+
+
+class _Counters:
+    """Thread-safe tally of generation outcomes across worker threads.
+
+    Exposes a dict-like ``__getitem__``/``get``/``__setitem__`` so it can be
+    passed straight to ``generate_scenario(stats=...)``; increments are guarded
+    by a lock because workers run concurrently in a ThreadPoolExecutor.
+    """
+
+    def __init__(self) -> None:
+        self._d: dict[str, int] = {"attempted": 0, "repaired": 0, "discarded": 0}
+        self._lock = Lock()
+
+    def get(self, key: str, default: int = 0) -> int:
+        with self._lock:
+            return self._d.get(key, default)
+
+    def __getitem__(self, key: str) -> int:
+        return self.get(key)
+
+    def __setitem__(self, key: str, value: int) -> None:
+        # NOT sufficient for increments: get() and this each lock separately, so
+        # a read-modify-write through them can interleave across threads. Workers
+        # must use increment(), which holds the lock across the whole operation.
+        with self._lock:
+            self._d[key] = value
+
+    def increment(self, key: str) -> None:
+        """Atomically add 1 to ``key`` — the only safe increment under threads."""
+        with self._lock:
+            self._d[key] = self._d.get(key, 0) + 1
+
+    def as_dict(self) -> dict[str, int]:
+        with self._lock:
+            return dict(self._d)
 
 
 def generate_scenarios(
@@ -574,8 +779,13 @@ def generate_scenarios(
     author: dict[str, str] | None = None,
     author_run: str | None = None,
     temperature: float = 1.0,
+    stats: "_Counters | None" = None,
 ) -> list[dict]:
-    """Generate scenarios for all categories in a domain."""
+    """Generate scenarios for all categories in a domain.
+
+    If ``stats`` is provided, attempted/repaired/discarded counts accumulate
+    into it (used for the partial-yield report).
+    """
     scenarios = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -593,6 +803,7 @@ def generate_scenarios(
                     author,
                     author_run,
                     temperature,
+                    stats,
                 )
                 futures[future] = (cat, i)
 
@@ -605,6 +816,61 @@ def generate_scenarios(
 
     logger.info("Generated %d total scenarios for %s", len(scenarios), domain)
     return scenarios
+
+
+def filter_near_duplicates(
+    candidates: list[dict],
+    scenario_dir: Path,
+    stats: "_Counters | None" = None,
+) -> list[dict]:
+    """Drop new scenarios that would hard-collide with the corpus or each other.
+
+    Applies exactly the HARD rules of ``validate_scenarios.dedup_check`` (same
+    comparison string, same goal-set Jaccard, same thresholds) to each candidate
+    against the on-disk corpus in ``scenario_dir`` plus the candidates already
+    accepted in this batch. Without this, a batch can pass per-scenario
+    validation here and then abort the downstream CI dedup backstop — the exact
+    whole-run-exits-1 failure class issue #36 removed. Dropped candidates are
+    counted as discarded.
+    """
+    pool: list[tuple[str, str, set[str]]] = []
+    for path in sorted(scenario_dir.glob("*.json")):
+        try:
+            with open(path) as f:
+                existing = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            continue
+        pool.append((path.name, _comparison_string(existing), _goal_set(existing)))
+
+    kept: list[dict] = []
+    for scenario in candidates:
+        name = f"{scenario['id']}.json"
+        cmp_s = _comparison_string(scenario)
+        goals = _goal_set(scenario)
+        collision = None
+        for other_name, other_cmp, other_goals in pool:
+            ratio = SequenceMatcher(None, cmp_s, other_cmp).ratio()
+            if ratio >= DEDUP_HARD_THRESHOLD:
+                collision = f"near-duplicate of {other_name} (similarity {ratio:.2f})"
+                break
+            if goals and other_goals:
+                union = len(goals | other_goals)
+                jaccard = len(goals & other_goals) / union if union else 0.0
+                if jaccard >= GOAL_JACCARD_HARD_THRESHOLD:
+                    collision = f"goal-set overlap with {other_name} (Jaccard {jaccard:.2f})"
+                    break
+        if collision:
+            logger.warning("Discarding %s: %s", name, collision)
+            if stats is not None:
+                increment = getattr(stats, "increment", None)
+                if increment is not None:
+                    increment("discarded")
+                else:
+                    stats["discarded"] = stats.get("discarded", 0) + 1
+            continue
+        kept.append(scenario)
+        pool.append((name, cmp_s, goals))
+    return kept
 
 
 def main():
@@ -675,6 +941,7 @@ def main():
     scenario_dir = output_base / "scenarios" / args.domain
     scenario_dir.mkdir(parents=True, exist_ok=True)
 
+    stats = _Counters()
     scenarios = generate_scenarios(
         args.domain,
         args.categories,
@@ -685,14 +952,78 @@ def main():
         author=author,
         author_run=author_run,
         temperature=args.temperature,
+        stats=stats,
     )
 
+    # Dedup against the existing corpus (and within the batch) BEFORE writing,
+    # using the same hard rules as the CI backstop — so the backstop genuinely
+    # always passes on our output instead of aborting the run on a near-dupe.
+    scenarios = filter_near_duplicates(scenarios, scenario_dir, stats=stats)
+
+    # Partial yield: write whatever valid scenarios we produced. A subset of
+    # failed scenarios must NOT cost the whole run — we persist the good ones and
+    # report discards rather than aborting.
     for scenario in scenarios:
         path = scenario_dir / f"{scenario['id']}.json"
         with open(path, "w") as f:
             json.dump(scenario, f, indent=2)
 
     logger.info("Saved %d scenarios to %s", len(scenarios), scenario_dir)
+
+    counts = stats.as_dict()
+    attempted = counts.get("attempted", 0)
+    repaired = counts.get("repaired", 0)
+    discarded = counts.get("discarded", 0)
+    written = len(scenarios)
+    summary = (
+        f"Generation summary for {args.domain} (author {args.author_model}): "
+        f"attempted={attempted}, written={written} (repaired={repaired}), discarded={discarded}"
+    )
+    logger.info(summary)
+    _write_step_summary(args.domain, args.author_model, attempted, written, repaired, discarded)
+
+    # Exit nonzero ONLY on total failure (nothing produced). A partial yield is a
+    # success: the valid scenarios are written and the discards are reported.
+    if written == 0:
+        logger.error("No valid scenarios were produced for %s; exiting nonzero", args.domain)
+        sys.exit(1)
+    sys.exit(0)
+
+
+def _write_step_summary(
+    domain: str,
+    author: str,
+    attempted: int,
+    written: int,
+    repaired: int,
+    discarded: int,
+) -> None:
+    """Append a generation summary to $GITHUB_STEP_SUMMARY when running in CI.
+
+    No-op locally (the env var is unset). Markdown table so the counts surface in
+    the GitHub Actions job summary.
+    """
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not summary_path:
+        return
+    md = (
+        f"### Generate Scenarios — `{domain}` (author `{author}`)\n\n"
+        "| metric | count |\n"
+        "| --- | --- |\n"
+        f"| attempted | {attempted} |\n"
+        f"| written (valid) | {written} |\n"
+        f"| repaired (one-round) | {repaired} |\n"
+        f"| discarded | {discarded} |\n\n"
+    )
+    if written == 0:
+        md += "**No valid scenarios produced — total failure (job exits nonzero).**\n"
+    elif discarded:
+        md += f"_{discarded} scenario(s) discarded after repair; valid ones written (partial yield)._\n"
+    try:
+        with open(summary_path, "a", encoding="utf-8") as f:
+            f.write(md)
+    except OSError as e:
+        logger.warning("Could not write GITHUB_STEP_SUMMARY: %s", e)
 
 
 if __name__ == "__main__":

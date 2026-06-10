@@ -80,6 +80,9 @@ class Authorship(BaseModel):
     author_run: str | None = None
     human_reviewed_by: str | None = None
     review_date: str | None = None
+    # Set by the generation repair loop when a scenario was corrected in one
+    # round. Informational only — the author_model is the source of record.
+    repaired: bool | None = None
 
 
 class ScenarioSchema(BaseModel):
@@ -196,14 +199,17 @@ def _validate_v02_blocks(scenario: ScenarioSchema) -> list[str]:
     return errors
 
 
-def validate_scenario(path: Path) -> list[str]:
-    """Validate a single scenario file. Returns list of error messages."""
-    errors = []
-    try:
-        with open(path) as f:
-            data = json.load(f)
-    except json.JSONDecodeError as e:
-        return [f"Invalid JSON: {e}"]
+def validate_scenario_dict(data: dict) -> list[str]:
+    """Validate an in-memory scenario dict. Returns list of error messages.
+
+    This is the single source of truth for per-scenario validation. Both the
+    on-disk validator (``validate_scenario``) and the generation-time repair
+    loop (scripts/generate_data.py) call it, so a scenario is checked against
+    EXACTLY the same rules whether it lives in a file or in memory. The error
+    strings are stable and human-readable; the repair loop feeds them verbatim
+    back to the author model.
+    """
+    errors: list[str] = []
 
     # expected_state_changes assertions are kept as raw dicts (the JSON key
     # `assert` is a Python keyword, so a Pydantic field model would need an
@@ -239,6 +245,17 @@ def validate_scenario(path: Path) -> list[str]:
         errors.append(f"Unsupported schema_version '{scenario.schema_version}' (expected '0.2')")
 
     return errors
+
+
+def validate_scenario(path: Path) -> list[str]:
+    """Validate a single scenario file. Returns list of error messages."""
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        return [f"Invalid JSON: {e}"]
+
+    return validate_scenario_dict(data)
 
 
 # --- Cross-scenario checks (operate on loaded scenario dicts) ---
