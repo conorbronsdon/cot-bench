@@ -1,0 +1,476 @@
+{
+  "id": "banking_adaptive_tool_use_0000_5cf1bc78",
+  "category": "adaptive_tool_use",
+  "persona": {
+    "name": "Eleanor Whitfield",
+    "age": 74,
+    "occupation": "Retired schoolteacher",
+    "personality_traits": [
+      "confused",
+      "trusting",
+      "easily flustered"
+    ],
+    "tone": "gentle and uncertain, often apologizing",
+    "detail_level": "verbose",
+    "background": "Widowed and recently started managing finances on her own. Struggles with online banking and frequently mixes up her account types and what a 'transfer' versus a 'payment' means."
+  },
+  "user_goals": [
+    "Check the balances of my checking and savings accounts",
+    "Review my recent transactions from last month to identify any unusual charges",
+    "Report the suspicious TechAssist charge of $89.99 as potentially fraudulent",
+    "Set up a monthly transfer of $200 from checking to savings starting first Friday of next month",
+    "Create a low balance alert for my checking account when it drops below $500",
+    "Generate a tax year statement for my checking account from January 1st to December 31st of last year"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
+      "parameters": [
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
+      ],
+      "response_schema": {
+        "verified": "boolean",
+        "customer_id": "string",
+        "verification_level": "string",
+        "message": "string"
+      }
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
+      ],
+      "response_schema": {
+        "current_balance": "number",
+        "available_balance": "number",
+        "pending_transactions": "number",
+        "as_of": "string"
+      }
+    },
+    {
+      "name": "get_transaction_history",
+      "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        },
+        {
+          "name": "end_date",
+          "type": "string",
+          "description": "End date (YYYY-MM-DD)",
+          "required": false
+        }
+      ],
+      "response_schema": {
+        "transactions": [
+          {
+            "id": "string",
+            "date": "string",
+            "amount": "number",
+            "merchant": "string",
+            "status": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "initiate_transfer",
+      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead \u2014 do not confuse the two.",
+      "parameters": [
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount in USD",
+          "required": true
+        },
+        {
+          "name": "memo",
+          "type": "string",
+          "description": "Transfer memo/description",
+          "required": false
+        }
+      ],
+      "response_schema": {
+        "transfer_id": "string",
+        "status": "string",
+        "from_balance_after": "number",
+        "to_balance_after": "number"
+      }
+    },
+    {
+      "name": "setup_recurring_transfer",
+      "description": "Set up a recurring automatic transfer on a schedule (daily/weekly/biweekly/monthly). Requires verified identity. This does NOT move money immediately; it schedules future transfers. For a single immediate move use initiate_transfer.",
+      "parameters": [
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount per transfer in USD",
+          "required": true
+        },
+        {
+          "name": "frequency",
+          "type": "string",
+          "description": "Frequency: 'daily', 'weekly', 'biweekly', 'monthly'",
+          "required": true,
+          "enum": [
+            "daily",
+            "weekly",
+            "biweekly",
+            "monthly"
+          ]
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "First transfer date (YYYY-MM-DD)",
+          "required": true
+        }
+      ],
+      "response_schema": {
+        "schedule_id": "string",
+        "status": "string",
+        "next_transfer_date": "string"
+      }
+    },
+    {
+      "name": "setup_account_alerts",
+      "description": "Configure account alerts and notifications (low balance, large transaction, deposit, withdrawal). Requires verified identity. Threshold is required for threshold-based alert types such as low_balance and large_transaction.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "alert_type",
+          "type": "string",
+          "description": "Type: 'low_balance', 'large_transaction', 'deposit', 'withdrawal'",
+          "required": true,
+          "enum": [
+            "low_balance",
+            "large_transaction",
+            "deposit",
+            "withdrawal"
+          ]
+        },
+        {
+          "name": "threshold",
+          "type": "number",
+          "description": "Threshold amount for the alert",
+          "required": false
+        },
+        {
+          "name": "notification_method",
+          "type": "string",
+          "description": "Method: 'email', 'sms', 'push', 'all'",
+          "required": true,
+          "enum": [
+            "email",
+            "sms",
+            "push",
+            "all"
+          ]
+        }
+      ],
+      "response_schema": {
+        "alert_id": "string",
+        "status": "string"
+      }
+    },
+    {
+      "name": "generate_account_statement",
+      "description": "Generate an official account statement or confirmation letter the customer can download or have delivered. Requires verified identity. Use statement_type 'balance_confirmation' for proof-of-funds letters.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "statement_type",
+          "type": "string",
+          "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'",
+          "required": true,
+          "enum": [
+            "full_statement",
+            "balance_confirmation",
+            "transaction_confirmation"
+          ]
+        },
+        {
+          "name": "date_range_start",
+          "type": "string",
+          "description": "Start date",
+          "required": false
+        },
+        {
+          "name": "date_range_end",
+          "type": "string",
+          "description": "End date",
+          "required": false
+        },
+        {
+          "name": "delivery_method",
+          "type": "string",
+          "description": "Method: 'email', 'mail', 'download'",
+          "required": true,
+          "enum": [
+            "email",
+            "mail",
+            "download"
+          ]
+        }
+      ],
+      "response_schema": {
+        "document_id": "string",
+        "status": "string",
+        "delivery_status": "string"
+      }
+    },
+    {
+      "name": "report_suspicious_transaction",
+      "description": "Flag a transaction as potentially fraudulent and open a fraud case. Requires verified identity. Use the transaction ID from get_transaction_history. Opening a case does not automatically reverse the charge.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account with the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "transaction_id",
+          "type": "string",
+          "description": "ID of the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Why the customer believes it's suspicious",
+          "required": true
+        }
+      ],
+      "response_schema": {
+        "case_id": "string",
+        "status": "string",
+        "next_steps": "string"
+      }
+    }
+  ],
+  "initial_message": "Oh dear, hello there. I hope you can help me. I'm Eleanor Whitfield, and I'm quite confused about my banking situation. My husband always handled our finances, and now I'm trying to manage everything myself. Could you help me check my money? I have a checking account and a savings account - I think they might have different numbers but I'm not sure. Also, I received my statement in the mail and there was something from a company called TechAssist for $89.99 that I don't remember purchasing. I'm so worried that someone might have accessed my account. If we could sort that out, I'd also like to set up something to move money to my savings account automatically - I think I should be putting $200 aside every month. And maybe we could set it up so I get notified if my checking account gets too low? I need to generate a statement for the whole tax year too, for my accountant. I'm sorry for asking so much at once, I'm just quite overwhelmed.",
+  "difficulty": "hard",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "get_account_balance",
+    "get_account_balance",
+    "get_transaction_history",
+    "report_suspicious_transaction",
+    "setup_recurring_transfer",
+    "setup_account_alerts",
+    "generate_account_statement"
+  ],
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "z-ai/glm-4.6",
+    "author_run": "2026-06-10-glm-batch",
+    "human_reviewed_by": null,
+    "review_date": null
+  },
+  "ground_truth": {
+    "customer": {
+      "customer_id": "CUST-33491",
+      "ssn_last4": "6842",
+      "verified": false
+    },
+    "accounts": {
+      "RET-CHK-001": {
+        "type": "checking",
+        "balance": 1847.32,
+        "available": 1847.32,
+        "account_number": "****1234"
+      },
+      "RET-SAV-002": {
+        "type": "savings",
+        "balance": 12500.0,
+        "available": 12500.0,
+        "account_number": "****5678"
+      }
+    },
+    "transactions": {
+      "RET-CHK-001": [
+        {
+          "id": "TXN-8734",
+          "date": "2025-06-15",
+          "amount": -89.99,
+          "merchant": "TechAssist",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8735",
+          "date": "2025-06-14",
+          "amount": -45.67,
+          "merchant": "Grocery_Store",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8736",
+          "date": "2025-06-13",
+          "amount": -120.0,
+          "merchant": "Pharmacy",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8737",
+          "date": "2025-06-12",
+          "amount": -250.0,
+          "merchant": "Utility_Company",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8738",
+          "date": "2025-06-11",
+          "amount": 1500.0,
+          "merchant": "Social_Security",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8739",
+          "date": "2025-06-10",
+          "amount": -75.43,
+          "merchant": "Gas_Station",
+          "status": "posted"
+        }
+      ],
+      "RET-SAV-002": [
+        {
+          "id": "TXN-8740",
+          "date": "2025-06-01",
+          "amount": 100.0,
+          "merchant": "Interest_Payment",
+          "status": "posted"
+        }
+      ]
+    },
+    "recurring_transfers": [],
+    "fraud_cases": [],
+    "account_alerts": []
+  },
+  "expected_state_changes": [
+    {
+      "assert": "customer.verified",
+      "op": "equals",
+      "value": true
+    },
+    {
+      "assert": "fraud_cases",
+      "op": "contains",
+      "match": {
+        "transaction_id": "TXN-8734",
+        "reason_contains": "TechAssist"
+      },
+      "goal": "Report the suspicious TechAssist charge of $89.99 as potentially fraudulent"
+    },
+    {
+      "assert": "recurring_transfers",
+      "op": "contains",
+      "match": {
+        "from_account_id": "RET-CHK-001",
+        "to_account_id": "RET-SAV-002",
+        "amount": 200.0,
+        "frequency": "monthly"
+      },
+      "goal": "Set up a monthly transfer of $200 from checking to savings starting first Friday of next month"
+    },
+    {
+      "assert": "account_alerts",
+      "op": "contains",
+      "match": {
+        "account_id": "RET-CHK-001",
+        "alert_type": "low_balance",
+        "threshold": 500.0
+      },
+      "goal": "Create a low balance alert for my checking account when it drops below $500"
+    }
+  ]
+}
