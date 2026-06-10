@@ -31,13 +31,23 @@ class JudgeConfig:
 
 @dataclass(frozen=True)
 class SimulationConfig:
-    """Settings for the multi-turn simulation loop."""
+    """Settings for the multi-turn simulation loop.
+
+    The simulator models default to gpt-4.1-mini and are the SINGLE SOURCE of
+    those defaults; ``run_eval --user-sim-model`` / ``--tool-sim-model`` override
+    them per run for the sensitivity test (issue #50) without editing code. Each
+    simulator's provider defaults to ``openai`` but is resolved from the model id
+    when overridden (e.g. a Claude user-sim resolves to ``anthropic``), so an
+    override is provider-routed through the existing registry.
+    """
 
     max_turns: int = 10
     user_simulator_model: str = "gpt-4.1-mini-2025-04-14"
     tool_simulator_model: str = "gpt-4.1-mini-2025-04-14"
     user_simulator_temperature: float = 0.7
     tool_simulator_temperature: float = 0.0
+    user_simulator_provider: str = "openai"
+    tool_simulator_provider: str = "openai"
 
 
 # --- Judge Panel ---
@@ -161,6 +171,18 @@ TOKEN_COSTS = {
     "mistralai/mistral-large-2512": {"input": 0.50, "output": 1.50},
     # Legacy anchor
     "gpt-4.1-2025-04-14": {"input": 2.00, "output": 8.00},
+    # Judge-panel model pricing. The judges are NOT models under test, but their
+    # tokens are real spend, so they are priced here for the cost estimate and the
+    # actual-spend guard (issue #47). Verified 2026-06-10 against the same provider
+    # sources: Claude Opus 4.6 ($5/$25, Anthropic); Kimi K2.6 and GLM-4.6 at their
+    # OpenRouter list rates.
+    "claude-opus-4-6": {"input": 5.00, "output": 25.00},
+    "moonshotai/kimi-k2.6": {"input": 0.60, "output": 2.50},
+    "z-ai/glm-4.6": {"input": 0.45, "output": 1.90},
+    # User/tool simulator model (issue #47/#50): priced so the simulator side of
+    # the estimate + actual is real even though it is harness overhead, not a
+    # contestant. gpt-4.1-mini list rate.
+    "gpt-4.1-mini-2025-04-14": {"input": 0.40, "output": 1.60},
 }
 
 
@@ -219,6 +241,38 @@ DOMAIN_CONFIGS = {
         ],
     },
 }
+
+
+# --- Per-evaluation token priors (cost estimation) ---
+# Conservative average token counts for ONE evaluation (one scenario, one model,
+# one reliability run), used by the preflight cost estimate (issue #47) BEFORE
+# any call is made. These are deliberately rough upper-ish priors so a preflight
+# estimate over-states rather than under-states the bill; the real spend is then
+# measured exactly during the run (see eval/cost.py). Sourced from the v0.2 smoke
+# runs (banking + customer_success, gpt-4.1-mini sims, 3-judge panel) on
+# 2026-06-09 — a multi-turn evaluation observed ~6-9k agent in / ~1.5k agent out,
+# ~8-12k summed simulator in / ~1-2k out across the user+tool sim turns, and
+# ~5-7k judge in / ~0.5k judge out PER JUDGE for the combined single-prompt path.
+# Rounded up to keep the estimate conservative. The separate-judge path roughly
+# doubles judge input tokens; the estimator accounts for that with a multiplier.
+PER_EVAL_TOKEN_PRIORS = {
+    # Agent under test (one full multi-turn conversation).
+    "agent_input": 9000,
+    "agent_output": 1500,
+    # User + tool simulators, summed across all their turns in one conversation.
+    "sim_input": 12000,
+    "sim_output": 2000,
+    # ONE judge, combined single-prompt path (transcript sent once). The
+    # estimator multiplies by the number of judges in the panel, and by ~2 on the
+    # input side when --separate-judge-calls sends the transcript twice.
+    "judge_input": 7000,
+    "judge_output": 600,
+}
+
+# Input-token multiplier for the legacy --separate-judge-calls path: the
+# transcript (the bulk of the judge prompt) is sent once per dimension instead of
+# once total, so judge INPUT roughly doubles. Output is per-dimension either way.
+SEPARATE_JUDGE_INPUT_MULTIPLIER = 2.0
 
 
 # --- Simulation defaults ---

@@ -19,15 +19,30 @@ from eval.config import (
     RELIABILITY_RUNS,
     TOKEN_COSTS,
     Domain,
+    SimulationConfig,
+)
+from eval.cost import (
+    BUDGET_EXCEEDED_EXIT_CODE,
+    CostAccumulator,
+    estimate_run_cost,
+    token_cost,
 )
 from eval.pre_registration import (
     PRE_REGISTRATION_FILENAME,
     build_pre_registration,
     file_sha256,
+    holdout_set_hash,
+    scenario_set_hash,
     write_pre_registration,
 )
 from eval.providers.null_agent import NULL_AGENT_NAME
-from eval.providers.registry import ModelSpec
+from eval.providers.registry import ModelSpec, infer_provider
+from eval.resume import (
+    completed_tuples,
+    load_pre_registration,
+    rows_from_artifacts,
+    verify_corpus_unchanged,
+)
 from eval.scoring.judge import score_with_all_judges, score_with_all_judges_combined
 from eval.scoring.rubrics import (
     COMBINED_RUBRIC,
@@ -140,6 +155,19 @@ def format_transcript(turns) -> str:
     return "\n".join(lines)
 
 
+def _judge_model_id(judge_name: str) -> str | None:
+    """Map a judge's display name back to its configured model_id for pricing.
+
+    JudgeResult carries the human-facing judge name (e.g. "Claude Opus 4.6"), but
+    TOKEN_COSTS is keyed by model_id. This reverse lookup lets the cost guard price
+    judge tokens (issue #47). Returns None for an unknown name (priced at $0).
+    """
+    for cfg in JUDGES.values():
+        if cfg.name == judge_name:
+            return cfg.model_id
+    return None
+
+
 def _round_or_none(value, ndigits):
     """round() that tolerates None/NaN — returns None instead of crashing.
 
@@ -216,6 +244,12 @@ def build_result_row(
         "premature_end": bool(getattr(sim_result, "premature_end", False)),
         # Provider-reported model actually served (vs the pinned request id)
         "resolved_model": getattr(sim_result, "resolved_model", None),
+        # Simulator model ids actually used this run (issue #50). Recorded on every
+        # row so a sensitivity-test delta — same agents, different user/tool sim —
+        # can be computed by aggregating two runs. resolved_model above covers the
+        # AGENT; these cover the simulators.
+        "user_sim_model": getattr(sim_result, "user_sim_model", None),
+        "tool_sim_model": getattr(sim_result, "tool_sim_model", None),
         "tc_agreement": _round_or_none(tc_result.agreement_rate, 4),
         "ts_agreement": _round_or_none(ts_result.agreement_rate, 4),
         "tc_max_disagreement": _round_or_none(tc_result.max_disagreement, 4),
@@ -280,6 +314,11 @@ def evaluate_scenario(
     separate_judge_calls=False,
 ):
     """Run simulation + multi-judge scoring for one scenario, one model.
+
+    Returns ``(result_row, eval_cost_usd)`` — the flat results row and the TOTAL
+    actual spend for this evaluation (agent + simulators + judges), the latter fed
+    to the run's --max-cost accumulator (issue #47). The row's own ``cost_usd``
+    column stays agent-only (the published CLEAR Cost dimension).
 
     Args:
         run_id: Stem of the output parquet — groups a run's artifacts/traces.
@@ -376,7 +415,11 @@ def evaluate_scenario(
     # gracefully to 0.5/0.5 when there is no state score).
     efficacy = compute_efficacy(tc_result.consensus_score, ts_result.consensus_score, state_score)
 
-    # Compute cost
+    # Compute cost. The PUBLISHED row cost (the CLEAR Cost dimension) is the AGENT
+    # cost only — what it costs to run the model under test — so the leaderboard
+    # number is unchanged by the cost guard. The simulator + judge costs are
+    # harness overhead, priced separately below and fed only to the run's
+    # actual-spend accumulator (issue #47), never into the row's cost_usd.
     costs = TOKEN_COSTS.get(agent_spec.model_id)
     if costs is None:
         logger.warning(
@@ -388,6 +431,30 @@ def evaluate_scenario(
         sim_result.total_input_tokens * costs["input"] / 1_000_000
         + sim_result.total_output_tokens * costs["output"] / 1_000_000
     )
+
+    # Total actual spend for THIS evaluation = agent + simulators + judges, each
+    # priced at its own model id. This is what the --max-cost budget guard tracks.
+    # Simulators are priced at the (possibly overridden, issue #50) sim model ids
+    # recorded on the result; judges at each judge's configured model id. The
+    # combined judge path attributes each call's tokens to the first dimension
+    # only, so summing input/output_tokens across all JudgeResults counts each
+    # call once.
+    sim_cost = token_cost(
+        sim_result.user_sim_model, sim_result.sim_input_tokens / 2, sim_result.sim_output_tokens / 2
+    ) + token_cost(
+        sim_result.tool_sim_model, sim_result.sim_input_tokens / 2, sim_result.sim_output_tokens / 2
+    )
+    judge_cost = 0.0
+    for consensus in (tc_result, ts_result):
+        for jr in consensus.judge_results:
+            jr_costs = TOKEN_COSTS.get(_judge_model_id(jr.judge_name))
+            if jr_costs is None:
+                continue
+            judge_cost += (
+                jr.input_tokens * jr_costs["input"] / 1_000_000
+                + jr.output_tokens * jr_costs["output"] / 1_000_000
+            )
+    eval_cost_usd = cost_usd + sim_cost + judge_cost
 
     # Persist the per-evaluation artifact (transcript + raw judge outputs) so a
     # published score is auditable back to its evidence. Default on; disabled
@@ -418,7 +485,7 @@ def evaluate_scenario(
                 run_index,
             )
 
-    return build_result_row(
+    row = build_result_row(
         scenario,
         agent_spec,
         sim_result,
@@ -428,6 +495,10 @@ def evaluate_scenario(
         cost_usd,
         state_result=state_result,
     )
+    # Return the row plus the TOTAL actual spend for this evaluation (agent + sims
+    # + judges) so the run loop can feed the --max-cost accumulator (issue #47).
+    # The row's own cost_usd stays agent-only (the published Cost dimension).
+    return row, eval_cost_usd
 
 
 def _run_model_scenarios(
@@ -440,22 +511,71 @@ def _run_model_scenarios(
     run_id,
     artifacts_root=None,
     separate_judge_calls=False,
+    runner=None,
+    sim_config=None,
+    cost_acc=None,
+    completed_keys=None,
 ):
-    """Evaluate a single model across all domains/scenarios. Runs in a thread."""
+    """Evaluate a single model across all domains/scenarios. Runs in a thread.
+
+    ``sim_config`` (issue #50) is the run's SimulationConfig, including any
+    user/tool simulator-model overrides; the runner is built from it HERE, in the
+    worker thread, so each model owns its own simulator instances and no API client
+    is created on the main thread. ``runner`` lets a test inject a pre-built runner
+    directly (skipping construction); when both are None a default runner is used.
+    ``cost_acc`` is the run's
+    shared :class:`CostAccumulator` (issue #47): each completed evaluation adds its
+    actual spend, and once the cap is crossed this model stops submitting new
+    evaluations (in-flight work already finished, its artifacts persisted). The
+    per-evaluation artifact is the checkpoint — the parquet is only written at the
+    end — so a budget stop leaves completed work auditable on disk.
+    ``completed_keys`` is the set of ``(model, scenario_id, run_index)`` tuples
+    already done in a resumed run (issue #48); matching tuples are skipped.
+    """
     agent_spec = ModelSpec(
         name=model_cfg["name"],
         model_id=model_cfg["model_id"],
         provider=model_cfg["provider"],
     )
-    # Each model gets its own runner (owns its own simulator model instances)
-    runner = SimulationRunner()
+    # Each model gets its own runner (owns its own simulator model instances),
+    # built from the run's sim config (sim-model overrides, issue #50) unless a
+    # runner was injected directly (tests).
+    if runner is None:
+        runner = SimulationRunner(config=sim_config)
+    completed_keys = completed_keys or set()
     results = []
 
     for domain, scenarios in scenarios_by_domain.items():
         logger.info("Evaluating %s on %s", agent_spec.name, domain.value)
         for scenario in scenarios:
+            # Stop submitting new evaluations once the budget cap is crossed
+            # (issue #47). In-flight evaluations for OTHER models keep running in
+            # their own threads and finish; this model just stops here.
+            if cost_acc is not None and cost_acc.exceeded():
+                logger.warning(
+                    "Budget cap reached ($%.4f >= $%.2f) — %s stops before %s "
+                    "(completed work is persisted to artifacts)",
+                    cost_acc.total(),
+                    cost_acc.max_cost,
+                    agent_spec.name,
+                    scenario.id,
+                )
+                return results
             run_scores = []
+            scored_indices = []
             for run_idx in range(reliability_runs):
+                # Resume: skip a (model, scenario, run) tuple already completed in
+                # the original run (issue #48). Its artifact is reloaded and merged
+                # by the caller; we must not re-run (and re-pay for) it.
+                if (agent_spec.name, scenario.id, run_idx) in completed_keys:
+                    logger.info(
+                        "  RESUME skip: %s / %s run %d/%d already completed",
+                        agent_spec.name,
+                        scenario.id,
+                        run_idx + 1,
+                        reliability_runs,
+                    )
+                    continue
                 logger.info(
                     "  %s / %s, run %d/%d",
                     agent_spec.name,
@@ -463,7 +583,7 @@ def _run_model_scenarios(
                     run_idx + 1,
                     reliability_runs,
                 )
-                result = evaluate_scenario(
+                result, eval_cost = evaluate_scenario(
                     runner,
                     scenario,
                     agent_spec,
@@ -478,9 +598,25 @@ def _run_model_scenarios(
                 result["evaluated_at"] = datetime.now(timezone.utc).isoformat()
                 results.append(result)
                 run_scores.append(result["efficacy"])
+                scored_indices.append(len(results) - 1)
 
+                if cost_acc is not None:
+                    running = cost_acc.add(agent_spec.name, eval_cost)
+                    logger.info(
+                        "  running cost: %s $%.4f / total $%.4f",
+                        agent_spec.name,
+                        cost_acc.model_total(agent_spec.name),
+                        running,
+                    )
+
+            # Reliability is only computable over the runs scored THIS session;
+            # a resumed run reattaches reliability from artifacts on merge, and a
+            # fully-skipped scenario has no fresh rows to annotate here.
+            if not scored_indices:
+                continue
             reliability = compute_reliability(run_scores)
-            for r in results[-reliability_runs:]:
+            for idx in scored_indices:
+                r = results[idx]
                 r["reliability_pass_rate"] = reliability["pass_rate"]
                 r["reliability_consistency"] = reliability["consistency"]
                 # pass^k (tau-bench): one column per k. The headline is k = the
@@ -491,6 +627,35 @@ def _run_model_scenarios(
                     r[f"reliability_pass_hat_{k}"] = val
 
     return results
+
+
+def _recompute_reliability(rows: list[dict], reliability_runs: int) -> None:
+    """Recompute reliability columns across a MERGED row set, in place (issue #48).
+
+    On resume, a scenario's reliability runs can be split between the original
+    session (reconstructed from artifacts) and the resumed session. Per-session
+    reliability would then be computed over a partial set of runs. This regroups
+    ALL rows by (model, scenario_id) and recomputes the reliability columns over
+    every run of that scenario, so the merged parquet carries one honest
+    reliability figure per (model, scenario) rather than two partial ones.
+
+    Grouping is by (model, scenario_id) only — domain/category are scenario
+    properties, so they are constant within a scenario id.
+    """
+    from collections import defaultdict
+
+    groups: dict[tuple, list[dict]] = defaultdict(list)
+    for r in rows:
+        groups[(r["model"], r["scenario_id"])].append(r)
+
+    for group_rows in groups.values():
+        run_scores = [r["efficacy"] for r in group_rows]
+        reliability = compute_reliability(run_scores)
+        for r in group_rows:
+            r["reliability_pass_rate"] = reliability["pass_rate"]
+            r["reliability_consistency"] = reliability["consistency"]
+            for k, val in reliability["pass_hat_k"].items():
+                r[f"reliability_pass_hat_{k}"] = val
 
 
 def assert_results_nonempty(all_results: list, failed_models: list[str]) -> None:
@@ -593,11 +758,61 @@ def main():
         ),
     )
     parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        metavar="RUN_ID",
+        help=(
+            "Resume an interrupted run by its run_id (the results parquet stem, "
+            "e.g. results_20260610_120000). Completed (model, scenario, run) "
+            "evaluations are read from that run's artifact dir and skipped — never "
+            "paid for twice — and their rows are merged with the new ones into the "
+            "final parquet. The run continues under the ORIGINAL pre_registration "
+            "(no new one is written); if the current scenario set no longer matches "
+            "the corpus hash recorded there, the resume ABORTS (governance §3). "
+            "Issue #48."
+        ),
+    )
+    parser.add_argument(
+        "--max-cost",
+        type=float,
+        default=None,
+        help=(
+            "Abort gracefully once actual accumulated spend (agent + simulators + "
+            "judges, in USD) reaches this cap. In-flight evaluations finish and all "
+            "artifacts/parquet/manifest for completed work are written; the process "
+            f"then exits with code {BUDGET_EXCEEDED_EXIT_CODE}. Default: no cap "
+            "(a rehearsal sets one). Issue #47."
+        ),
+    )
+    parser.add_argument(
         "--no-artifacts",
         action="store_true",
         help=(
             "Disable per-run artifact persistence (transcripts + raw judge "
             "outputs). Artifacts are written by default for auditability."
+        ),
+    )
+    parser.add_argument(
+        "--user-sim-model",
+        type=str,
+        default=None,
+        help=(
+            "Override the USER simulator model id for this run (default: "
+            f"SimulationConfig.user_simulator_model = {DEFAULT_SIMULATION.user_simulator_model}). "
+            "Provider is inferred from the id and routed through the registry (e.g. "
+            "a claude-* id -> anthropic). Recorded in pre_registration.json and on "
+            "result rows so a sensitivity-test delta is attributable. Issue #50."
+        ),
+    )
+    parser.add_argument(
+        "--tool-sim-model",
+        type=str,
+        default=None,
+        help=(
+            "Override the TOOL simulator model id for this run (default: "
+            f"SimulationConfig.tool_simulator_model = {DEFAULT_SIMULATION.tool_simulator_model}). "
+            "Provider inferred + registry-routed like --user-sim-model. Issue #50."
         ),
     )
     parser.add_argument(
@@ -612,16 +827,30 @@ def main():
     )
     args = parser.parse_args()
 
-    # Resolve the default per-run so the filename matches the results_*.parquet
-    # glob in aggregate_results.py; a static argparse default can't be timestamped.
-    if args.output is None:
+    # Resolve the output path / run_id. On --resume the run_id is FIXED to the
+    # original run so artifacts, pre_registration.json, and the final parquet line
+    # up with the run being continued; the default output path is then that run's
+    # parquet (overwritten with the merged old+new rows). Otherwise the default is
+    # a fresh timestamped name matching the results_*.parquet glob in
+    # aggregate_results.py (a static argparse default can't be timestamped).
+    if args.resume:
+        if args.no_artifacts:
+            raise SystemExit(
+                "--resume needs the original run's per-evaluation artifacts to know "
+                "what is already done, but --no-artifacts disables them. Re-run "
+                "without --no-artifacts."
+            )
+        if args.output is None:
+            args.output = f"data/results/{args.resume}.parquet"
+    elif args.output is None:
         timestamp = f"{datetime.now(timezone.utc):%Y%m%d_%H%M%S}"
         args.output = f"data/results/results_{timestamp}.parquet"
 
     # run_id groups a run's artifacts + traces; derive it from the output stem
-    # so they sit alongside the results parquet they explain.
+    # so they sit alongside the results parquet they explain. On resume it is the
+    # original run_id by construction.
     output_path = Path(args.output)
-    run_id = output_path.stem
+    run_id = args.resume if args.resume else output_path.stem
     results_dir = output_path.parent
     artifacts_root = None if args.no_artifacts else results_dir / ARTIFACTS_DIRNAME
 
@@ -711,6 +940,38 @@ def main():
             NULL_AGENT_NAME,
         )
 
+    # Resolve the simulation config for this run (issue #50). The simulator models
+    # default to SimulationConfig (the single source of those defaults); the CLI
+    # overrides swap one or both for the sensitivity test. The provider for an
+    # overridden sim is inferred from its model id and routed through the existing
+    # registry (a default id keeps provider "openai"). The resolved ids/providers
+    # flow into the pre-registration and onto result rows.
+    sim_config = SimulationConfig(
+        max_turns=DEFAULT_SIMULATION.max_turns,
+        user_simulator_model=args.user_sim_model or DEFAULT_SIMULATION.user_simulator_model,
+        tool_simulator_model=args.tool_sim_model or DEFAULT_SIMULATION.tool_simulator_model,
+        user_simulator_temperature=DEFAULT_SIMULATION.user_simulator_temperature,
+        tool_simulator_temperature=DEFAULT_SIMULATION.tool_simulator_temperature,
+        user_simulator_provider=(
+            infer_provider(args.user_sim_model)
+            if args.user_sim_model
+            else DEFAULT_SIMULATION.user_simulator_provider
+        ),
+        tool_simulator_provider=(
+            infer_provider(args.tool_sim_model)
+            if args.tool_sim_model
+            else DEFAULT_SIMULATION.tool_simulator_provider
+        ),
+    )
+    if args.user_sim_model or args.tool_sim_model:
+        logger.info(
+            "Sim-model overrides (issue #50): user=%s (%s), tool=%s (%s)",
+            sim_config.user_simulator_model,
+            sim_config.user_simulator_provider,
+            sim_config.tool_simulator_model,
+            sim_config.tool_simulator_provider,
+        )
+
     # Pre-registration (issue #38): commit the run's definition to disk BEFORE
     # the first agent/simulator/judge call. This is what makes it a real
     # pre-registration rather than the post-hoc run_manifest.json below — the
@@ -724,24 +985,99 @@ def main():
     # and count ONLY — no IDs, no index — so the holdout is pinned (tamper-evident)
     # without revealing its content. ``holdout_by_domain`` is None when no holdout
     # was requested, which omits the holdout_set block entirely.
-    pre_registration = build_pre_registration(
-        run_id=run_id,
+    pre_registration_path = results_dir / PRE_REGISTRATION_FILENAME
+    if args.resume:
+        # RESUME (issue #48): do NOT write a new pre-registration — the run
+        # continues under the one written before the ORIGINAL run (governance §3).
+        # Verify the current scenario set still matches the corpus hash recorded
+        # there; abort on any drift so a resume cannot silently mix two run
+        # definitions.
+        pre_registration = load_pre_registration(results_dir, PRE_REGISTRATION_FILENAME)
+        current_public_hash, _ = scenario_set_hash(public_by_domain)
+        current_holdout_hash = holdout_set_hash(holdout_by_domain)[0] if holdout_by_domain else None
+        verify_corpus_unchanged(
+            pre_registration,
+            current_public_hash=current_public_hash,
+            current_holdout_hash=current_holdout_hash,
+        )
+        logger.info(
+            "RESUME %s: corpus hash matches the original pre-registration; "
+            "continuing under it (no new pre-registration written).",
+            run_id,
+        )
+    else:
+        pre_registration = build_pre_registration(
+            run_id=run_id,
+            models=models,
+            scenarios_by_domain=public_by_domain,
+            holdout_by_domain=holdout_by_domain or None,
+            judges=JUDGES,
+            judge_keys=args.judges,
+            reliability_runs=args.reliability_runs,
+            bootstrap_seed=BOOTSTRAP_SEED,
+            agent_temperature=ModelSpec.temperature,
+            user_simulator_temperature=DEFAULT_SIMULATION.user_simulator_temperature,
+            tool_simulator_temperature=DEFAULT_SIMULATION.tool_simulator_temperature,
+            user_simulator_model=sim_config.user_simulator_model,
+            tool_simulator_model=sim_config.tool_simulator_model,
+            separate_judge_calls=args.separate_judge_calls,
+            artifacts_dir=(str(Path(artifacts_root) / run_id) if artifacts_root else None),
+            trace_dir=str(trace_dir),
+        )
+        pre_registration_path = write_pre_registration(results_dir, pre_registration)
+        logger.info("Pre-registration written to %s (before any model call)", pre_registration_path)
+
+    # Preflight cost ESTIMATE (issue #47): print the expected spend from the
+    # resolved roster + per-eval token priors BEFORE the first call, so a run with
+    # a tight budget can be sized up front. Total scenarios = public + holdout
+    # across all evaluated domains (one evaluation per model x scenario x
+    # reliability run). Conservative priors -> an over-stated, safe estimate.
+    n_scenarios = sum(len(s) for s in scenarios_by_domain.values())
+    estimate = estimate_run_cost(
         models=models,
-        scenarios_by_domain=public_by_domain,
-        holdout_by_domain=holdout_by_domain or None,
-        judges=JUDGES,
-        judge_keys=args.judges,
+        n_scenarios=n_scenarios,
         reliability_runs=args.reliability_runs,
-        bootstrap_seed=BOOTSTRAP_SEED,
-        agent_temperature=ModelSpec.temperature,
-        user_simulator_temperature=DEFAULT_SIMULATION.user_simulator_temperature,
-        tool_simulator_temperature=DEFAULT_SIMULATION.tool_simulator_temperature,
+        judge_keys=args.judges,
+        user_sim_model_id=sim_config.user_simulator_model,
+        tool_sim_model_id=sim_config.tool_simulator_model,
         separate_judge_calls=args.separate_judge_calls,
-        artifacts_dir=(str(Path(artifacts_root) / run_id) if artifacts_root else None),
-        trace_dir=str(trace_dir),
     )
-    pre_registration_path = write_pre_registration(results_dir, pre_registration)
-    logger.info("Pre-registration written to %s (before any model call)", pre_registration_path)
+    logger.info(
+        "Cost ESTIMATE (priors, before any call): $%.2f total over %d evaluations "
+        "[agent $%.2f / sims $%.2f / judges $%.2f]",
+        estimate["total_usd"],
+        estimate["n_evals_total"],
+        estimate["agent_total_usd"],
+        estimate["sim_total_usd"],
+        estimate["judge_total_usd"],
+    )
+    if args.max_cost is not None:
+        logger.info("Budget cap (--max-cost): $%.2f", args.max_cost)
+        if estimate["total_usd"] > args.max_cost:
+            logger.warning(
+                "Estimated cost $%.2f EXCEEDS the cap $%.2f — the run will stop "
+                "early once actual spend crosses the cap.",
+                estimate["total_usd"],
+                args.max_cost,
+            )
+
+    # Shared, thread-safe actual-spend accumulator for the run (issue #47).
+    cost_acc = CostAccumulator(max_cost=args.max_cost)
+
+    # Resume (issue #48): the set of (model, scenario_id, run_index) already
+    # completed in the original run, read from its artifact dir. Empty for a fresh
+    # run. These tuples are skipped (never re-paid) and their rows are merged back
+    # in after the loop.
+    completed_keys: set = set()
+    model_names = [m["name"] for m in models]
+    if args.resume:
+        completed_keys = completed_tuples(artifacts_root, run_id, model_names)
+        logger.info(
+            "RESUME %s: %d completed evaluation(s) found in artifacts; they will be "
+            "skipped and merged.",
+            run_id,
+            len(completed_keys),
+        )
 
     # Run models in parallel
     all_results = []
@@ -759,6 +1095,14 @@ def main():
                 run_id,
                 artifacts_root,
                 args.separate_judge_calls,
+                # Sim config (issue #50) is passed, not a built runner: each model
+                # builds its OWN runner inside the worker thread from this config
+                # (owning its simulator instances + per-run sim token counters), so
+                # the overrides apply per model and no API client is created on the
+                # main thread (keeps the stubbed tests offline).
+                sim_config=sim_config,
+                cost_acc=cost_acc,
+                completed_keys=completed_keys,
             ): model_cfg["name"]
             for model_cfg in models
         }
@@ -771,6 +1115,35 @@ def main():
             except Exception:
                 logger.exception("Failed evaluating %s", model_name)
                 failed_models.append(model_name)
+
+    budget_stopped = cost_acc.exceeded()
+    if budget_stopped:
+        logger.warning(
+            "BUDGET STOP: actual spend $%.4f reached cap $%.2f. Writing artifacts/"
+            "parquet/manifest for completed work, then exiting %d.",
+            cost_acc.total(),
+            args.max_cost,
+            BUDGET_EXCEEDED_EXIT_CODE,
+        )
+
+    # Resume merge (issue #48): reconstruct rows for the evaluations completed in
+    # the original run from their artifacts and combine with the freshly-run rows.
+    # Reliability is then recomputed across the MERGED set per (model, scenario),
+    # so a scenario whose runs span the original + resumed sessions gets one
+    # correct reliability figure instead of two partial ones.
+    n_resumed_rows = 0
+    if args.resume and completed_keys:
+        resumed_rows = rows_from_artifacts(artifacts_root, run_id, model_names)
+        n_resumed_rows = len(resumed_rows)
+        all_results.extend(resumed_rows)
+        _recompute_reliability(all_results, args.reliability_runs)
+        logger.info(
+            "RESUME %s: merged %d reconstructed row(s) from artifacts with %d new "
+            "row(s); reliability recomputed across the merged set.",
+            run_id,
+            n_resumed_rows,
+            len(all_results) - n_resumed_rows,
+        )
 
     assert_results_nonempty(all_results, failed_models)
 
@@ -792,6 +1165,14 @@ def main():
     manifest = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "run_id": run_id,
+        # Resume accounting (issue #48): True when this run continued an earlier
+        # one under its original pre-registration. ``resumed_at`` records when the
+        # resume happened (distinct from the original run's pre-registration
+        # timestamp), and ``resumed_rows`` is how many completed evaluations were
+        # merged back from artifacts rather than re-run.
+        "resumed": bool(args.resume),
+        "resumed_at": datetime.now(timezone.utc).isoformat() if args.resume else None,
+        "resumed_rows": n_resumed_rows,
         "artifacts_dir": (str(Path(artifacts_root) / run_id) if artifacts_root else None),
         "trace_dir": str(trace_dir),
         "models_requested": models_requested,
@@ -803,6 +1184,17 @@ def main():
         # coarse to avoid hinting at its composition).
         "scenario_counts": {d.value: len(scenarios) for d, scenarios in public_by_domain.items()},
         "reliability_runs": args.reliability_runs,
+        # Cost guard accounting (issue #47): the preflight estimate, the measured
+        # actual spend (agent + simulators + judges) and its per-model breakdown,
+        # the cap, and whether the run stopped because the cap was hit. Lets a
+        # rehearsal reconcile estimate vs. actual and confirm a budget stop.
+        "cost": {
+            "estimate_usd": round(estimate["total_usd"], 6),
+            "actual_usd": round(cost_acc.total(), 6),
+            "actual_by_model": {k: round(v, 6) for k, v in cost_acc.by_model().items()},
+            "max_cost_usd": args.max_cost,
+            "budget_stopped": budget_stopped,
+        },
         # Link the completion record back to the pre-registration written before
         # any model call (issue #38), so the pair is verifiable: the path and a
         # sha256 of the exact pre-registration file. The corpus_sha256 is lifted
@@ -851,6 +1243,13 @@ def main():
         )
         print("\n=== COT Bench Results ===\n")
         print(summary.to_string())
+
+    # Distinct exit ONLY after all artifacts/parquet/manifest/CSV are on disk, so
+    # a budget stop still leaves completed work fully persisted and auditable
+    # (issue #47). A wrapper/CI can tell this apart from a clean finish (0) or a
+    # crash (non-zero from an exception/SystemExit elsewhere).
+    if budget_stopped:
+        raise SystemExit(BUDGET_EXCEEDED_EXIT_CODE)
 
 
 if __name__ == "__main__":

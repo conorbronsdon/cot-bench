@@ -144,6 +144,36 @@ _REGISTRY: dict[str, Any] = {
 }
 
 
+def infer_provider(model_id: str) -> str:
+    """Best-effort provider name for a bare model id, for CLI sim overrides (#50).
+
+    The sim-model override flags take a model id but no provider; this maps the id
+    to a registered provider so the override routes through the same registry as
+    everything else. Rules, in order:
+
+    - an explicit ``provider/slug`` form (a slash) -> ``openrouter`` (the
+      OpenAI-compatible gateway every open-weight slug already uses);
+    - ``claude*`` -> ``anthropic``;
+    - ``gemini*`` -> ``google``;
+    - ``gpt*`` / ``o1*`` / ``o3*`` / ``o4*`` -> ``openai``;
+    - anything else -> ``openai`` (the historical sim default), so an unrecognized
+      id behaves exactly as before rather than failing.
+
+    A caller that needs a provider this heuristic gets wrong can always pass the
+    model on a slug form or extend SimulationConfig directly.
+    """
+    mid = model_id.strip().lower()
+    if "/" in mid:
+        return "openrouter"
+    if mid.startswith("claude"):
+        return "anthropic"
+    if mid.startswith("gemini"):
+        return "google"
+    if mid.startswith(("gpt", "o1", "o3", "o4")):
+        return "openai"
+    return "openai"
+
+
 def create_model(spec: ModelSpec) -> BaseChatModel:
     """Create a LangChain chat model from a ModelSpec.
 

@@ -205,8 +205,12 @@ class TestConsensus:
         def fake_api(judge, system_prompt, rubric_prompt):
             calls["n"] += 1
             if calls["n"] == 1:
-                return "not json", "fake-model-v1"
-            return '{"overall_score": 0.75, "overall_reasoning": "second try"}', "fake-model-v1"
+                return "not json", "fake-model-v1", (10, 5)
+            return (
+                '{"overall_score": 0.75, "overall_reasoning": "second try"}',
+                "fake-model-v1",
+                (10, 5),
+            )
 
         monkeypatch.setattr(judge_mod, "_call_judge_api", fake_api)
         result = judge_mod.score_with_judge(_Cfg(), "sys", "rub", "task_completion")
@@ -228,7 +232,7 @@ class TestConsensus:
 
         def fake_api(judge, system_prompt, rubric_prompt):
             calls["n"] += 1
-            return "still not json", "fake-model-v1"
+            return "still not json", "fake-model-v1", (10, 5)
 
         monkeypatch.setattr(judge_mod, "_call_judge_api", fake_api)
         result = judge_mod.score_with_judge(_Cfg(), "sys", "rub", "task_completion")
@@ -416,7 +420,7 @@ class TestCombinedConsensus:
                 '{"task_completion": {"overall_score": 0.9, "overall_reasoning": "ok"}, '
                 '"tool_selection": {"overall_reasoning": "no score field"}}'
             )
-            return body, "fake-model-v1"
+            return body, "fake-model-v1", (10, 5)
 
         monkeypatch.setattr(judge_mod, "_call_judge_api", fake_api)
         tc_jr, ts_jr = judge_mod.score_with_judge_combined(_CombinedCfg(), "sys", "combined")
@@ -433,11 +437,13 @@ class TestCombinedConsensus:
         def fake_api(judge, system_prompt, rubric_prompt):
             calls["n"] += 1
             if calls["n"] == 1:
-                return '{"task_completion": {"overall_score": 0.9}}', "m1"
+                return '{"task_completion": {"overall_score": 0.9}}', "m1", (10, 5)
             return (
                 '{"task_completion": {"overall_score": 0.9, "overall_reasoning": "a"}, '
-                '"tool_selection": {"overall_score": 0.6, "overall_reasoning": "b"}}'
-            ), "m1"
+                '"tool_selection": {"overall_score": 0.6, "overall_reasoning": "b"}}',
+                "m1",
+                (10, 5),
+            )
 
         monkeypatch.setattr(judge_mod, "_call_judge_api", fake_api)
         tc_jr, ts_jr = judge_mod.score_with_judge_combined(_CombinedCfg(), "sys", "combined")
@@ -452,7 +458,7 @@ class TestCombinedConsensus:
 
         def fake_api(judge, system_prompt, rubric_prompt):
             calls["n"] += 1
-            return "still not json", "m1"
+            return "still not json", "m1", (10, 5)
 
         monkeypatch.setattr(judge_mod, "_call_judge_api", fake_api)
         tc_jr, ts_jr = judge_mod.score_with_judge_combined(_CombinedCfg(), "sys", "combined")

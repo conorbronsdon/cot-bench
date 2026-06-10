@@ -383,12 +383,15 @@ def _make_fake_judge(recorder: _Recorder):
 
     def fake_call_judge_api(judge, system_prompt, rubric_prompt):
         recorder.judge_calls += 1
+        # Deterministic synthetic usage for the 3-tuple signature (#47); non-zero
+        # so the cost accumulator path is exercised end to end.
+        usage = (len(rubric_prompt) // 4, 120)
         # Banking transcripts are longer (the agent speaks 3x); use a crude proxy
         # for "this is the banking scenario" so the opus judge can parse-fail there.
         is_banking = REAL_BANKING_ID in rubric_prompt or "BUS-CHK-001" in rubric_prompt
         if judge.name == "Claude Opus 4.6" and is_banking:
             # Deliberately unparseable -> parse_failed for BOTH dimensions.
-            return ("the verdict is: pretty good honestly, no json here", judge.model_id)
+            return ("the verdict is: pretty good honestly, no json here", judge.model_id, usage)
         # Score varies by judge so inter-judge alpha is non-degenerate.
         base = {"Kimi K2.6": 0.7, "GLM-4.6": 0.6, "Claude Opus 4.6": 0.8}.get(judge.name, 0.65)
         body = {
@@ -404,7 +407,7 @@ def _make_fake_judge(recorder: _Recorder):
                 "overall_reasoning": "fake",
             },
         }
-        return (json.dumps(body), judge.model_id)
+        return (json.dumps(body), judge.model_id, usage)
 
     return fake_call_judge_api
 

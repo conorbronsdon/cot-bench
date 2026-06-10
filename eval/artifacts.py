@@ -125,6 +125,11 @@ def build_artifact(
             "latency_ms": sim_result.total_latency_ms,
             "error": sim_result.error,
             "resolved_model": getattr(sim_result, "resolved_model", None),
+            # Simulator model ids used this run (issue #50), so a transcript is
+            # auditable to which user/tool simulator produced it and a resume can
+            # reconstruct the row faithfully.
+            "user_sim_model": getattr(sim_result, "user_sim_model", None),
+            "tool_sim_model": getattr(sim_result, "tool_sim_model", None),
             # User-sim completion decoupling (#32). ``completed`` only says the
             # conversation stopped; these three say HOW it stopped and whether
             # the goals were verifiably met when it did, so a premature ending
