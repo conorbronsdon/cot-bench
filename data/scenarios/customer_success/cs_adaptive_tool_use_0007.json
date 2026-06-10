@@ -1,0 +1,168 @@
+{
+  "id": "cs_adaptive_tool_use_0007",
+  "category": "adaptive_tool_use",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Yuki Tanaka",
+    "age": 38,
+    "occupation": "Director of Revenue Operations at an enterprise fintech",
+    "personality_traits": ["analytical", "process-driven", "skeptical", "thorough"],
+    "tone": "measured and precise",
+    "detail_level": "verbose",
+    "background": "Owns the company's tooling stack and tracks adoption metrics obsessively. Wants hard usage numbers and a clear remediation plan before she'll advocate for renewal internally. While reviewing, she realizes a different department spun up its own separate account on a corporate card without telling her."
+  },
+  "user_goals": [
+    "Review the account's health and renewal posture ahead of an internal renewal decision",
+    "Get the full usage trend for the last quarter, broken down by team",
+    "Identify any seats that are being paid for but sitting unused",
+    "Flag internally that a separate shadow account was spun up by another department on a corporate card so the CS team can consolidate it",
+    "Get a renewal-planning meeting scheduled with her CSM"
+  ],
+  "tools": [
+    {
+      "name": "get_account",
+      "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
+      "parameters": [
+        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
+        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+      ],
+      "response_schema": {
+        "account_id": "string",
+        "company": "string",
+        "contact_name": "string",
+        "plan": "string",
+        "renewal_date": "string",
+        "csm_owner": "string"
+      }
+    },
+    {
+      "name": "get_account_health_score",
+      "description": "Retrieve the health score and risk indicators for a customer account.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "include_history", "type": "boolean", "description": "Include historical health scores", "required": false}
+      ],
+      "response_schema": {
+        "health_score": "number",
+        "risk_level": "string",
+        "key_indicators": ["object"],
+        "trend": "string"
+      }
+    },
+    {
+      "name": "get_usage_analytics",
+      "description": "Get product usage metrics for an account or specific users.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "period", "type": "string", "description": "Time period: 'last_7d', 'last_30d', 'last_90d', 'custom'", "required": true},
+        {"name": "group_by", "type": "string", "description": "Group by: 'user', 'feature', 'team', 'day'", "required": false},
+        {"name": "user_ids", "type": "array", "description": "Filter to specific user IDs", "required": false}
+      ],
+      "response_schema": {
+        "period": "string",
+        "active_users": "number",
+        "active_user_change_pct": "number",
+        "feature_usage": ["object"],
+        "trend": "string"
+      }
+    },
+    {
+      "name": "get_subscription_details",
+      "description": "Get current subscription plan details and available upgrades. Read-only — to actually change a plan use change_subscription_tier.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "include_upgrade_options", "type": "boolean", "description": "Include details of higher tiers", "required": false}
+      ],
+      "response_schema": {
+        "current": "object",
+        "upgrade": "object"
+      }
+    },
+    {
+      "name": "create_internal_note",
+      "description": "Add an internal note to the customer's account for the CS team. Internal only — the customer never sees this. Use this to record context, risk flags, or follow-ups. Do NOT use it to communicate with the customer (use send_customer_email) or to record a conversation that already happened (use log_customer_interaction).",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "note", "type": "string", "description": "Note content", "required": true},
+        {"name": "tag", "type": "string", "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'", "required": false}
+      ],
+      "response_schema": {
+        "note_id": "string",
+        "account_id": "string",
+        "created_at": "string"
+      }
+    },
+    {
+      "name": "send_customer_email",
+      "description": "Send an email directly to a customer contact from the CS team. MISUSE RISK: this actually contacts the customer. Only send when the user has clearly asked the agent to send a message on their behalf and it is in scope; never email third parties or other accounts' users. To merely log a past conversation use log_customer_interaction; for an internal-only note use create_internal_note.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier the recipient belongs to", "required": true},
+        {"name": "to", "type": "string", "description": "Recipient email address (must be a contact on this account)", "required": true},
+        {"name": "subject", "type": "string", "description": "Email subject line", "required": true},
+        {"name": "body", "type": "string", "description": "Email body", "required": true}
+      ],
+      "response_schema": {
+        "message_id": "string",
+        "status": "string",
+        "sent_at": "string"
+      }
+    },
+    {
+      "name": "schedule_meeting",
+      "description": "Schedule a meeting between the customer and their CS team.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "meeting_type", "type": "string", "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'", "required": true},
+        {"name": "preferred_dates", "type": "array", "description": "List of preferred date/time slots", "required": true},
+        {"name": "attendees", "type": "array", "description": "Email addresses of attendees", "required": false},
+        {"name": "notes", "type": "string", "description": "Meeting agenda or notes", "required": false}
+      ],
+      "response_schema": {
+        "meeting_id": "string",
+        "account_id": "string",
+        "meeting_type": "string",
+        "scheduled_for": "string"
+      }
+    }
+  ],
+  "initial_message": "Good afternoon. I'm doing a thorough review before we make a renewal call, and I'll need real numbers, not summaries. Let's begin with where our account stands. I may have a complication to raise partway through.",
+  "difficulty": "medium",
+  "expected_tool_sequence": [
+    "get_account",
+    "get_account_health_score",
+    "get_usage_analytics",
+    "get_subscription_details",
+    "create_internal_note",
+    "schedule_meeting"
+  ],
+  "ground_truth": {
+    "account": {
+      "account_id": "ACCT-2207",
+      "company": "Meridian Fintech",
+      "contact_name": "Yuki Tanaka",
+      "plan": "Enterprise",
+      "csm_owner": "Aaron Goldfarb",
+      "renewal_date": "2026-08-31"
+    },
+    "health": {"health_score": 66, "risk_level": "medium", "trend": "stable"},
+    "usage_trend": {"period": "last_90d", "direction": "flat", "active_user_change_pct": -2},
+    "subscription": {
+      "current": {"tier": "Enterprise", "seats": 120, "seats_used": 94, "monthly_cost": 14400}
+    },
+    "shadow_account": {"account_id": "ACCT-2261", "company": "Meridian Fintech (Risk Team)", "note": "separate self-serve account opened on a corporate card by the risk department; candidate for consolidation"},
+    "meetings": [],
+    "internal_notes": []
+  },
+  "expected_state_changes": [
+    {"assert": "internal_notes", "op": "contains",
+     "match": {"account_id": "ACCT-2207", "note_contains": "shadow"},
+     "goal": "Flag internally that a separate shadow account was spun up by another department on a corporate card so the CS team can consolidate it"},
+    {"assert": "meetings", "op": "contains",
+     "match": {"account_id": "ACCT-2207", "meeting_type": "qbr"},
+     "goal": "Get a renewal-planning meeting scheduled with her CSM"}
+  ]
+}

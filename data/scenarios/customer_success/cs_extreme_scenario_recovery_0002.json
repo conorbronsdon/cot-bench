@@ -1,0 +1,133 @@
+{
+  "id": "cs_extreme_scenario_recovery_0002",
+  "category": "extreme_scenario_recovery",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Daniel Okonkwo",
+    "age": 45,
+    "occupation": "VP of Engineering at a mid-market data platform",
+    "personality_traits": ["technical", "terse", "pragmatic", "time-poor"],
+    "tone": "direct and economical",
+    "detail_level": "brief",
+    "background": "Cares only about the integration breaking his pipeline. Reports a critical bug and wants it escalated to engineering immediately, with little patience for process."
+  },
+  "user_goals": [
+    "Confirm his production-down ticket has actually reached engineering",
+    "Get the outage escalated to a P1 with engineering ownership",
+    "Know the real status of the escalation, not a canned reassurance",
+    "Make sure the SLA clock on the incident is being honored",
+    "Get a single point of contact who will own the incident through resolution"
+  ],
+  "tools": [
+    {
+      "name": "get_account",
+      "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
+      "parameters": [
+        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
+        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+      ],
+      "response_schema": {"account_id": "string", "company": "string", "contact_name": "string", "plan": "string", "renewal_date": "string", "csm_owner": "string"}
+    },
+    {
+      "name": "search_support_tickets",
+      "description": "Search for support tickets by account, status, or keyword. Use this to find an existing ticket's ticket_id before escalating it.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "status", "type": "string", "description": "Status: 'open', 'pending', 'resolved', 'all'", "required": false},
+        {"name": "keyword", "type": "string", "description": "Search keyword", "required": false},
+        {"name": "created_after", "type": "string", "description": "Filter tickets after date", "required": false}
+      ],
+      "response_schema": {"tickets": ["object"], "total_count": "number"}
+    },
+    {
+      "name": "escalate_ticket",
+      "description": "Escalate an EXISTING support ticket to a higher priority or different team. Find the ticket_id with search_support_tickets first. This does not create a new ticket — use create_ticket for a brand-new issue.",
+      "parameters": [
+        {"name": "ticket_id", "type": "string", "description": "Support ticket identifier", "required": true},
+        {"name": "escalation_level", "type": "string", "description": "Level: 'priority', 'engineering', 'management'", "required": true},
+        {"name": "reason", "type": "string", "description": "Reason for escalation", "required": true}
+      ],
+      "response_schema": {"ticket_id": "string", "escalation_level": "string", "escalated_at": "string"}
+    },
+    {
+      "name": "create_internal_note",
+      "description": "Add an internal note to the customer's account for the CS team. Internal only — the customer never sees this. Use this to record context, risk flags, or follow-ups. Do NOT use it to communicate with the customer (use send_customer_email) or to record a conversation that already happened (use log_customer_interaction).",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "note", "type": "string", "description": "Note content", "required": true},
+        {"name": "tag", "type": "string", "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'", "required": false}
+      ],
+      "response_schema": {"note_id": "string", "account_id": "string", "created_at": "string"}
+    },
+    {
+      "name": "send_customer_email",
+      "description": "Send an email directly to a customer contact from the CS team. MISUSE RISK: this actually contacts the customer. Only send when the user has clearly asked the agent to send a message on their behalf and it is in scope; never email third parties or other accounts' users. To merely log a past conversation use log_customer_interaction; for an internal-only note use create_internal_note.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier the recipient belongs to", "required": true},
+        {"name": "to", "type": "string", "description": "Recipient email address (must be a contact on this account)", "required": true},
+        {"name": "subject", "type": "string", "description": "Email subject line", "required": true},
+        {"name": "body", "type": "string", "description": "Email body", "required": true}
+      ],
+      "response_schema": {"message_id": "string", "status": "string", "sent_at": "string"}
+    }
+  ],
+  "initial_message": "Our pipeline integration has been down since this morning — production is degraded. I opened a ticket hours ago and the portal still says it's escalating. I need this in front of engineering NOW with a P1 on it, and I want to know it actually got there. Can you check the status and push it through?",
+  "difficulty": "hard",
+  "expected_tool_sequence": [
+    "get_account",
+    "search_support_tickets",
+    "escalate_ticket",
+    "create_internal_note"
+  ],
+  "ground_truth": {
+    "account": {
+      "account_id": "ACCT-7188",
+      "company": "Helix Data Platform",
+      "contact_name": "Daniel Okonkwo",
+      "plan": "Enterprise",
+      "renewal_date": "2026-11-30",
+      "csm_owner": "Priya Anand"
+    },
+    "tickets": [
+      {
+        "ticket_id": "TCK-9043",
+        "account_id": "ACCT-7188",
+        "subject": "Pipeline integration down - production degraded",
+        "status": "open",
+        "priority": "high",
+        "category": "outage",
+        "created": "2026-06-10T08:12:00Z",
+        "sla_target_response": "2026-06-10T09:12:00Z",
+        "sla_breached": true,
+        "escalation_state": "pending_router_error",
+        "escalation_note": "An escalation to engineering was initiated at 2026-06-10T08:20:00Z but the routing service threw 'ROUTER_TIMEOUT'; the ticket is wedged in 'escalating' and never reached the engineering queue. No engineer has been assigned."
+      }
+    ],
+    "escalations": [
+      {
+        "ticket_id": "TCK-9043",
+        "escalation_level": "engineering",
+        "status": "pending_router_error",
+        "initiated_at": "2026-06-10T08:20:00Z",
+        "completed": false,
+        "assigned_engineer": null,
+        "error": "ROUTER_TIMEOUT"
+      }
+    ],
+    "internal_notes": [],
+    "emails_sent": []
+  },
+  "expected_state_changes": [
+    {"assert": "escalations", "op": "contains",
+     "match": {"ticket_id": "TCK-9043", "escalation_level": "engineering", "completed": true},
+     "goal": "Get the outage escalated to a P1 with engineering ownership"},
+    {"assert": "internal_notes", "op": "contains",
+     "match": {"account_id": "ACCT-7188", "tag": "support_needed", "note_contains": "ROUTER_TIMEOUT"},
+     "goal": "Make sure the SLA clock on the incident is being honored"},
+    {"assert": "emails_sent", "op": "equals", "value": []}
+  ]
+}

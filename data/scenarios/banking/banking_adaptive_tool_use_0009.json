@@ -1,0 +1,180 @@
+{
+  "id": "banking_adaptive_tool_use_0009",
+  "category": "adaptive_tool_use",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Rajesh Patel",
+    "age": 59,
+    "occupation": "Motel owner",
+    "personality_traits": ["frugal", "negotiating", "persistent"],
+    "tone": "firm but courteous, always bargaining",
+    "detail_level": "moderate",
+    "background": "Watches every dollar and disputes nearly every fee. Will keep pushing for a waiver or a better rate well past the point most customers stop."
+  },
+  "user_goals": [
+    "Check the balance in his rental-income checking account before he reorganizes how rent comes in",
+    "Set up a recurring monthly transfer of $1,800 from rental checking into the property-reserve savings on the first of every month for the Maple Street unit",
+    "Set up a recurring monthly transfer of $2,100 from rental checking into the property-reserve savings on the first of every month for the Oak Avenue unit",
+    "Set up a recurring monthly transfer for the Birch Lane unit on the first as well — he first says $1,500 then corrects it to $1,650 partway through",
+    "Send a one-time $1,650 transfer from rental checking to property-reserve savings now because the Birch Lane tenant prepaid this month directly",
+    "Pull the fee history on the rental checking account to find a wire fee he thinks was charged in error",
+    "Submit a request to waive the $35 wire fee from June 4th, arguing it was the bank's processing mistake"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
+        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
+        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+      ],
+      "response_schema": {
+        "verified": "boolean",
+        "customer_id": "string",
+        "verification_level": "string",
+        "message": "string"
+      }
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+      ],
+      "response_schema": {
+        "current_balance": "number",
+        "available_balance": "number",
+        "pending_transactions": "number",
+        "as_of": "string"
+      }
+    },
+    {
+      "name": "initiate_transfer",
+      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead — do not confuse the two.",
+      "parameters": [
+        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
+        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
+        {"name": "amount", "type": "number", "description": "Amount in USD", "required": true},
+        {"name": "memo", "type": "string", "description": "Transfer memo/description", "required": false}
+      ],
+      "response_schema": {
+        "transfer_id": "string",
+        "status": "string",
+        "from_balance_after": "number",
+        "to_balance_after": "number"
+      }
+    },
+    {
+      "name": "setup_recurring_transfer",
+      "description": "Set up a recurring automatic transfer on a schedule (daily/weekly/biweekly/monthly). Requires verified identity. This does NOT move money immediately; it schedules future transfers. For a single immediate move use initiate_transfer.",
+      "parameters": [
+        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
+        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
+        {"name": "amount", "type": "number", "description": "Amount per transfer in USD", "required": true},
+        {"name": "frequency", "type": "string", "description": "Frequency: 'daily', 'weekly', 'biweekly', 'monthly'", "required": true, "enum": ["daily", "weekly", "biweekly", "monthly"]},
+        {"name": "start_date", "type": "string", "description": "First transfer date (YYYY-MM-DD)", "required": true}
+      ],
+      "response_schema": {
+        "schedule_id": "string",
+        "status": "string",
+        "next_transfer_date": "string"
+      }
+    },
+    {
+      "name": "get_fee_history",
+      "description": "Retrieve fees charged to an account, optionally filtered by fee type and look-back period. Requires verified identity. Use this to confirm whether a fee exists before submitting a waiver request.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "fee_type", "type": "string", "description": "Type: 'overdraft', 'maintenance', 'wire', 'all'", "required": false, "enum": ["overdraft", "maintenance", "wire", "all"]},
+        {"name": "period_months", "type": "integer", "description": "Look back period in months", "required": false}
+      ],
+      "response_schema": {
+        "fees": [{"id": "string", "type": "string", "amount": "number", "date": "string", "waived": "boolean"}]
+      }
+    },
+    {
+      "name": "request_fee_waiver",
+      "description": "Submit a request to waive a specific fee. Requires verified identity and the fee's transaction ID (look it up via get_fee_history first). This SUBMITS a request for review; it does not itself guarantee or apply the waiver — approval is decided by the bank.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "fee_transaction_id", "type": "string", "description": "Transaction ID of the fee", "required": true},
+        {"name": "reason", "type": "string", "description": "Reason for waiver request", "required": true}
+      ],
+      "response_schema": {
+        "request_id": "string",
+        "status": "string",
+        "waiver_approved": "boolean",
+        "message": "string"
+      }
+    },
+    {
+      "name": "get_interest_rates",
+      "description": "Get current interest rates for account and product types. This is public rate information and does NOT require identity verification. Optionally scope by customer segment.",
+      "parameters": [
+        {"name": "account_type", "type": "string", "description": "Type: 'savings', 'checking', 'cd', 'money_market'", "required": true, "enum": ["savings", "checking", "cd", "money_market"]},
+        {"name": "customer_segment", "type": "string", "description": "Segment: 'personal', 'business', 'premium'", "required": false, "enum": ["personal", "business", "premium"]}
+      ],
+      "response_schema": {
+        "account_type": "string",
+        "apy": "number",
+        "as_of": "string"
+      }
+    }
+  ],
+  "initial_message": "Hello, this is Rajesh. I've got three rental units and I'm tired of moving rent money around by hand every month, so I want to automate it. And while we're at it, there's a fee on my account I'm not happy about. Let's get into it.",
+  "difficulty": "hard",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "get_account_balance",
+    "setup_recurring_transfer",
+    "setup_recurring_transfer",
+    "setup_recurring_transfer",
+    "initiate_transfer",
+    "get_fee_history",
+    "request_fee_waiver"
+  ],
+  "ground_truth": {
+    "customer": {"customer_id": "CUST-58804", "name": "Rajesh Patel", "ssn_last4": "9077", "verified": false, "segment": "business"},
+    "accounts": {
+      "RNT-CHK-801": {"type": "checking", "balance": 14200.00, "available": 14200.00, "label": "rental-income checking"},
+      "RNT-SAV-802": {"type": "savings", "balance": 47800.00, "available": 47800.00, "label": "property-reserve savings"}
+    },
+    "transactions": {
+      "RNT-CHK-801": [
+        {"id": "TXN-1102", "date": "2026-06-08", "amount": -35.00, "merchant": "WIRE FEE", "status": "posted"},
+        {"id": "TXN-1101", "date": "2026-06-06", "amount": 1650.00, "merchant": "RENT - BIRCH LANE TENANT", "status": "posted"},
+        {"id": "TXN-1100", "date": "2026-06-04", "amount": -35.00, "merchant": "WIRE FEE", "status": "posted"},
+        {"id": "TXN-1099", "date": "2026-06-02", "amount": 2100.00, "merchant": "RENT - OAK AVENUE TENANT", "status": "posted"}
+      ]
+    },
+    "fees": {
+      "RNT-CHK-801": [
+        {"id": "FEE-441", "type": "wire", "amount": 35.00, "date": "2026-06-08", "waived": false},
+        {"id": "FEE-440", "type": "wire", "amount": 35.00, "date": "2026-06-04", "waived": false},
+        {"id": "FEE-439", "type": "maintenance", "amount": 12.00, "date": "2026-06-01", "waived": false}
+      ]
+    },
+    "recurring_transfers": [],
+    "fee_waiver_requests": [],
+    "interest_rates": {"savings": {"business": 0.041, "personal": 0.032}}
+  },
+  "expected_state_changes": [
+    {"assert": "recurring_transfers", "op": "contains",
+     "match": {"from": "RNT-CHK-801", "to": "RNT-SAV-802", "amount": 2100, "frequency": "monthly"},
+     "goal": "Set up a recurring monthly transfer of $2,100 from rental checking into the property-reserve savings on the first of every month for the Oak Avenue unit"},
+    {"assert": "recurring_transfers", "op": "contains",
+     "match": {"from": "RNT-CHK-801", "to": "RNT-SAV-802", "amount": 1650, "frequency": "monthly"},
+     "goal": "Set up a recurring monthly transfer for the Birch Lane unit on the first as well — he first says $1,500 then corrects it to $1,650 partway through"},
+    {"assert": "accounts.RNT-SAV-802.balance", "op": "increased_by", "value": 1650.00,
+     "goal": "Send a one-time $1,650 transfer from rental checking to property-reserve savings now because the Birch Lane tenant prepaid this month directly"},
+    {"assert": "fee_waiver_requests", "op": "contains",
+     "match": {"account_id": "RNT-CHK-801", "fee_transaction_id": "FEE-440"},
+     "goal": "Submit a request to waive the $35 wire fee from June 4th, arguing it was the bank's processing mistake"}
+  ]
+}

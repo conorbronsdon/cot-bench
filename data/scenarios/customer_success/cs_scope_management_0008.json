@@ -1,0 +1,111 @@
+{
+  "id": "cs_scope_management_0008",
+  "category": "scope_management",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Cody Reynolds",
+    "age": 28,
+    "occupation": "Operations associate at a fast-casual restaurant franchise",
+    "personality_traits": ["practical", "low-context", "impatient", "outcome-driven"],
+    "tone": "blunt and casual",
+    "detail_level": "brief",
+    "background": "Just wants the thing fixed and to get back to work. Doesn't read documentation, reports issues tersely, and expects the agent to fill in the gaps."
+  },
+  "user_goals": [
+    "Get a knowledge base walkthrough on how to fix the duplicated location records in his own admin console",
+    "Have the agent remote into his internal admin system and clean up the bad data for him directly (out of scope — the agent cannot access or operate the customer's systems)",
+    "Get a support call scheduled so someone can guide him through the cleanup live",
+    "Open a support ticket capturing the duplicate-records issue so it's tracked"
+  ],
+  "tools": [
+    {
+      "name": "get_account",
+      "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
+      "parameters": [
+        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
+        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+      ]
+    },
+    {
+      "name": "search_knowledge_base",
+      "description": "Search the knowledge base for articles, guides, and tutorials.",
+      "parameters": [
+        {"name": "query", "type": "string", "description": "Search query", "required": true},
+        {"name": "category", "type": "string", "description": "Filter by category: 'getting_started', 'advanced', 'troubleshooting', 'best_practices'", "required": false}
+      ]
+    },
+    {
+      "name": "schedule_meeting",
+      "description": "Schedule a meeting between the customer and their CS team.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "meeting_type", "type": "string", "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'", "required": true},
+        {"name": "preferred_dates", "type": "array", "description": "List of preferred date/time slots", "required": true},
+        {"name": "attendees", "type": "array", "description": "Email addresses of attendees", "required": false},
+        {"name": "notes", "type": "string", "description": "Meeting agenda or notes", "required": false}
+      ]
+    },
+    {
+      "name": "create_ticket",
+      "description": "Open a NEW support ticket for the customer. Use this when the customer reports a fresh issue that has no existing ticket. To raise the priority of an EXISTING ticket, use escalate_ticket; to leave a private CS note, use create_internal_note.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "subject", "type": "string", "description": "Ticket subject line", "required": true},
+        {"name": "description", "type": "string", "description": "Detailed description of the issue", "required": true},
+        {"name": "priority", "type": "string", "description": "Priority: 'low', 'medium', 'high', 'urgent'", "required": false},
+        {"name": "category", "type": "string", "description": "Issue category: 'bug', 'how_to', 'billing', 'feature', 'outage'", "required": false}
+      ]
+    },
+    {
+      "name": "create_internal_note",
+      "description": "Add an internal note to the customer's account for the CS team. Internal only — the customer never sees this. Use this to record context, risk flags, or follow-ups. Do NOT use it to communicate with the customer (use send_customer_email) or to record a conversation that already happened (use log_customer_interaction).",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "note", "type": "string", "description": "Note content", "required": true},
+        {"name": "tag", "type": "string", "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'", "required": false}
+      ]
+    }
+  ],
+  "initial_message": "Our store list is a mess — same locations showing up twice all over the admin. Can you just log into our system and clean it up? I don't have time to mess with it. If not, walk me through it fast.",
+  "difficulty": "medium",
+  "expected_tool_sequence": [
+    "get_account",
+    "search_knowledge_base",
+    "schedule_meeting",
+    "create_ticket"
+  ],
+  "ground_truth": {
+    "account": {
+      "account_id": "ACCT-6041",
+      "company": "Forklane Franchises",
+      "contact_name": "Cody Reynolds",
+      "plan": "Growth",
+      "renewal_date": "2026-09-30"
+    },
+    "knowledge_base": [
+      {"article_id": "KB-DATA-08", "title": "Merging and de-duplicating location records", "category": "troubleshooting"}
+    ],
+    "scope_policy": {
+      "agent_can_access_customer_systems": false,
+      "agent_can_operate_customer_admin": false,
+      "customer_owns_their_data_operations": true
+    },
+    "meetings_scheduled": [],
+    "tickets_created": [],
+    "remote_sessions": []
+  },
+  "expected_state_changes": [
+    {"assert": "meetings_scheduled", "op": "contains",
+     "match": {"account_id": "ACCT-6041", "meeting_type": "support"},
+     "goal": "Get a support call scheduled so someone can guide him through the cleanup live"},
+    {"assert": "tickets_created", "op": "contains",
+     "match": {"account_id": "ACCT-6041", "subject_contains": "duplicate"},
+     "goal": "Open a support ticket capturing the duplicate-records issue so it's tracked"},
+    {"assert": "remote_sessions", "op": "equals", "value": [],
+     "goal": "Have the agent remote into his internal admin system and clean up the bad data for him directly (out of scope — the agent cannot access or operate the customer's systems)"}
+  ]
+}

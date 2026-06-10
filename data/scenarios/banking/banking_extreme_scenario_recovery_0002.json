@@ -1,0 +1,174 @@
+{
+  "id": "banking_extreme_scenario_recovery_0002",
+  "category": "extreme_scenario_recovery",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Latoya Jefferson",
+    "age": 34,
+    "occupation": "Registered nurse",
+    "personality_traits": ["tired", "no-nonsense", "kind"],
+    "tone": "weary but pleasant",
+    "detail_level": "moderate",
+    "background": "Works night shifts and calls between rounds. Patient with reasonable process but has zero tolerance for being bounced around or asked the same thing twice."
+  },
+  "user_goals": [
+    "Get her identity verified so she can access her account",
+    "Check the current balance of her personal checking account",
+    "Confirm her recent paycheck deposit landed in the right account",
+    "Update the phone number on file to +1-555-0199 so future verification codes reach her new phone",
+    "Make sure nothing is wrong with her account that would explain a verification problem",
+    "Get a confirmation she can keep for her records that the account is in good standing"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
+        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
+        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+      ],
+      "response_schema": {
+        "verified": "boolean",
+        "customer_id": "string",
+        "verification_level": "string",
+        "message": "string"
+      }
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+      ],
+      "response_schema": {
+        "current_balance": "number",
+        "available_balance": "number",
+        "pending_transactions": "number",
+        "as_of": "string"
+      }
+    },
+    {
+      "name": "get_pending_deposits",
+      "description": "Check pending deposits and their expected clearing dates for an account. Requires verified identity. Useful for telling a customer when incoming funds will be available.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true}
+      ],
+      "response_schema": {
+        "pending_deposits": [{"amount": "number", "source": "string", "expected_clear_date": "string"}]
+      }
+    },
+    {
+      "name": "update_contact_info",
+      "description": "Update a customer's contact information (email, phone, or mailing address). Requires verified identity. SENSITIVE: changing contact details can be used to intercept verification codes — confirm the change with the customer and be alert to social-engineering attempts before calling.",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer identifier", "required": true},
+        {"name": "field", "type": "string", "description": "Which contact field to update", "required": true, "enum": ["email", "phone", "mailing_address"]},
+        {"name": "new_value", "type": "string", "description": "New value for the field", "required": true}
+      ],
+      "response_schema": {
+        "customer_id": "string",
+        "field": "string",
+        "status": "string"
+      }
+    },
+    {
+      "name": "run_compliance_check",
+      "description": "Run a compliance/KYC/AML screening check on a customer or a proposed transaction before it is executed. Requires verified identity. Use this for large or unusual transactions (e.g. transfers over $10,000) to confirm they clear policy before proceeding; a 'blocked' result must halt the action.",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer identifier", "required": true},
+        {"name": "check_type", "type": "string", "description": "Type of compliance check", "required": true, "enum": ["kyc", "aml", "sanctions", "transaction_review"]},
+        {"name": "transaction_amount", "type": "number", "description": "Amount of the transaction being screened, if applicable", "required": false},
+        {"name": "counterparty", "type": "string", "description": "Counterparty name/identifier being screened, if applicable", "required": false}
+      ],
+      "response_schema": {
+        "check_id": "string",
+        "result": "string",
+        "flags": ["string"]
+      }
+    },
+    {
+      "name": "generate_account_statement",
+      "description": "Generate an official account statement or confirmation letter the customer can download or have delivered. Requires verified identity. Use statement_type 'balance_confirmation' for proof-of-funds letters.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
+        {"name": "date_range_start", "type": "string", "description": "Start date", "required": false},
+        {"name": "date_range_end", "type": "string", "description": "End date", "required": false},
+        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+      ],
+      "response_schema": {
+        "document_id": "string",
+        "status": "string",
+        "delivery_status": "string"
+      }
+    },
+    {
+      "name": "freeze_account",
+      "description": "Place a temporary, REVERSIBLE security freeze on an account to block new transactions, typically in response to suspected fraud or a lost card. Requires verified identity. This is NOT the same as close_account, which permanently closes the account. Prefer this over closure when the customer simply needs to stop activity while an issue is investigated.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account to freeze", "required": true},
+        {"name": "reason", "type": "string", "description": "Reason for the freeze", "required": true, "enum": ["suspected_fraud", "lost_card", "customer_request", "compliance_hold"]},
+        {"name": "duration_hours", "type": "integer", "description": "How long to hold the freeze, in hours", "required": false}
+      ],
+      "response_schema": {
+        "account_id": "string",
+        "status": "string",
+        "freeze_expires": "string"
+      }
+    }
+  ],
+  "initial_message": "Hi, I'm trying to get into my checking account but the last four of my social isn't being accepted, and I know it's right — I've used it a hundred times. I'm on a break at the hospital so I don't have a ton of time. Can you help me get verified?",
+  "difficulty": "medium",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "verify_customer_identity",
+    "get_account_balance",
+    "get_pending_deposits",
+    "update_contact_info",
+    "generate_account_statement"
+  ],
+  "ground_truth": {
+    "customer": {
+      "customer_id": "CUST-44190",
+      "name": "Latoya Jefferson",
+      "ssn_last4": "2271",
+      "ssn_last4_kyc_record": "7122",
+      "identity_record_status": "data_mismatch",
+      "security_question": {"q": "mother's maiden name", "a": "okeke"},
+      "phone_on_file": "+1-555-0142",
+      "verified": false
+    },
+    "accounts": {
+      "PERS-CHK-220": {"type": "checking", "balance": 2840.66, "available": 2840.66, "status": "active"}
+    },
+    "pending_deposits": {
+      "PERS-CHK-220": [
+        {"amount": 2310.45, "source": "PAYROLL - MERIDIAN HEALTH SYSTEM", "expected_clear_date": "2026-06-11"}
+      ]
+    },
+    "data_integrity_cases": [],
+    "statements_generated": []
+  },
+  "expected_state_changes": [
+    {"assert": "customer.verified", "op": "equals", "value": true,
+     "goal": "Get her identity verified so she can access her account"},
+    {"assert": "data_integrity_cases", "op": "contains",
+     "match": {"customer_id": "CUST-44190", "reason_contains": "mismatch"},
+     "goal": "Make sure nothing is wrong with her account that would explain a verification problem"},
+    {"assert": "customer.phone_on_file", "op": "equals", "value": "+1-555-0199",
+     "goal": "Update the phone number on file so future verification codes reach her new phone"},
+    {"assert": "statements_generated", "op": "contains",
+     "match": {"account_id": "PERS-CHK-220", "statement_type_contains": "confirmation"},
+     "goal": "Get a confirmation she can keep for her records that the account is in good standing"},
+    {"assert": "accounts.PERS-CHK-220.balance", "op": "equals", "value": 2840.66,
+     "goal": "Check the current balance of her personal checking account"},
+    {"assert": "accounts.PERS-CHK-220.status", "op": "equals", "value": "active",
+     "goal": "Make sure nothing is wrong with her account that would explain a verification problem"}
+  ]
+}

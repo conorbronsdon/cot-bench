@@ -1,0 +1,111 @@
+{
+  "id": "banking_empathetic_resolution_0002",
+  "category": "empathetic_resolution",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Kenji Nakamura",
+    "age": 31,
+    "occupation": "Freelance UX designer",
+    "personality_traits": ["pragmatic", "privacy-conscious", "concise"],
+    "tone": "low-key and efficient",
+    "detail_level": "brief",
+    "background": "Irregular freelance income makes cash flow lumpy. Has been losing money to online sports betting and has decided to take steps to stop. Embarrassed to be asking but wants to put guardrails on his own account before payday hits."
+  },
+  "user_goals": [
+    "Put a self-imposed block on gambling and betting merchant transactions on his checking account",
+    "Set up a low balance alert so he notices when money runs low",
+    "Confirm whether any gambling-related charges have already posted this month",
+    "Get a written confirmation of the restriction he can keep for his records",
+    "Understand that the restriction is something he asked for and not a penalty"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
+        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
+        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+      ]
+    },
+    {
+      "name": "get_transaction_history",
+      "description": "Retrieve transaction history for an account",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
+        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false}
+      ]
+    },
+    {
+      "name": "freeze_account",
+      "description": "Place a temporary, REVERSIBLE security freeze or feature restriction on an account, typically in response to suspected fraud, a lost card, or a customer self-restriction request. This is NOT the same as close_account.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account to freeze or restrict", "required": true},
+        {"name": "reason", "type": "string", "description": "Reason for the freeze", "required": true, "enum": ["suspected_fraud", "lost_card", "customer_request", "compliance_hold"]},
+        {"name": "duration_hours", "type": "integer", "description": "How long to hold the freeze, in hours", "required": false}
+      ]
+    },
+    {
+      "name": "setup_account_alerts",
+      "description": "Configure account alerts and notifications",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "alert_type", "type": "string", "description": "Type: 'low_balance', 'large_transaction', 'deposit', 'withdrawal'", "required": true, "enum": ["low_balance", "large_transaction", "deposit", "withdrawal"]},
+        {"name": "threshold", "type": "number", "description": "Threshold amount for the alert", "required": false},
+        {"name": "notification_method", "type": "string", "description": "Method: 'email', 'sms', 'push', 'all'", "required": true, "enum": ["email", "sms", "push", "all"]}
+      ]
+    },
+    {
+      "name": "generate_account_statement",
+      "description": "Generate an official account statement or confirmation letter",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
+        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+      ]
+    }
+  ],
+  "initial_message": "Hey. I need to lock something down on my checking account before I do something stupid again. I've been gambling money I don't have and I want to stop myself from being able to. Can you help me block that kind of charge?",
+  "difficulty": "easy",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "get_transaction_history",
+    "freeze_account",
+    "setup_account_alerts",
+    "generate_account_statement"
+  ],
+  "ground_truth": {
+    "customer": {"customer_id": "CUST-61204", "name": "Kenji Nakamura", "ssn_last4": "2271", "verified": false},
+    "accounts": {
+      "PERS-CHK-220": {"type": "checking", "balance": 412.18, "available": 412.18, "gambling_block": false}
+    },
+    "transactions": {
+      "PERS-CHK-220": [
+        {"id": "TXN-3310", "date": "2026-06-07", "amount": -150.00, "merchant": "BETLINE WAGERS", "status": "posted"},
+        {"id": "TXN-3309", "date": "2026-06-05", "amount": -75.00, "merchant": "BETLINE WAGERS", "status": "posted"},
+        {"id": "TXN-3308", "date": "2026-06-03", "amount": -41.20, "merchant": "CORNER MARKET", "status": "posted"}
+      ]
+    },
+    "restrictions": {"PERS-CHK-220": []},
+    "alerts": {"PERS-CHK-220": []},
+    "statements_generated": []
+  },
+  "expected_state_changes": [
+    {"assert": "customer.verified", "op": "equals", "value": true,
+     "goal": "Confirm whether any gambling-related charges have already posted this month"},
+    {"assert": "restrictions.PERS-CHK-220", "op": "contains",
+     "match": {"reason": "customer_request"},
+     "goal": "Put a self-imposed block on gambling and betting merchant transactions on his checking account"},
+    {"assert": "alerts.PERS-CHK-220", "op": "contains",
+     "match": {"alert_type": "low_balance"},
+     "goal": "Set up a low balance alert so he notices when money runs low"},
+    {"assert": "statements_generated", "op": "contains",
+     "match": {"account_id": "PERS-CHK-220", "statement_type_contains": "confirmation"},
+     "goal": "Get a written confirmation of the restriction he can keep for his records"}
+  ]
+}

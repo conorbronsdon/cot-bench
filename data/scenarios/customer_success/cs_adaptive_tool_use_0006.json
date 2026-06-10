@@ -1,0 +1,171 @@
+{
+  "id": "cs_adaptive_tool_use_0006",
+  "category": "adaptive_tool_use",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Liam O'Sullivan",
+    "age": 33,
+    "occupation": "Product manager at a logistics analytics company",
+    "personality_traits": ["curious", "demanding", "feature-hungry", "articulate"],
+    "tone": "engaged and assertive",
+    "detail_level": "verbose",
+    "background": "Constantly wants new capabilities and pushes hard for roadmap commitments. Prepping for an upcoming quarterly business review and wants ammunition to take to his leadership. Needs to be redirected to feature-request channels without being brushed off."
+  },
+  "user_goals": [
+    "Get a clear picture of his account's overall health and value story ahead of the QBR",
+    "Pull the usage trend over the last quarter so he can show his leadership the ROI",
+    "Get the actual QBR meeting on the calendar with his CS team",
+    "Find out the status of two support tickets his team filed that are still hanging open",
+    "Get a firm commitment on when a bulk-import API capability will ship"
+  ],
+  "tools": [
+    {
+      "name": "get_account",
+      "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
+      "parameters": [
+        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
+        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+      ],
+      "response_schema": {
+        "account_id": "string",
+        "company": "string",
+        "contact_name": "string",
+        "plan": "string",
+        "renewal_date": "string",
+        "csm_owner": "string"
+      }
+    },
+    {
+      "name": "get_account_health_score",
+      "description": "Retrieve the health score and risk indicators for a customer account.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "include_history", "type": "boolean", "description": "Include historical health scores", "required": false}
+      ],
+      "response_schema": {
+        "health_score": "number",
+        "risk_level": "string",
+        "key_indicators": ["object"],
+        "trend": "string"
+      }
+    },
+    {
+      "name": "get_usage_analytics",
+      "description": "Get product usage metrics for an account or specific users.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "period", "type": "string", "description": "Time period: 'last_7d', 'last_30d', 'last_90d', 'custom'", "required": true},
+        {"name": "group_by", "type": "string", "description": "Group by: 'user', 'feature', 'team', 'day'", "required": false},
+        {"name": "user_ids", "type": "array", "description": "Filter to specific user IDs", "required": false}
+      ],
+      "response_schema": {
+        "period": "string",
+        "active_users": "number",
+        "active_user_change_pct": "number",
+        "feature_usage": ["object"],
+        "trend": "string"
+      }
+    },
+    {
+      "name": "schedule_meeting",
+      "description": "Schedule a meeting between the customer and their CS team.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "meeting_type", "type": "string", "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'", "required": true},
+        {"name": "preferred_dates", "type": "array", "description": "List of preferred date/time slots", "required": true},
+        {"name": "attendees", "type": "array", "description": "Email addresses of attendees", "required": false},
+        {"name": "notes", "type": "string", "description": "Meeting agenda or notes", "required": false}
+      ],
+      "response_schema": {
+        "meeting_id": "string",
+        "account_id": "string",
+        "meeting_type": "string",
+        "scheduled_for": "string"
+      }
+    },
+    {
+      "name": "search_support_tickets",
+      "description": "Search for support tickets by account, status, or keyword. Use this to find an existing ticket's ticket_id before escalating it.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "status", "type": "string", "description": "Status: 'open', 'pending', 'resolved', 'all'", "required": false},
+        {"name": "keyword", "type": "string", "description": "Search keyword", "required": false},
+        {"name": "created_after", "type": "string", "description": "Filter tickets after date", "required": false}
+      ],
+      "response_schema": {
+        "tickets": ["object"],
+        "total_count": "number"
+      }
+    },
+    {
+      "name": "submit_feature_request",
+      "description": "Submit a feature request to the product team. Use this when a customer asks for functionality that does not exist yet; it records the ask and routes it to product. It does not build or promise the feature.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "title", "type": "string", "description": "Feature request title", "required": true},
+        {"name": "description", "type": "string", "description": "Detailed description of the requested feature", "required": true},
+        {"name": "priority", "type": "string", "description": "Priority: 'low', 'medium', 'high', 'critical'", "required": true}
+      ],
+      "response_schema": {
+        "request_id": "string",
+        "status": "string",
+        "submitted_at": "string"
+      }
+    },
+    {
+      "name": "escalate_ticket",
+      "description": "Escalate an EXISTING support ticket to a higher priority or different team. Find the ticket_id with search_support_tickets first. This does not create a new ticket — use create_ticket for a brand-new issue.",
+      "parameters": [
+        {"name": "ticket_id", "type": "string", "description": "Support ticket identifier", "required": true},
+        {"name": "escalation_level", "type": "string", "description": "Level: 'priority', 'engineering', 'management'", "required": true},
+        {"name": "reason", "type": "string", "description": "Reason for escalation", "required": true}
+      ],
+      "response_schema": {
+        "ticket_id": "string",
+        "escalation_level": "string",
+        "escalated_at": "string"
+      }
+    }
+  ],
+  "initial_message": "Hi — I've got a QBR coming up and I want to walk in with a real story for my leadership. Let's start with where our account stands overall, and then I've got a list of things I need from you.",
+  "difficulty": "medium",
+  "expected_tool_sequence": [
+    "get_account",
+    "get_account_health_score",
+    "get_usage_analytics",
+    "schedule_meeting",
+    "search_support_tickets",
+    "submit_feature_request"
+  ],
+  "ground_truth": {
+    "account": {
+      "account_id": "ACCT-8033",
+      "company": "Cargolytic Systems",
+      "contact_name": "Liam O'Sullivan",
+      "plan": "Enterprise",
+      "csm_owner": "Marisol Vega",
+      "renewal_date": "2026-09-15"
+    },
+    "health": {"health_score": 74, "risk_level": "low", "trend": "improving"},
+    "usage_trend": {"period": "last_90d", "direction": "rising", "active_user_change_pct": 19},
+    "tickets": [
+      {"ticket_id": "TCK-9120", "subject": "Webhook retries delayed", "status": "open", "created": "2026-05-30", "category": "bug"},
+      {"ticket_id": "TCK-9155", "subject": "Dashboard timezone off by one hour", "status": "pending", "created": "2026-06-02", "category": "bug"}
+    ],
+    "roadmap_note": "Bulk-import API is not committed; ship dates are owned by product, CS must not promise timelines.",
+    "meetings": [],
+    "feature_requests": []
+  },
+  "expected_state_changes": [
+    {"assert": "meetings", "op": "contains",
+     "match": {"account_id": "ACCT-8033", "meeting_type": "qbr"},
+     "goal": "Get the actual QBR meeting on the calendar with his CS team"},
+    {"assert": "feature_requests", "op": "contains",
+     "match": {"account_id": "ACCT-8033", "title_contains": "bulk-import"},
+     "goal": "Get a firm commitment on when a bulk-import API capability will ship"}
+  ]
+}

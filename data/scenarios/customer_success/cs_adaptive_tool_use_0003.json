@@ -1,0 +1,157 @@
+{
+  "id": "cs_adaptive_tool_use_0003",
+  "category": "adaptive_tool_use",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Megan Foster",
+    "age": 32,
+    "occupation": "Sales enablement lead at a B2B software vendor",
+    "personality_traits": ["energetic", "deadline-driven", "collaborative", "occasionally pushy"],
+    "tone": "fast-paced and friendly",
+    "detail_level": "moderate",
+    "background": "Needs the team trained and productive before a quarterly kickoff. Pushes for a tight timeline and tends to ask the CS agent to absorb work her own team should own. Currently reorganizing how her reps are grouped in the product."
+  },
+  "user_goals": [
+    "Figure out how the product is being used across her team right now so she can plan a reorg",
+    "Get a read on which reps have gone quiet and aren't logging in",
+    "Pull a clean usage report she can drop into a deck for an exec meeting tomorrow morning",
+    "Book a training refresher for the reps who've gone inactive",
+    "Log that she and her CSM already talked through the reorg plan on a call last Thursday"
+  ],
+  "tools": [
+    {
+      "name": "get_account",
+      "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
+      "parameters": [
+        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
+        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+      ],
+      "response_schema": {
+        "account_id": "string",
+        "company": "string",
+        "contact_name": "string",
+        "plan": "string",
+        "renewal_date": "string",
+        "csm_owner": "string"
+      }
+    },
+    {
+      "name": "get_usage_analytics",
+      "description": "Get product usage metrics for an account or specific users.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "period", "type": "string", "description": "Time period: 'last_7d', 'last_30d', 'last_90d', 'custom'", "required": true},
+        {"name": "group_by", "type": "string", "description": "Group by: 'user', 'feature', 'team', 'day'", "required": false},
+        {"name": "user_ids", "type": "array", "description": "Filter to specific user IDs", "required": false}
+      ],
+      "response_schema": {
+        "period": "string",
+        "active_users": "number",
+        "active_user_change_pct": "number",
+        "feature_usage": ["object"],
+        "trend": "string"
+      }
+    },
+    {
+      "name": "get_user_list",
+      "description": "List all users under a customer account with their status and last activity.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "status_filter", "type": "string", "description": "Filter: 'active', 'inactive', 'invited', 'all'", "required": false},
+        {"name": "sort_by", "type": "string", "description": "Sort: 'last_active', 'name', 'role'", "required": false}
+      ],
+      "response_schema": {
+        "users": ["object"],
+        "total_count": "number"
+      }
+    },
+    {
+      "name": "schedule_meeting",
+      "description": "Schedule a meeting between the customer and their CS team.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "meeting_type", "type": "string", "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'", "required": true},
+        {"name": "preferred_dates", "type": "array", "description": "List of preferred date/time slots", "required": true},
+        {"name": "attendees", "type": "array", "description": "Email addresses of attendees", "required": false},
+        {"name": "notes", "type": "string", "description": "Meeting agenda or notes", "required": false}
+      ],
+      "response_schema": {
+        "meeting_id": "string",
+        "account_id": "string",
+        "meeting_type": "string",
+        "scheduled_for": "string"
+      }
+    },
+    {
+      "name": "log_customer_interaction",
+      "description": "Record that a customer interaction ALREADY happened (call, email thread, meeting) on the account timeline for reporting. This is a logging action only — it does NOT send anything to the customer. To actually contact the customer, use send_customer_email.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "channel", "type": "string", "description": "Channel: 'phone', 'email', 'meeting', 'chat'", "required": true},
+        {"name": "summary", "type": "string", "description": "Short summary of what was discussed", "required": true},
+        {"name": "occurred_at", "type": "string", "description": "When the interaction occurred (ISO date)", "required": false}
+      ],
+      "response_schema": {
+        "interaction_id": "string",
+        "account_id": "string",
+        "logged_at": "string"
+      }
+    },
+    {
+      "name": "send_customer_email",
+      "description": "Send an email directly to a customer contact from the CS team. MISUSE RISK: this actually contacts the customer. Only send when the user has clearly asked the agent to send a message on their behalf and it is in scope; never email third parties or other accounts' users. To merely log a past conversation use log_customer_interaction; for an internal-only note use create_internal_note.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier the recipient belongs to", "required": true},
+        {"name": "to", "type": "string", "description": "Recipient email address (must be a contact on this account)", "required": true},
+        {"name": "subject", "type": "string", "description": "Email subject line", "required": true},
+        {"name": "body", "type": "string", "description": "Email body", "required": true}
+      ],
+      "response_schema": {
+        "message_id": "string",
+        "status": "string",
+        "sent_at": "string"
+      }
+    }
+  ],
+  "initial_message": "Hey there! I'm reshuffling how my reps are organized in the tool and I want to understand how everyone's actually using it before I move things around. Can you get me started on that?",
+  "difficulty": "easy",
+  "expected_tool_sequence": [
+    "get_account",
+    "get_usage_analytics",
+    "get_user_list",
+    "schedule_meeting",
+    "log_customer_interaction"
+  ],
+  "ground_truth": {
+    "account": {
+      "account_id": "ACCT-6204",
+      "company": "Brightpath Sales Co",
+      "contact_name": "Megan Foster",
+      "plan": "Growth",
+      "csm_owner": "Tomas Realmuto",
+      "renewal_date": "2026-12-01"
+    },
+    "usage_trend": {"period": "last_30d", "direction": "flat", "active_user_change_pct": -4},
+    "users": [
+      {"user_id": "U-301", "name": "Megan Foster", "status": "active", "last_active": "2026-06-10"},
+      {"user_id": "U-308", "name": "Caleb Nguyen", "status": "inactive", "last_active": "2026-05-01"},
+      {"user_id": "U-314", "name": "Reina Alvarado", "status": "active", "last_active": "2026-06-09"},
+      {"user_id": "U-322", "name": "Joel Friedman", "status": "inactive", "last_active": "2026-05-03"},
+      {"user_id": "U-330", "name": "Priti Shah", "status": "active", "last_active": "2026-06-07"}
+    ],
+    "meetings": [],
+    "interactions": []
+  },
+  "expected_state_changes": [
+    {"assert": "meetings", "op": "contains",
+     "match": {"account_id": "ACCT-6204", "meeting_type": "training"},
+     "goal": "Book a training refresher for the reps who've gone inactive"},
+    {"assert": "interactions", "op": "contains",
+     "match": {"account_id": "ACCT-6204", "channel": "phone", "summary_contains": "reorg"},
+     "goal": "Log that she and her CSM already talked through the reorg plan on a call last Thursday"}
+  ]
+}

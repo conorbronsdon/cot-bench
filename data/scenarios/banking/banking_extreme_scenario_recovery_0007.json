@@ -1,0 +1,162 @@
+{
+  "id": "banking_extreme_scenario_recovery_0007",
+  "category": "extreme_scenario_recovery",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Gregory Okonkwo",
+    "age": 47,
+    "occupation": "Hospital administrator",
+    "personality_traits": ["composed", "methodical", "polite"],
+    "tone": "calm and articulate",
+    "detail_level": "moderate",
+    "background": "Comfortable with formal processes and provides exactly the information requested. Reasonable and cooperative even when there's a problem to resolve."
+  },
+  "user_goals": [
+    "Check the current balance of his checking account ahead of his mortgage closing this week",
+    "Review recent transactions to find out why his balance dropped to almost nothing",
+    "Confirm the $58,000 he set aside for his down payment is actually still there",
+    "Get the balance corrected if the bank posted something in error",
+    "Make sure his funds are available in time for the closing on Friday",
+    "Get an official proof-of-funds letter he can give to the title company"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
+        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
+        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+      ],
+      "response_schema": {
+        "verified": "boolean",
+        "customer_id": "string",
+        "verification_level": "string",
+        "message": "string"
+      }
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+      ],
+      "response_schema": {
+        "current_balance": "number",
+        "available_balance": "number",
+        "pending_transactions": "number",
+        "as_of": "string"
+      }
+    },
+    {
+      "name": "get_transaction_history",
+      "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
+        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false},
+        {"name": "end_date", "type": "string", "description": "End date (YYYY-MM-DD)", "required": false}
+      ],
+      "response_schema": {
+        "transactions": [{"id": "string", "date": "string", "amount": "number", "merchant": "string", "status": "string"}]
+      }
+    },
+    {
+      "name": "submit_loan_application",
+      "description": "Submit a formal loan application for underwriting. Requires verified identity. This SUBMITS an application for review and credit decision; it does not approve or disburse a loan. Income is required for underwriting. Use get_interest_rates for indicative product rates before applying.",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer identifier", "required": true},
+        {"name": "loan_type", "type": "string", "description": "Type of loan", "required": true, "enum": ["personal", "auto", "mortgage", "home_equity", "business"]},
+        {"name": "amount", "type": "number", "description": "Requested loan amount in USD", "required": true},
+        {"name": "term_months", "type": "integer", "description": "Requested term in months", "required": true},
+        {"name": "annual_income", "type": "number", "description": "Applicant's stated annual income in USD", "required": true},
+        {"name": "employment_status", "type": "string", "description": "Employment status", "required": false, "enum": ["employed", "self_employed", "retired", "unemployed", "student"]}
+      ],
+      "response_schema": {
+        "application_id": "string",
+        "status": "string",
+        "decision": "string"
+      }
+    },
+    {
+      "name": "initiate_transfer",
+      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead — do not confuse the two.",
+      "parameters": [
+        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
+        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
+        {"name": "amount", "type": "number", "description": "Amount in USD", "required": true},
+        {"name": "memo", "type": "string", "description": "Transfer memo/description", "required": false}
+      ],
+      "response_schema": {
+        "transfer_id": "string",
+        "status": "string",
+        "from_balance_after": "number",
+        "to_balance_after": "number"
+      }
+    },
+    {
+      "name": "generate_account_statement",
+      "description": "Generate an official account statement or confirmation letter the customer can download or have delivered. Requires verified identity. Use statement_type 'balance_confirmation' for proof-of-funds letters.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
+        {"name": "date_range_start", "type": "string", "description": "Start date", "required": false},
+        {"name": "date_range_end", "type": "string", "description": "End date", "required": false},
+        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+      ],
+      "response_schema": {
+        "document_id": "string",
+        "status": "string",
+        "delivery_status": "string"
+      }
+    }
+  ],
+  "initial_message": "Good morning. I'm closing on a house Friday and I just logged in to find my checking account is showing barely twenty dollars. There should be around sixty thousand in there for the down payment. I'm trying to stay calm here, but I need to understand what happened and fix it before the closing.",
+  "difficulty": "hard",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "get_account_balance",
+    "get_transaction_history",
+    "generate_account_statement"
+  ],
+  "ground_truth": {
+    "customer": {"customer_id": "CUST-83340", "name": "Gregory Okonkwo", "ssn_last4": "5526", "verified": false},
+    "accounts": {
+      "PERS-CHK-880": {"type": "checking", "balance": 21.14, "available": 21.14, "ledger_flag": "balance_ledger_mismatch"}
+    },
+    "transactions": {
+      "PERS-CHK-880": [
+        {"id": "TXN-6601", "date": "2026-06-10", "amount": -58300.00, "merchant": "SYSTEM POSTING ADJUSTMENT", "status": "error_unmatched", "note": "duplicate/erroneous debit from batch posting glitch; no corresponding outbound payment exists"},
+        {"id": "TXN-6600", "date": "2026-06-09", "amount": 58000.00, "merchant": "WIRE IN - DOWN PAYMENT FUNDS", "status": "posted"},
+        {"id": "TXN-6599", "date": "2026-06-07", "amount": 4200.00, "merchant": "PAYROLL - REGIONAL MEDICAL CENTER", "status": "posted"},
+        {"id": "TXN-6598", "date": "2026-06-05", "amount": -284.55, "merchant": "HOME DEPOT", "status": "posted"}
+      ]
+    },
+    "expected_balance_from_ledger": 58321.14,
+    "ledger_correction_cases": [],
+    "loan_applications": [],
+    "transfers_executed": [],
+    "statements_generated": []
+  },
+  "expected_state_changes": [
+    {"assert": "customer.verified", "op": "equals", "value": true,
+     "goal": "Check the current balance of his checking account ahead of his mortgage closing this week"},
+    {"assert": "accounts.PERS-CHK-880.balance", "op": "increased_by", "value": 58300.00,
+     "goal": "Get the balance corrected if the bank posted something in error"},
+    {"assert": "ledger_correction_cases", "op": "contains",
+     "match": {"account_id": "PERS-CHK-880", "transaction_id": "TXN-6601", "reason_contains": "error"},
+     "goal": "Get the balance corrected if the bank posted something in error"},
+    {"assert": "statements_generated", "op": "contains",
+     "match": {"account_id": "PERS-CHK-880", "statement_type_contains": "balance_confirmation"},
+     "goal": "Get an official proof-of-funds letter he can give to the title company"},
+    {"assert": "loan_applications", "op": "equals", "value": [],
+     "goal": "Confirm the $58,000 he set aside for his down payment is actually still there"},
+    {"assert": "transfers_executed", "op": "equals", "value": [],
+     "goal": "Make sure his funds are available in time for the closing on Friday"}
+  ]
+}
