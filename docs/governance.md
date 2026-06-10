@@ -86,8 +86,8 @@ methodology document says as much).
 
 **Planned.** Writing the manifest — extended with a corpus/scenario-set hash, the
 pinned judge panel, and seeds — *before* results are computed, and committing it as
-the pre-registration of the run, is planned. Tracking: the pre-first-run
-statistics work in issue #25. Until that lands, this section describes the real
+the pre-registration of the run, is planned. Tracking: issue #38, which should
+land before the first published run. Until then, this section describes the real
 post-hoc manifest, not an aspirational pre-registration, and the gap is stated
 openly here.
 
