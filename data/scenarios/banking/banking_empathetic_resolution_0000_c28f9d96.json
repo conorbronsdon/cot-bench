@@ -1,0 +1,528 @@
+{
+  "id": "banking_empathetic_resolution_0000_c28f9d96",
+  "category": "empathetic_resolution",
+  "persona": {
+    "name": "Eleanor Whitfield",
+    "age": 74,
+    "occupation": "Retired schoolteacher",
+    "personality_traits": [
+      "confused",
+      "trusting",
+      "easily flustered"
+    ],
+    "tone": "gentle and uncertain, often apologizing",
+    "detail_level": "verbose",
+    "background": "Widowed and recently started managing finances on her own. Struggles with online banking and frequently mixes up her account types and what a 'transfer' versus a 'payment' means."
+  },
+  "user_goals": [
+    "Find out when my teacher's pension check will clear because I need to pay the monument company.",
+    "Tell me exactly how much money is in my checking and savings accounts.",
+    "Move $200 from my savings into my checking account so I'm not overdrawn anymore.",
+    "Get the $45 overdraft fee waived since I didn't realize I had gone negative.",
+    "Set up a monthly recurring transfer of $300 from savings to checking so I don't fall behind on bills again.",
+    "Set up a low balance alert on my checking account when it drops below $150.",
+    "Help me understand the unfamiliar $39.99 and $45 charges on my checking account."
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
+      "parameters": [
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
+      ],
+      "response_schema": {
+        "verified": "boolean",
+        "customer_id": "string",
+        "verification_level": "string",
+        "message": "string"
+      }
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
+      ],
+      "response_schema": {
+        "current_balance": "number",
+        "available_balance": "number",
+        "pending_transactions": "number",
+        "as_of": "string"
+      }
+    },
+    {
+      "name": "get_transaction_history",
+      "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        },
+        {
+          "name": "end_date",
+          "type": "string",
+          "description": "End date (YYYY-MM-DD)",
+          "required": false
+        }
+      ],
+      "response_schema": {
+        "transactions": [
+          {
+            "id": "string",
+            "date": "string",
+            "amount": "number",
+            "merchant": "string",
+            "status": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_pending_deposits",
+      "description": "Check pending deposits and their expected clearing dates for an account. Requires verified identity. Useful for telling a customer when incoming funds will be available.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        }
+      ],
+      "response_schema": {
+        "pending_deposits": [
+          {
+            "amount": "number",
+            "source": "string",
+            "expected_clear_date": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "initiate_transfer",
+      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead \u2014 do not confuse the two.",
+      "parameters": [
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount in USD",
+          "required": true
+        },
+        {
+          "name": "memo",
+          "type": "string",
+          "description": "Transfer memo/description",
+          "required": false
+        }
+      ],
+      "response_schema": {
+        "transfer_id": "string",
+        "status": "string",
+        "from_balance_after": "number",
+        "to_balance_after": "number"
+      }
+    },
+    {
+      "name": "setup_recurring_transfer",
+      "description": "Set up a recurring automatic transfer on a schedule (daily/weekly/biweekly/monthly). Requires verified identity. This does NOT move money immediately; it schedules future transfers. For a single immediate move use initiate_transfer.",
+      "parameters": [
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount per transfer in USD",
+          "required": true
+        },
+        {
+          "name": "frequency",
+          "type": "string",
+          "description": "Frequency: 'daily', 'weekly', 'biweekly', 'monthly'",
+          "required": true,
+          "enum": [
+            "daily",
+            "weekly",
+            "biweekly",
+            "monthly"
+          ]
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "First transfer date (YYYY-MM-DD)",
+          "required": true
+        }
+      ],
+      "response_schema": {
+        "schedule_id": "string",
+        "status": "string",
+        "next_transfer_date": "string"
+      }
+    },
+    {
+      "name": "get_fee_history",
+      "description": "Retrieve fees charged to an account, optionally filtered by fee type and look-back period. Requires verified identity. Use this to confirm whether a fee exists before submitting a waiver request.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "fee_type",
+          "type": "string",
+          "description": "Type: 'overdraft', 'maintenance', 'wire', 'all'",
+          "required": false,
+          "enum": [
+            "overdraft",
+            "maintenance",
+            "wire",
+            "all"
+          ]
+        },
+        {
+          "name": "period_months",
+          "type": "integer",
+          "description": "Look back period in months",
+          "required": false
+        }
+      ],
+      "response_schema": {
+        "fees": [
+          {
+            "id": "string",
+            "type": "string",
+            "amount": "number",
+            "date": "string",
+            "waived": "boolean"
+          }
+        ]
+      }
+    },
+    {
+      "name": "request_fee_waiver",
+      "description": "Submit a request to waive a specific fee. Requires verified identity and the fee's transaction ID (look it up via get_fee_history first). This SUBMITS a request for review; it does not itself guarantee or apply the waiver \u2014 approval is decided by the bank.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "fee_transaction_id",
+          "type": "string",
+          "description": "Transaction ID of the fee",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Reason for waiver request",
+          "required": true
+        }
+      ],
+      "response_schema": {
+        "request_id": "string",
+        "status": "string",
+        "waiver_approved": "boolean",
+        "message": "string"
+      }
+    },
+    {
+      "name": "setup_account_alerts",
+      "description": "Configure account alerts and notifications (low balance, large transaction, deposit, withdrawal). Requires verified identity. Threshold is required for threshold-based alert types such as low_balance and large_transaction.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "alert_type",
+          "type": "string",
+          "description": "Type: 'low_balance', 'large_transaction', 'deposit', 'withdrawal'",
+          "required": true,
+          "enum": [
+            "low_balance",
+            "large_transaction",
+            "deposit",
+            "withdrawal"
+          ]
+        },
+        {
+          "name": "threshold",
+          "type": "number",
+          "description": "Threshold amount for the alert",
+          "required": false
+        },
+        {
+          "name": "notification_method",
+          "type": "string",
+          "description": "Method: 'email', 'sms', 'push', 'all'",
+          "required": true,
+          "enum": [
+            "email",
+            "sms",
+            "push",
+            "all"
+          ]
+        }
+      ],
+      "response_schema": {
+        "alert_id": "string",
+        "status": "string"
+      }
+    }
+  ],
+  "initial_message": "Oh, hello... I'm so sorry to bother you. My name is Eleanor Whitfield. My husband Harold always managed our banking, and since he passed I've been trying to handle things myself, but I'm afraid I've made a muddle of it all. I checked what I think is my checking account \u2014 the one we used for bills \u2014 and I saw some charges that frightened me. There's a $39.99 charge from something called 'Streamflix' that I don't recognize at all, and another for $45 that just says 'BANK_FEE.' I don't think I authorized either of those. And the balance looks all wrong, like it's below zero somehow? I have my teacher's pension coming, but I'm not sure when it will be available, and the monument company called about Harold's headstone installment. I tried to use the computer to move money from our savings \u2014 our 'rainy day' account \u2014 but I got so confused between a transfer and a payment that I'm not sure I did anything at all. Could you please help me sort this out? I just need to make sure I'm not overdrawn and that I can pay the monument man. I'm so sorry, I know I'm probably not making much sense...",
+  "difficulty": "hard",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "get_account_balance",
+    "get_transaction_history",
+    "get_pending_deposits",
+    "get_fee_history",
+    "request_fee_waiver",
+    "initiate_transfer",
+    "setup_recurring_transfer",
+    "setup_account_alerts"
+  ],
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "moonshotai/kimi-k2.6",
+    "author_run": "2026-06-10-kimi-batch",
+    "human_reviewed_by": null,
+    "review_date": null
+  },
+  "ground_truth": {
+    "customer": {
+      "customer_id": "CUST-EW-7392",
+      "ssn_last4": "8842",
+      "verified": false
+    },
+    "accounts": {
+      "CHK-7392-01": {
+        "type": "checking",
+        "balance": -62.49,
+        "available": -62.49
+      },
+      "SAV-7392-02": {
+        "type": "savings",
+        "balance": 5600.0,
+        "interest_rate_apy": 0.035
+      }
+    },
+    "pending_deposits": {
+      "CHK-7392-01": [
+        {
+          "amount": 1850.0,
+          "source": "State Teachers Retirement System",
+          "expected_clearing_date": "2026-07-02"
+        }
+      ]
+    },
+    "transactions": {
+      "CHK-7392-01": [
+        {
+          "id": "TXN-8842-08",
+          "date": "2026-06-29",
+          "amount": -45.0,
+          "merchant": "BANK_FEE",
+          "description": "Overdraft fee",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8842-07",
+          "date": "2026-06-29",
+          "amount": -72.5,
+          "merchant": "SAFEWAY #1204",
+          "description": "Groceries",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8842-06",
+          "date": "2026-06-29",
+          "amount": -39.99,
+          "merchant": "STREAMFLIX_ENT",
+          "description": "Streaming subscription",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8842-05",
+          "date": "2026-06-28",
+          "amount": -350.0,
+          "merchant": "MONUMENTAL_STONEWORKS",
+          "description": "Headstone installment",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8842-04",
+          "date": "2026-06-27",
+          "amount": -1450.0,
+          "merchant": "WILLOWBROOK_APTS",
+          "description": "Monthly rent",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8842-03",
+          "date": "2026-06-26",
+          "amount": -120.0,
+          "merchant": "GREEN_VALLEY_PHARMACY",
+          "description": "Prescription refill",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8842-02",
+          "date": "2026-06-25",
+          "amount": -85.0,
+          "merchant": "COMCAST_CABLE",
+          "description": "Cable/Internet",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8842-01",
+          "date": "2026-06-24",
+          "amount": 2100.0,
+          "merchant": "DIRECT_DEPOSIT",
+          "description": "Teachers pension",
+          "status": "posted"
+        }
+      ]
+    },
+    "fee_history": {
+      "CHK-7392-01": [
+        {
+          "fee_transaction_id": "FEE-8842-01",
+          "amount": -45.0,
+          "type": "overdraft",
+          "date": "2026-06-29",
+          "description": "Overdraft fee"
+        }
+      ]
+    },
+    "recurring_transfers": [],
+    "account_alerts": [],
+    "fraud_cases": [],
+    "fee_waiver_requests": []
+  },
+  "expected_state_changes": [
+    {
+      "assert": "accounts.CHK-7392-01.balance",
+      "op": "increased_by",
+      "value": 200.0,
+      "goal": "Move $200 from my savings into my checking account so I'm not overdrawn anymore."
+    },
+    {
+      "assert": "accounts.SAV-7392-02.balance",
+      "op": "decreased_by",
+      "value": 200.0
+    },
+    {
+      "assert": "fee_waiver_requests",
+      "op": "contains",
+      "match": {
+        "account_id": "CHK-7392-01",
+        "fee_transaction_id": "FEE-8842-01"
+      },
+      "goal": "Get the $45 overdraft fee waived since I didn't realize I had gone negative."
+    },
+    {
+      "assert": "recurring_transfers",
+      "op": "contains",
+      "match": {
+        "from_account_id": "SAV-7392-02",
+        "to_account_id": "CHK-7392-01",
+        "amount": 300,
+        "frequency": "monthly"
+      },
+      "goal": "Set up a monthly recurring transfer of $300 from savings to checking so I don't fall behind on bills again."
+    },
+    {
+      "assert": "account_alerts",
+      "op": "contains",
+      "match": {
+        "account_id": "CHK-7392-01",
+        "alert_type": "low_balance",
+        "threshold": 150
+      },
+      "goal": "Set up a low balance alert on my checking account when it drops below $150."
+    }
+  ]
+}

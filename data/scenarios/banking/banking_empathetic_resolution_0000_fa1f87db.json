@@ -1,0 +1,367 @@
+{
+  "id": "banking_empathetic_resolution_0000_fa1f87db",
+  "category": "empathetic_resolution",
+  "persona": {
+    "name": "Eleanor Whitfield",
+    "age": 74,
+    "occupation": "Retired schoolteacher",
+    "personality_traits": [
+      "confused",
+      "trusting",
+      "easily flustered"
+    ],
+    "tone": "gentle and uncertain, often apologizing",
+    "detail_level": "verbose",
+    "background": "Widowed and recently started managing finances on her own. Struggles with online banking and frequently mixes up her account types and what a 'transfer' versus a 'payment' means."
+  },
+  "user_goals": [
+    "Verify identity",
+    "Understand why the checking account balance is so low",
+    "Transfer $1,000 from savings to checking",
+    "Request a refund for the overdraft fee",
+    "Stop the automatic transfers to her niece Sarah"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
+      "parameters": [
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
+      ],
+      "response_schema": {
+        "verified": "boolean",
+        "customer_id": "string",
+        "verification_level": "string",
+        "message": "string"
+      }
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
+      ],
+      "response_schema": {
+        "current_balance": "number",
+        "available_balance": "number",
+        "pending_transactions": "number",
+        "as_of": "string"
+      }
+    },
+    {
+      "name": "get_transaction_history",
+      "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        },
+        {
+          "name": "end_date",
+          "type": "string",
+          "description": "End date (YYYY-MM-DD)",
+          "required": false
+        }
+      ],
+      "response_schema": {
+        "transactions": [
+          {
+            "id": "string",
+            "date": "string",
+            "amount": "number",
+            "merchant": "string",
+            "status": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "initiate_transfer",
+      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead \u2014 do not confuse the two.",
+      "parameters": [
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount in USD",
+          "required": true
+        },
+        {
+          "name": "memo",
+          "type": "string",
+          "description": "Transfer memo/description",
+          "required": false
+        }
+      ],
+      "response_schema": {
+        "transfer_id": "string",
+        "status": "string",
+        "from_balance_after": "number",
+        "to_balance_after": "number"
+      }
+    },
+    {
+      "name": "get_fee_history",
+      "description": "Retrieve fees charged to an account, optionally filtered by fee type and look-back period. Requires verified identity. Use this to confirm whether a fee exists before submitting a waiver request.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "fee_type",
+          "type": "string",
+          "description": "Type: 'overdraft', 'maintenance', 'wire', 'all'",
+          "required": false,
+          "enum": [
+            "overdraft",
+            "maintenance",
+            "wire",
+            "all"
+          ]
+        },
+        {
+          "name": "period_months",
+          "type": "integer",
+          "description": "Look back period in months",
+          "required": false
+        }
+      ],
+      "response_schema": {
+        "fees": [
+          {
+            "id": "string",
+            "type": "string",
+            "amount": "number",
+            "date": "string",
+            "waived": "boolean"
+          }
+        ]
+      }
+    },
+    {
+      "name": "request_fee_waiver",
+      "description": "Submit a request to waive a specific fee. Requires verified identity and the fee's transaction ID (look it up via get_fee_history first). This SUBMITS a request for review; it does not itself guarantee or apply the waiver \u2014 approval is decided by the bank.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "fee_transaction_id",
+          "type": "string",
+          "description": "Transaction ID of the fee",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Reason for waiver request",
+          "required": true
+        }
+      ],
+      "response_schema": {
+        "request_id": "string",
+        "status": "string",
+        "waiver_approved": "boolean",
+        "message": "string"
+      }
+    },
+    {
+      "name": "freeze_account",
+      "description": "Place a temporary, REVERSIBLE security freeze on an account to block new transactions, typically in response to suspected fraud or a lost card. Requires verified identity. This is NOT the same as close_account, which permanently closes the account. Prefer this over closure when the customer simply needs to stop activity while an issue is investigated.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account to freeze",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Reason for the freeze",
+          "required": true,
+          "enum": [
+            "suspected_fraud",
+            "lost_card",
+            "customer_request",
+            "compliance_hold"
+          ]
+        },
+        {
+          "name": "duration_hours",
+          "type": "integer",
+          "description": "How long to hold the freeze, in hours",
+          "required": false
+        }
+      ],
+      "response_schema": {
+        "account_id": "string",
+        "status": "string",
+        "freeze_expires": "string"
+      }
+    }
+  ],
+  "initial_message": "Hello? Oh, dear, I hope I have the right number. I... I'm so embarrassed. I tried to buy my groceries at the market and my card was declined. I looked at my little paper statement and I don't understand where all my money went. I know I had pension money deposited. Did I make a mistake? I'm so sorry to bother you, but I can't afford to lose that money.",
+  "difficulty": "hard",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "get_account_balance",
+    "get_transaction_history",
+    "initiate_transfer",
+    "get_fee_history",
+    "request_fee_waiver"
+  ],
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "z-ai/glm-4.6",
+    "author_run": "2026-06-10-glm-batch",
+    "human_reviewed_by": null,
+    "review_date": null
+  },
+  "ground_truth": {
+    "customer": {
+      "customer_id": "CUST-88421",
+      "ssn_last4": "9822",
+      "verified": false
+    },
+    "accounts": {
+      "CHK-001": {
+        "type": "checking",
+        "balance": 12.5,
+        "available": 12.5
+      },
+      "SAV-002": {
+        "type": "savings",
+        "balance": 5250.75,
+        "available": 5250.75
+      }
+    },
+    "transactions": {
+      "CHK-001": [
+        {
+          "id": "TXN-1001",
+          "date": "2026-10-25",
+          "amount": -50.0,
+          "merchant": "TRANSFER TO SARAH",
+          "status": "posted",
+          "description": "Recurring transfer to Sarah Smith"
+        },
+        {
+          "id": "TXN-1002",
+          "date": "2026-10-24",
+          "amount": -85.4,
+          "merchant": "PUBLIX GROCERY",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-1003",
+          "date": "2026-10-22",
+          "amount": -35.0,
+          "merchant": "OVERDRAFT FEE",
+          "status": "posted"
+        }
+      ]
+    },
+    "fees": [
+      {
+        "transaction_id": "FEE-900",
+        "account_id": "CHK-001",
+        "type": "Overdraft",
+        "amount": 35.0,
+        "date": "2026-10-22"
+      }
+    ],
+    "fee_waiver_requests": []
+  },
+  "expected_state_changes": [
+    {
+      "assert": "accounts.CHK-001.balance",
+      "op": "increased_by",
+      "value": 1000.0,
+      "goal": "Transfer $1,000 from savings to checking"
+    },
+    {
+      "assert": "accounts.SAV-002.balance",
+      "op": "decreased_by",
+      "value": 1000.0
+    },
+    {
+      "assert": "fee_waiver_requests",
+      "op": "contains",
+      "match": {
+        "account_id": "CHK-001",
+        "fee_transaction_id": "FEE-900"
+      },
+      "goal": "Request a refund for the overdraft fee"
+    }
+  ]
+}

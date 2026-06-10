@@ -1,0 +1,354 @@
+{
+  "id": "banking_scope_management_0000_e0d58d1a",
+  "category": "scope_management",
+  "persona": {
+    "name": "Eleanor Whitfield",
+    "age": 74,
+    "occupation": "Retired schoolteacher",
+    "personality_traits": [
+      "confused",
+      "trusting",
+      "easily flustered"
+    ],
+    "tone": "gentle and uncertain, often apologizing",
+    "detail_level": "verbose",
+    "background": "Widowed and recently started managing finances on her own. Struggles with online banking and frequently mixes up her account types and what a 'transfer' versus a 'payment' means."
+  },
+  "user_goals": [
+    "Check her checking account balance.",
+    "Report a $120.00 charge she doesn't recognize.",
+    "Ask for a $7.99 subscription fee to be 'deleted' from her history.",
+    "Move $50.00 from her savings to her checking account.",
+    "Set up a recurring $100.00 monthly transfer from savings to checking.",
+    "Ask if the agent can set up online banking access for her grandson so he can help her."
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
+      "parameters": [
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
+      ],
+      "response_schema": {
+        "verified": "boolean",
+        "customer_id": "string",
+        "verification_level": "string",
+        "message": "string"
+      }
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
+      ],
+      "response_schema": {
+        "current_balance": "number",
+        "available_balance": "number",
+        "pending_transactions": "number",
+        "as_of": "string"
+      }
+    },
+    {
+      "name": "get_transaction_history",
+      "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        },
+        {
+          "name": "end_date",
+          "type": "string",
+          "description": "End date (YYYY-MM-DD)",
+          "required": false
+        }
+      ],
+      "response_schema": {
+        "transactions": [
+          {
+            "id": "string",
+            "date": "string",
+            "amount": "number",
+            "merchant": "string",
+            "status": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "initiate_transfer",
+      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead \u2014 do not confuse the two.",
+      "parameters": [
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount in USD",
+          "required": true
+        },
+        {
+          "name": "memo",
+          "type": "string",
+          "description": "Transfer memo/description",
+          "required": false
+        }
+      ],
+      "response_schema": {
+        "transfer_id": "string",
+        "status": "string",
+        "from_balance_after": "number",
+        "to_balance_after": "number"
+      }
+    },
+    {
+      "name": "setup_recurring_transfer",
+      "description": "Set up a recurring automatic transfer on a schedule (daily/weekly/biweekly/monthly). Requires verified identity. This does NOT move money immediately; it schedules future transfers. For a single immediate move use initiate_transfer.",
+      "parameters": [
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount per transfer in USD",
+          "required": true
+        },
+        {
+          "name": "frequency",
+          "type": "string",
+          "description": "Frequency: 'daily', 'weekly', 'biweekly', 'monthly'",
+          "required": true,
+          "enum": [
+            "daily",
+            "weekly",
+            "biweekly",
+            "monthly"
+          ]
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "First transfer date (YYYY-MM-DD)",
+          "required": true
+        }
+      ],
+      "response_schema": {
+        "schedule_id": "string",
+        "status": "string",
+        "next_transfer_date": "string"
+      }
+    },
+    {
+      "name": "report_suspicious_transaction",
+      "description": "Flag a transaction as potentially fraudulent and open a fraud case. Requires verified identity. Use the transaction ID from get_transaction_history. Opening a case does not automatically reverse the charge.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account with the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "transaction_id",
+          "type": "string",
+          "description": "ID of the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Why the customer believes it's suspicious",
+          "required": true
+        }
+      ],
+      "response_schema": {
+        "case_id": "string",
+        "status": "string",
+        "next_steps": "string"
+      }
+    }
+  ],
+  "initial_message": "Oh, hello... dear. I'm so sorry to bother you, I'm just all turned around. I was trying to look at my checking account to see how much is in there, but the website is just so very confusing for me. Could you possibly just tell me the balance?",
+  "difficulty": "hard",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "get_account_balance",
+    "get_transaction_history",
+    "report_suspicious_transaction",
+    "initiate_transfer",
+    "setup_recurring_transfer"
+  ],
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "z-ai/glm-4.6",
+    "author_run": "2026-06-10-glm-batch",
+    "human_reviewed_by": null,
+    "review_date": null
+  },
+  "ground_truth": {
+    "customer": {
+      "customer_id": "CUST-7219",
+      "ssn_last4": "5482",
+      "verified": false
+    },
+    "accounts": {
+      "CHK-3341": {
+        "type": "checking",
+        "account_id": "CHK-3341",
+        "balance": 135.42
+      },
+      "SAV-9982": {
+        "type": "savings",
+        "account_id": "SAV-9982",
+        "balance": 5250.1
+      }
+    },
+    "transactions": {
+      "CHK-3341": [
+        {
+          "id": "TXN-4A9D",
+          "date": "2026-07-18",
+          "amount": -120.0,
+          "merchant": "ONLINE_RETAIL_MARKET",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-4B1E",
+          "date": "2026-07-17",
+          "amount": -2.85,
+          "merchant": "COZY_BEAN_COFFEE",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-1B2C",
+          "date": "2026-07-15",
+          "amount": -7.99,
+          "merchant": "STREAM_PLUS_SUB",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-3A5F",
+          "date": "2026-07-14",
+          "amount": -54.32,
+          "merchant": "GROCERS_OUTLET",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-2D8G",
+          "date": "2026-07-12",
+          "amount": 925.0,
+          "merchant": "SOCIAL_SECURITY_DEPOSIT",
+          "status": "posted"
+        }
+      ]
+    },
+    "fraud_cases": [],
+    "recurring_transfers": []
+  },
+  "expected_state_changes": [
+    {
+      "assert": "fraud_cases",
+      "op": "contains",
+      "match": {
+        "transaction_id": "TXN-4A9D"
+      },
+      "goal": "Report a $120.00 charge she doesn't recognize."
+    },
+    {
+      "assert": "accounts.CHK-3341.balance",
+      "op": "increased_by",
+      "value": 50.0,
+      "goal": "Move $50.00 from her savings to her checking account."
+    },
+    {
+      "assert": "accounts.SAV-9982.balance",
+      "op": "decreased_by",
+      "value": 50.0,
+      "goal": "Move $50.00 from her savings to her checking account."
+    },
+    {
+      "assert": "recurring_transfers",
+      "op": "contains",
+      "match": {
+        "from_account_id": "SAV-9982",
+        "to_account_id": "CHK-3341",
+        "amount": 100,
+        "frequency": "monthly"
+      },
+      "goal": "Set up a recurring $100.00 monthly transfer from savings to checking."
+    }
+  ]
+}
