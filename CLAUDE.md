@@ -5,8 +5,8 @@ Open agent evaluation leaderboard. Part of the Chain of Thought brand.
 ## Architecture
 - `eval/` — core evaluation pipeline (config, scoring, simulation, providers, tracing)
 - `data/` — domains, scenarios (generated JSON), results (parquet/csv)
-- `scripts/` — CLI entry points (run_eval, generate_data, aggregate_results, validate_scenarios)
-- `docs/` — methodology, contributing guide
+- `scripts/` — CLI entry points (run_eval, generate_data, aggregate_results, validate_scenarios, calibration, preflight)
+- `docs/` — methodology, governance, contributing, first-run, expert-review, roadmap, scenario-schema
 - `.github/workflows/` — CI, weekly eval runs, GitHub Pages deploy
 - `frontend/` — static leaderboard UI (deployed to GitHub Pages)
 - `tests/` — tests covering scoring, parsing, config, validation
