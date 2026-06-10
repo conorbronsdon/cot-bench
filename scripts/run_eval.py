@@ -60,15 +60,20 @@ def load_scenarios(domain: Domain) -> list[Scenario]:
 
 
 def format_transcript(turns) -> str:
-    """Format conversation turns into a readable transcript for judges."""
+    """Format conversation turns into a readable transcript for judges.
+
+    Turns are emitted in true conversational order:
+    user -> agent (with tool calls) -> tool result(s) -> agent follow-up -> ...
+    Tool-call requests are shown on the agent turn that issued them; tool results
+    appear as their own TOOL turns immediately after, so judges read calls before
+    their results.
+    """
     lines = []
     for t in turns:
         prefix = {"user": "USER", "agent": "AGENT", "tool": "TOOL"}.get(t.role, t.role.upper())
         lines.append(f"[Turn {t.turn_number} - {prefix}]: {t.content}")
         for tc in t.tool_calls:
             lines.append(f"  -> Tool Call: {tc.tool_name}({json.dumps(tc.arguments)})")
-            if tc.result:
-                lines.append(f"  <- Tool Result: {tc.result[:500]}")
     return "\n".join(lines)
 
 
