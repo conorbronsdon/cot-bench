@@ -144,6 +144,20 @@ Cost and latency are inverted because lower is better. When only one model is ev
 
 Because the min-max normalization is relative to the set of models in the run, adding or removing a model rescales every other model's normalized dimensions and therefore changes every CLEAR score. CLEAR scores are only comparable within a single run. To compare a model across runs, use its per-dimension raw scores (efficacy, reliability, cost, latency) rather than the composite.
 
+### Uncertainty
+
+Every published dimension carries a 95% confidence interval, and the leaderboard refuses to publish below a minimum scenario count. With few scenarios, model orderings are dominated by sampling noise rather than real capability differences — an honest board has to say so.
+
+**Bootstrap over scenarios.** We estimate uncertainty with the nonparametric bootstrap: **B = 2000** replicates, fixed seed **42** for reproducibility. The unit of resampling is the **scenario**, not the individual row. All runs of a scenario share the same task and persona, so their scores are correlated; resampling rows would treat correlated repeats as independent draws and understate the true uncertainty. Each replicate draws a sample of scenario IDs with replacement (keeping every run/row of a resampled scenario) and recomputes the per-model means. The 2.5th and 97.5th percentiles of the replicate distribution give each model's `ci_low` / `ci_high`. We publish CIs for **efficacy** and the **CLEAR composite** (`efficacy_ci`, `clear_score_ci`).
+
+**Paired normalization.** Because the CLEAR composite is *field-relative* (min-max normalized across the evaluated models), its uncertainty must include normalization variance, not just the variance of each raw dimension. So the **same** resampled set of scenario IDs is applied to every model within a replicate (a *paired* bootstrap), and the full min-max normalization plus weighted composite is recomputed inside each replicate across all models. This keeps the field consistent per replicate and propagates normalization variance into the CLEAR interval.
+
+**Rank bands.** Orderings are only meaningful where intervals separate. We cluster models into rank bands by CLEAR-score CI overlap using a simple greedy algorithm: walk the models sorted by CLEAR descending; the current band's leader is the highest unbanded model; every following model whose `clear_score_ci` overlaps the leader's joins that band; the first model that does *not* overlap starts a new band. Models within a band are not statistically distinguishable from one another, and the frontend marks them with a tied rank (`1=`). The leaderboard JSON also carries a top-level `statistical_note` stating the scenario count and the band caveat.
+
+**Publish minimum.** A leaderboard does not publish at all when any evaluated domain has fewer than **`MIN_SCENARIOS_FOR_PUBLISH` = 30** scenarios (see [`eval/config.py`](../eval/config.py)). The publish gate ([`scripts/check_publish_ready.py`](../scripts/check_publish_ready.py)) enforces this alongside the run-completeness check; `--allow-partial` downgrades it to a warning for deliberate previews. The project is scaling toward ~80 scenarios; the gate keeps the current state honest in the meantime.
+
+Edge cases are handled without crashing: a single scenario produces a degenerate (zero-width) CI equal to the point estimate, and a single-model run skips cross-model normalization so its CLEAR CI mirrors its efficacy CI.
+
 ## Design Decisions
 
 ### Why synthetic scenarios instead of real conversations?

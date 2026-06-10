@@ -32,7 +32,7 @@ From the [Chain of Thought](https://chainofthought.show/) podcast. Open-weight j
 
 ## Latest Results
 
-> Results will appear here after the first evaluation run. See the [live leaderboard](https://conorbronsdon.github.io/cot-bench) for interactive results.
+> Results will appear here after the first evaluation run. See the [live leaderboard](https://conorbronsdon.github.io/cot-bench) for interactive results. Every score publishes with a 95% bootstrap confidence interval, models whose intervals overlap share a rank band (their ordering is not statistically distinguishable), and the board does not publish below a 30-scenario-per-domain minimum.
 
 | Rank | Model | CLEAR Score | Efficacy | $/Task | Reliability | Latency |
 |------|-------|-------------|----------|--------|-------------|---------|

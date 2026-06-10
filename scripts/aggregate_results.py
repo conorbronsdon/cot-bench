@@ -9,12 +9,196 @@ import json
 import logging
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+
+from eval.config import MIN_SCENARIOS_FOR_PUBLISH
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 RESULTS_DIR = Path("data/results")
+
+# --- Bootstrap configuration ---
+# Confidence intervals are estimated by resampling SCENARIOS (not individual
+# rows) with replacement. The scenario is the exchangeable unit here: all runs
+# of a scenario share the same task and persona, so their scores are correlated
+# and must move together under resampling — resampling rows would understate
+# uncertainty by treating correlated repeats as independent draws. See the
+# "Uncertainty" subsection of docs/methodology.md.
+BOOTSTRAP_REPLICATES = 2000
+BOOTSTRAP_SEED = 42  # fixed for reproducible CIs across runs
+CI_LOW_PCT = 2.5
+CI_HIGH_PCT = 97.5
+
+# CLEAR composite weights (kept in one place so the point estimate and each
+# bootstrap replicate normalize + weight identically).
+CLEAR_WEIGHTS = {
+    "efficacy": 0.35,
+    "reliability": 0.25,
+    "cost_per_task": 0.20,  # inverted (lower is better)
+    "avg_latency_ms": 0.20,  # inverted (lower is better)
+}
+
+
+def _min_max_norm(values: np.ndarray, invert: bool = False) -> np.ndarray:
+    """Min-max normalize a 1-D array across models; degenerate range -> 0.5.
+
+    Guards division by zero: when every model has the same value (or there is a
+    single model) the range is 0 and we return 0.5 for all, matching the
+    point-estimate path. ``invert`` flips the scale for lower-is-better dims.
+    """
+    vmin = float(np.min(values))
+    vmax = float(np.max(values))
+    rng = vmax - vmin
+    if rng <= 0:
+        return np.full(values.shape, 0.5)
+    norm = (values - vmin) / rng
+    if invert:
+        norm = 1.0 - norm
+    return norm
+
+
+def _clear_from_means(
+    efficacy: np.ndarray,
+    reliability: np.ndarray,
+    cost: np.ndarray,
+    latency: np.ndarray,
+) -> np.ndarray:
+    """Field-relative CLEAR composite from per-model mean dimensions.
+
+    Normalization is across the supplied set of models, so the composite (and
+    therefore its bootstrap uncertainty) reflects normalization variance, not
+    just the variance of each raw dimension. Used for both the point estimate
+    and every bootstrap replicate so they are computed by exactly one code path.
+    """
+    eff_n = _min_max_norm(efficacy)
+    rel_n = _min_max_norm(reliability)
+    cost_n = _min_max_norm(cost, invert=True)
+    lat_n = _min_max_norm(latency, invert=True)
+    return (
+        eff_n * CLEAR_WEIGHTS["efficacy"]
+        + rel_n * CLEAR_WEIGHTS["reliability"]
+        + cost_n * CLEAR_WEIGHTS["cost_per_task"]
+        + lat_n * CLEAR_WEIGHTS["avg_latency_ms"]
+    )
+
+
+def compute_bootstrap_cis(df: pd.DataFrame, models: list[str]) -> dict:
+    """Paired scenario-bootstrap CIs for per-model efficacy and CLEAR score.
+
+    Returns ``{model: {"efficacy_ci": [lo, hi], "clear_score_ci": [lo, hi]}}``.
+
+    A single set of resampled scenario ids is drawn per replicate and applied to
+    every model (a *paired* bootstrap), so the field — and thus the min-max
+    normalization underlying CLEAR — is consistent within each replicate. Edge
+    cases: a single scenario yields a degenerate (zero-width) CI equal to the
+    point estimate rather than crashing; a single model skips CLEAR normalization
+    (its CLEAR CI mirrors efficacy, matching compute_leaderboard's 1-model path).
+    """
+    scenario_ids = df["scenario_id"].unique()
+    n_scenarios = len(scenario_ids)
+    rng = np.random.default_rng(BOOTSTRAP_SEED)
+
+    # Pre-split rows by (model, scenario) so each replicate is cheap index math.
+    # mean_by[model] maps scenario_id -> per-dimension means over that scenario's
+    # rows (all runs); resampling then just averages the selected scenarios.
+    dims = ["efficacy", "reliability_pass_rate", "cost_usd", "latency_ms"]
+    mean_by: dict[str, pd.DataFrame] = {}
+    for model in models:
+        mdf = df[df["model"] == model]
+        # mean per dimension within each scenario (collapses runs)
+        per_scenario = mdf.groupby("scenario_id")[dims].mean()
+        # reindex to the full scenario universe so every model aligns by id;
+        # missing scenarios for a model become NaN and are nan-averaged out.
+        mean_by[model] = per_scenario.reindex(scenario_ids)
+
+    single_model = len(models) < 2
+
+    eff_samples: dict[str, list[float]] = {m: [] for m in models}
+    clear_samples: dict[str, list[float]] = {m: [] for m in models}
+
+    for _ in range(BOOTSTRAP_REPLICATES):
+        # Resample scenario POSITIONS with replacement; same draw for all models.
+        idx = rng.integers(0, n_scenarios, size=n_scenarios)
+
+        eff_means = np.empty(len(models))
+        rel_means = np.empty(len(models))
+        cost_means = np.empty(len(models))
+        lat_means = np.empty(len(models))
+
+        for j, model in enumerate(models):
+            sampled = mean_by[model].to_numpy()[idx]  # (n_scenarios, 4)
+            # nanmean: a model missing some scenarios still aggregates cleanly.
+            with np.errstate(invalid="ignore"):
+                col_means = np.nanmean(sampled, axis=0)
+            eff_means[j], rel_means[j], cost_means[j], lat_means[j] = col_means
+            eff_samples[model].append(float(col_means[0]))
+
+        if single_model:
+            # No cross-model normalization possible; CLEAR == efficacy.
+            clear_samples[models[0]].append(eff_means[0])
+        else:
+            clear_vals = _clear_from_means(eff_means, rel_means, cost_means, lat_means)
+            for j, model in enumerate(models):
+                clear_samples[model].append(float(clear_vals[j]))
+
+    out = {}
+    for model in models:
+        eff_arr = np.asarray(eff_samples[model], dtype=float)
+        clr_arr = np.asarray(clear_samples[model], dtype=float)
+        out[model] = {
+            "efficacy_ci": _percentile_ci(eff_arr),
+            "clear_score_ci": _percentile_ci(clr_arr),
+        }
+    return out
+
+
+def _percentile_ci(samples: np.ndarray) -> list:
+    """2.5/97.5 percentile CI; nan-safe, returns [lo, hi] rounded to 4 dp.
+
+    With one scenario every replicate is identical, so the percentiles collapse
+    to the point estimate (zero-width CI) rather than producing spurious spread.
+    """
+    clean = samples[~np.isnan(samples)]
+    if clean.size == 0:
+        return [None, None]
+    lo = float(np.percentile(clean, CI_LOW_PCT))
+    hi = float(np.percentile(clean, CI_HIGH_PCT))
+    return [round(lo, 4), round(hi, 4)]
+
+
+def assign_rank_bands(models: list[dict]) -> None:
+    """Cluster models into rank bands by clear_score CI overlap (in place).
+
+    Greedy algorithm over models pre-sorted by clear_score descending:
+
+      1. The current band leader is the highest-scoring model not yet banded.
+      2. Every subsequent model whose clear_score_ci OVERLAPS the leader's
+         clear_score_ci joins the leader's band (their ordering is not
+         statistically distinguishable from the leader's).
+      3. The first model that does NOT overlap the current leader's CI starts a
+         new band and becomes its leader. Repeat.
+
+    Two intervals [a_lo, a_hi] and [b_lo, b_hi] overlap when a_lo <= b_hi and
+    b_lo <= a_hi. Models lacking a clear_score_ci (e.g. degenerate inputs) fall
+    back to their own band. Writes ``rank_band`` (1-based) onto each entry.
+    """
+    band = 0
+    leader_ci = None
+    for m in models:
+        ci = m.get("clear_score_ci")
+        if leader_ci is None or ci is None or not _intervals_overlap(leader_ci, ci):
+            band += 1
+            leader_ci = ci
+        m["rank_band"] = band
+
+
+def _intervals_overlap(a: list, b: list) -> bool:
+    """True when closed intervals a=[lo,hi] and b=[lo,hi] intersect."""
+    if a is None or b is None or a[0] is None or b[0] is None:
+        return False
+    return a[0] <= b[1] and b[0] <= a[1]
 
 
 def _round_or_none(value, ndigits):
@@ -68,8 +252,10 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
             cost_per_task=("cost_usd", "mean"),
             avg_latency_ms=("latency_ms", "mean"),
             reliability=("reliability_pass_rate", "mean"),
+            reliability_consistency=("reliability_consistency", "mean"),
             avg_turns=("total_turns", "mean"),
             total_scenarios=("scenario_id", "nunique"),
+            total_rows=("scenario_id", "size"),
             judge_agreement_tc=("tc_agreement", "mean"),
             judge_agreement_ts=("ts_agreement", "mean"),
         )
@@ -100,6 +286,10 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
         overall["clear_score"] = overall["efficacy"]
 
     overall = overall.sort_values("clear_score", ascending=False)
+
+    # Bootstrap confidence intervals (scenario-resampling, paired across models)
+    model_order = overall["model"].tolist()
+    bootstrap_cis = compute_bootstrap_cis(df, model_order)
 
     # Per-domain breakdown
     domain_scores = {}
@@ -151,23 +341,52 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
     }
 
     for _, row in overall.iterrows():
+        cis = bootstrap_cis.get(row["model"], {})
         model_entry = {
             "name": row["model"],
             "clear_score": round(row["clear_score"], 4),
+            "clear_score_ci": cis.get("clear_score_ci", [None, None]),
             "efficacy": round(row["efficacy"], 4),
+            "efficacy_ci": cis.get("efficacy_ci", [None, None]),
             "task_completion": round(row["task_completion"], 4),
             "tool_selection": round(row["tool_selection"], 4),
             "cost_per_task_usd": round(row["cost_per_task"], 6),
             "avg_latency_ms": round(row["avg_latency_ms"], 1),
             "reliability": round(row["reliability"], 4),
+            "reliability_consistency": _round_or_none(row["reliability_consistency"], 4),
             "avg_turns": round(row["avg_turns"], 1),
             "scenarios_evaluated": int(row["total_scenarios"]),
+            "n_scenarios": int(row["total_scenarios"]),
+            "n_rows": int(row["total_rows"]),
             "judge_agreement": {
                 "task_completion": _round_or_none(row["judge_agreement_tc"], 4),
                 "tool_selection": _round_or_none(row["judge_agreement_ts"], 4),
             },
         }
         leaderboard["models"].append(model_entry)
+
+    # Rank bands: cluster models whose clear_score CIs overlap so the frontend
+    # can show that orderings within a band are not statistically distinguishable.
+    assign_rank_bands(leaderboard["models"])
+
+    # Top-level note stating the scenario count and the band caveat. Uses the
+    # max per-model scenario count as the field's scenario depth.
+    max_scenarios = max((m["n_scenarios"] for m in leaderboard["models"]), default=0)
+    n_bands = max((m["rank_band"] for m in leaderboard["models"]), default=0)
+    note = (
+        f"Scores are means over {max_scenarios} scenario(s) with 95% bootstrap "
+        f"confidence intervals (B={BOOTSTRAP_REPLICATES} resamples over scenarios, "
+        f"seed {BOOTSTRAP_SEED}). Models sharing a rank band have overlapping CLEAR "
+        "intervals; their ordering within a band is not statistically distinguishable."
+    )
+    if max_scenarios < MIN_SCENARIOS_FOR_PUBLISH:
+        note += (
+            f" NOTE: only {max_scenarios} scenario(s) evaluated — below the "
+            f"{MIN_SCENARIOS_FOR_PUBLISH}-scenario publish minimum; treat all "
+            "orderings as provisional."
+        )
+    leaderboard["statistical_note"] = note
+    leaderboard["n_rank_bands"] = n_bands
 
     return leaderboard
 
