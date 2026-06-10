@@ -13,11 +13,36 @@ import numpy as np
 import pandas as pd
 
 from eval.config import MIN_SCENARIOS_FOR_PUBLISH
+from eval.providers.null_agent import NULL_AGENT_NAME
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 RESULTS_DIR = Path("data/results")
+
+
+def exclude_non_contestants(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop rows that must never appear on the published leaderboard.
+
+    The deterministic do-nothing ``null-agent`` is an anti-gaming *validation*
+    contestant (it is run on request to confirm the bench scores a do-nothing
+    agent near zero), not a ranked model. It is excluded here — at the single
+    aggregation entry point — so it can never leak onto the leaderboard, history,
+    CSV, or bootstrap/rank-band math regardless of how the run was invoked. The
+    match is case-insensitive on the model name.
+    """
+    if df.empty or "model" not in df.columns:
+        return df
+    keep = df["model"].astype(str).str.lower() != NULL_AGENT_NAME.lower()
+    dropped = int((~keep).sum())
+    if dropped:
+        logger.info(
+            "Excluding %d row(s) for non-contestant '%s' from the leaderboard.",
+            dropped,
+            NULL_AGENT_NAME,
+        )
+    return df[keep]
+
 
 # --- Bootstrap configuration ---
 # Confidence intervals are estimated by resampling SCENARIOS (not individual
@@ -298,6 +323,9 @@ def compute_same_lab_check(df: pd.DataFrame, judge_columns: list[str]) -> dict:
 
 def compute_leaderboard(df: pd.DataFrame) -> dict:
     """Compute leaderboard rankings from raw results."""
+    # Strip non-contestants (e.g. the do-nothing null-agent) before any
+    # aggregation so they never appear on the board or skew normalization.
+    df = exclude_non_contestants(df)
     if df.empty:
         return {"models": [], "updated": "", "domains": []}
 
