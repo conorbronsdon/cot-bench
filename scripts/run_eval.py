@@ -12,12 +12,19 @@ import pandas as pd
 
 from eval.artifacts import write_run_artifact
 from eval.config import (
+    DEFAULT_SIMULATION,
     JUDGES,
     MODELS_UNDER_TEST,
     NULL_AGENT_MODEL,
     RELIABILITY_RUNS,
     TOKEN_COSTS,
     Domain,
+)
+from eval.pre_registration import (
+    PRE_REGISTRATION_FILENAME,
+    build_pre_registration,
+    file_sha256,
+    write_pre_registration,
 )
 from eval.providers.null_agent import NULL_AGENT_NAME
 from eval.providers.registry import ModelSpec
@@ -38,6 +45,7 @@ from eval.tracing import (
     trace_agent_turn,
     trace_judge_evaluation,
 )
+from scripts.aggregate_results import BOOTSTRAP_SEED
 
 # Default directory (relative to the output parquet's parent) that holds
 # per-run artifact subtrees: data/results/artifacts/{run_id}/...
@@ -594,6 +602,32 @@ def main():
             NULL_AGENT_NAME,
         )
 
+    # Pre-registration (issue #38): commit the run's definition to disk BEFORE
+    # the first agent/simulator/judge call. This is what makes it a real
+    # pre-registration rather than the post-hoc run_manifest.json below — the
+    # run's models, exact scenario set (corpus sha256), judge panel, and
+    # seeds/temps are fixed on disk before any number is known, so the maintainer
+    # cannot retroactively choose which run "counts". The post-run manifest links
+    # back to this file by path + hash. Agent under test runs at ModelSpec's
+    # default temperature (0.0); simulator temps come from DEFAULT_SIMULATION.
+    pre_registration = build_pre_registration(
+        run_id=run_id,
+        models=models,
+        scenarios_by_domain=scenarios_by_domain,
+        judges=JUDGES,
+        judge_keys=args.judges,
+        reliability_runs=args.reliability_runs,
+        bootstrap_seed=BOOTSTRAP_SEED,
+        agent_temperature=ModelSpec.temperature,
+        user_simulator_temperature=DEFAULT_SIMULATION.user_simulator_temperature,
+        tool_simulator_temperature=DEFAULT_SIMULATION.tool_simulator_temperature,
+        separate_judge_calls=args.separate_judge_calls,
+        artifacts_dir=(str(Path(artifacts_root) / run_id) if artifacts_root else None),
+        trace_dir=str(trace_dir),
+    )
+    pre_registration_path = write_pre_registration(results_dir, pre_registration)
+    logger.info("Pre-registration written to %s (before any model call)", pre_registration_path)
+
     # Run models in parallel
     all_results = []
     failed_models: list[str] = []
@@ -653,6 +687,17 @@ def main():
             d.value: len(scenarios) for d, scenarios in scenarios_by_domain.items()
         },
         "reliability_runs": args.reliability_runs,
+        # Link the completion record back to the pre-registration written before
+        # any model call (issue #38), so the pair is verifiable: the path and a
+        # sha256 of the exact pre-registration file. The corpus_sha256 is lifted
+        # from the pre-registration so the scenario set a run committed to is
+        # visible in the manifest too.
+        "pre_registration": {
+            "file": PRE_REGISTRATION_FILENAME,
+            "path": str(pre_registration_path),
+            "sha256": file_sha256(pre_registration_path),
+            "corpus_sha256": pre_registration["scenario_set"]["sha256"],
+        },
     }
     manifest_path = output_path.parent / "run_manifest.json"
     with open(manifest_path, "w") as f:

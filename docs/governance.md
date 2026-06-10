@@ -62,34 +62,57 @@ after seeing results, which run "counts." The honest version of this commits the
 run's definition — the models under test, the exact scenario set, the judge panel,
 and any seeds — to the record **before** results are computed.
 
-**Current mechanism (partial).** Today `scripts/run_eval.py` writes
-`run_manifest.json` *after* the run completes (it records `run_id`, the models
-requested / completed / failed, the domains and per-domain scenario counts, the
-reliability-run count, and the artifact and trace directories). That manifest is
-genuinely useful for auditing what a run contained, and the publish gate
-(`scripts/check_publish_ready.py`) reads its `models_failed` field to block a
-leaderboard commit that would silently ship missing models. But because it is
-written post-hoc, it is an *after-the-fact record*, not a pre-registration: it
-does not, on its own, prove the run's definition was fixed before the numbers were
-known. It also does not yet capture a scenario-set hash, the judge panel, or run
-seeds — the fields a true pre-registration needs.
+**Mechanism (implemented, issue #38).** `scripts/run_eval.py` writes a
+pre-registration file, `pre_registration.json`, to the results directory **before
+the first agent, simulator, or judge call** — before any number is known. The
+write is a single function, `write_pre_registration` (in
+`eval/pre_registration.py`), called at the top of the run after the scenario set
+and model roster are resolved and before the evaluation loop starts; a test
+(`tests/test_pre_registration.py::TestWrittenBeforeRun`) asserts the file exists
+on disk at the moment the first model is dispatched, so the ordering is enforced,
+not merely intended. Because the definition is fixed on disk ahead of the results,
+the maintainer cannot retroactively choose which run "counts."
 
-What pinning does exist today is partial and worth stating precisely. Each
-scenario's ID embeds an 8-character content hash of the scenario JSON
-(`scripts/generate_data.py`), so individual scenario contents are tamper-evident,
-but there is no committed corpus-level hash over the whole scenario set. The
-aggregation bootstrap uses a fixed seed (`BOOTSTRAP_SEED = 42` in
-`scripts/aggregate_results.py`) for reproducible confidence intervals; the agent
-under test runs at temperature 0.0, while the user and tool simulators run at
-temperature > 0 and are not seeded, so runs are not bit-for-bit reproducible (the
-methodology document says as much).
+The pre-registration records:
 
-**Planned.** Writing the manifest — extended with a corpus/scenario-set hash, the
-pinned judge panel, and seeds — *before* results are computed, and committing it as
-the pre-registration of the run, is planned. Tracking: issue #38, which should
-land before the first published run. Until then, this section describes the real
-post-hoc manifest, not an aspirational pre-registration, and the gap is stated
-openly here.
+- **Run identity** — `run_id` and a UTC `timestamp` (when the pre-registration
+  was written).
+- **Models under test** — the *requested* roster (name, model_id, provider).
+  Requested only: which models *complete* is a post-run fact and stays in the
+  completion record.
+- **Scenario set** — the domains, the per-domain scenario IDs, and a
+  corpus-level **`sha256` over the canonical serialized scenario set**. Each
+  scenario is re-serialized with sorted keys, the per-scenario digests are sorted
+  by scenario ID, and they are folded into one corpus digest — so the hash is
+  deterministic and independent of on-disk file order or whitespace. A
+  `scenario_index` (id → content sha256) is included so an auditor can recompute
+  it. Any change to any scenario's content, or adding/removing a scenario,
+  changes the corpus hash. This is the corpus-level hash the per-scenario ID
+  fragments (`scripts/generate_data.py`) did not previously provide.
+- **Judge panel** — the configured judges (name + configured `model_id` +
+  provider + temperature). `resolved_model` — the model a provider *actually
+  served* — is deliberately **not** pre-registered: it is only knowable at call
+  time and is recorded per call in the post-run artifacts (see §2). The
+  pre-registration commits to the panel *as configured*, which is what is fixable
+  in advance.
+- **Reliability-run count** and **seeds / temperatures** — the bootstrap seed
+  (`BOOTSTRAP_SEED = 42`, `scripts/aggregate_results.py`), the agent temperature
+  (0.0), and the user/tool simulator temperatures. The record states explicitly
+  that the user and tool simulators run **unseeded** and that the user simulator
+  runs at temperature > 0, so runs are **not bit-for-bit reproducible** — the
+  honest caveat is part of the artifact, not a footnote elsewhere.
+- **Judge-prompt mode** — combined single-prompt (default) or the legacy
+  separate-prompt path.
+
+**Completion record.** The existing `run_manifest.json` remains the post-run
+completion record (it records the models requested / completed / failed, domains,
+per-domain scenario counts, the reliability-run count, and the artifact and trace
+directories; the publish gate, `scripts/check_publish_ready.py`, reads its
+`models_failed` field to block a leaderboard commit that would silently ship
+missing models). It now carries a `pre_registration` block linking back to the
+pre-registration by **path and sha256** (plus the corpus hash), so the two files
+are a verifiable pair: anyone can confirm that the run's definition fixed before
+the run matches the one the completion record points at.
 
 ## 4. Contamination policy
 
