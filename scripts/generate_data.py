@@ -15,6 +15,7 @@ import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
+from difflib import SequenceMatcher
 from pathlib import Path
 from threading import Lock
 
@@ -22,7 +23,13 @@ from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
 from eval.config import MODELS_UNDER_TEST
-from scripts.validate_scenarios import validate_scenario_dict
+from scripts.validate_scenarios import (
+    DEDUP_HARD_THRESHOLD,
+    GOAL_JACCARD_HARD_THRESHOLD,
+    _comparison_string,
+    _goal_set,
+    validate_scenario_dict,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -30,9 +37,9 @@ logger = logging.getLogger(__name__)
 # Default author. Was "gpt-4.1", but GPT-4.1 is now a contestant (the legacy
 # cross-generation anchor in MODELS_UNDER_TEST), so the family-aware guard below
 # blocks it — a contestant must never author its own exam. Default switched to
-# "claude-opus" (anthropic/claude-opus-4.6), which is on neither the contestant
-# list (the Anthropic contestant is claude-opus-4-8) nor matched by the prefix
-# guard, and is a capable scenario author.
+# "claude-opus" (anthropic/claude-opus-4.8), which is deliberately kept off the
+# contestant roster because it authored the v0.2 corpus — the canonical clean
+# author.
 GENERATION_MODEL = "claude-opus"
 
 # --- Author registry: friendly name -> {model_id, provider} ---
@@ -600,7 +607,12 @@ def generate_scenario(
     label = f"{domain}_{category}_{index}"
 
     def _bump(key: str) -> None:
-        if stats is not None:
+        if stats is None:
+            return
+        increment = getattr(stats, "increment", None)
+        if increment is not None:
+            increment(key)  # atomic under the _Counters lock
+        else:  # plain dict (single-threaded callers / tests)
             stats[key] = stats.get(key, 0) + 1
 
     _bump("attempted")
@@ -741,11 +753,16 @@ class _Counters:
         return self.get(key)
 
     def __setitem__(self, key: str, value: int) -> None:
-        # generate_scenario only ever does stats[k] = stats.get(k, 0) + 1, so a
-        # set is the back half of an increment — make the whole thing atomic by
-        # locking here too (the get above and this set both take the lock).
+        # NOT sufficient for increments: get() and this each lock separately, so
+        # a read-modify-write through them can interleave across threads. Workers
+        # must use increment(), which holds the lock across the whole operation.
         with self._lock:
             self._d[key] = value
+
+    def increment(self, key: str) -> None:
+        """Atomically add 1 to ``key`` — the only safe increment under threads."""
+        with self._lock:
+            self._d[key] = self._d.get(key, 0) + 1
 
     def as_dict(self) -> dict[str, int]:
         with self._lock:
@@ -799,6 +816,61 @@ def generate_scenarios(
 
     logger.info("Generated %d total scenarios for %s", len(scenarios), domain)
     return scenarios
+
+
+def filter_near_duplicates(
+    candidates: list[dict],
+    scenario_dir: Path,
+    stats: "_Counters | None" = None,
+) -> list[dict]:
+    """Drop new scenarios that would hard-collide with the corpus or each other.
+
+    Applies exactly the HARD rules of ``validate_scenarios.dedup_check`` (same
+    comparison string, same goal-set Jaccard, same thresholds) to each candidate
+    against the on-disk corpus in ``scenario_dir`` plus the candidates already
+    accepted in this batch. Without this, a batch can pass per-scenario
+    validation here and then abort the downstream CI dedup backstop — the exact
+    whole-run-exits-1 failure class issue #36 removed. Dropped candidates are
+    counted as discarded.
+    """
+    pool: list[tuple[str, str, set[str]]] = []
+    for path in sorted(scenario_dir.glob("*.json")):
+        try:
+            with open(path) as f:
+                existing = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            continue
+        pool.append((path.name, _comparison_string(existing), _goal_set(existing)))
+
+    kept: list[dict] = []
+    for scenario in candidates:
+        name = f"{scenario['id']}.json"
+        cmp_s = _comparison_string(scenario)
+        goals = _goal_set(scenario)
+        collision = None
+        for other_name, other_cmp, other_goals in pool:
+            ratio = SequenceMatcher(None, cmp_s, other_cmp).ratio()
+            if ratio >= DEDUP_HARD_THRESHOLD:
+                collision = f"near-duplicate of {other_name} (similarity {ratio:.2f})"
+                break
+            if goals and other_goals:
+                union = len(goals | other_goals)
+                jaccard = len(goals & other_goals) / union if union else 0.0
+                if jaccard >= GOAL_JACCARD_HARD_THRESHOLD:
+                    collision = f"goal-set overlap with {other_name} (Jaccard {jaccard:.2f})"
+                    break
+        if collision:
+            logger.warning("Discarding %s: %s", name, collision)
+            if stats is not None:
+                increment = getattr(stats, "increment", None)
+                if increment is not None:
+                    increment("discarded")
+                else:
+                    stats["discarded"] = stats.get("discarded", 0) + 1
+            continue
+        kept.append(scenario)
+        pool.append((name, cmp_s, goals))
+    return kept
 
 
 def main():
@@ -882,6 +954,11 @@ def main():
         temperature=args.temperature,
         stats=stats,
     )
+
+    # Dedup against the existing corpus (and within the batch) BEFORE writing,
+    # using the same hard rules as the CI backstop — so the backstop genuinely
+    # always passes on our output instead of aborting the run on a near-dupe.
+    scenarios = filter_near_duplicates(scenarios, scenario_dir, stats=stats)
 
     # Partial yield: write whatever valid scenarios we produced. A subset of
     # failed scenarios must NOT cost the whole run — we persist the good ones and

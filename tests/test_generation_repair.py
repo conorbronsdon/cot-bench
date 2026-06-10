@@ -304,3 +304,109 @@ class TestPartialYield:
         assert "attempted" in text
         assert "repaired" in text
         assert "discarded" in text
+
+
+# --- Review fixes: atomic counters + generation-side dedup (PR #43 review) ---
+
+
+class TestCountersAtomicity:
+    def test_concurrent_increments_lose_nothing(self):
+        """8 threads x 2000 increments must total exactly 16000.
+
+        The review reproduced ~86% lost updates with the get/set pair (each
+        locking separately); increment() holds the lock across the whole
+        read-modify-write.
+        """
+        import threading
+
+        counters = generate_data._Counters()
+
+        def worker():
+            for _ in range(2000):
+                counters.increment("attempted")
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert counters.as_dict()["attempted"] == 16000
+
+    def test_bump_uses_increment_when_available(self):
+        """generate_scenario's _bump path goes through the atomic increment."""
+        counters = generate_data._Counters()
+        increments = []
+        original = counters.increment
+        counters.increment = lambda key: (increments.append(key), original(key))
+        with mock.patch.object(generate_data, "_call_author") as call:
+            call.return_value = None  # empty completion -> discarded, no repair
+            result = generate_data.generate_scenario(
+                "customer_success",
+                "adaptive_tool_use",
+                PERSONA,
+                TOOLS,
+                0,
+                author=AUTHOR,
+                stats=counters,
+            )
+        assert result is None
+        assert "attempted" in increments
+        assert "discarded" in increments
+
+
+class TestGenerationSideDedup:
+    def _scenario(self, goals, background):
+        gt = {
+            "support_tickets": [
+                {"ticket_id": "LOGCORP-001", "status": "open"},
+            ]
+        }
+        esc = [
+            {
+                "path": "support_tickets",
+                "op": "contains",
+                "value_contains": {"ticket_id": "LOGCORP-001", "status": "escalated"},
+            }
+        ]
+        s = _base_scenario(esc, gt)
+        s["user_goals"] = list(goals)
+        s["persona"] = dict(PERSONA, background=background)
+        return s
+
+    def test_candidate_colliding_with_corpus_dropped(self, tmp_path):
+        existing = self._scenario(USER_GOALS, "Runs logistics for a mid-size firm.")
+        existing["id"] = "existing_0001"
+        (tmp_path / "existing_0001.json").write_text(json.dumps(existing))
+
+        clone = self._scenario(USER_GOALS, "Runs logistics for a mid-size firm.")
+        clone["id"] = "clone_0002"
+
+        counters = generate_data._Counters()
+        kept = generate_data.filter_near_duplicates([clone], tmp_path, stats=counters)
+        assert kept == []
+        assert counters.as_dict()["discarded"] == 1
+
+    def test_within_batch_collision_keeps_first_only(self, tmp_path):
+        a = self._scenario(USER_GOALS, "Runs logistics for a mid-size firm.")
+        a["id"] = "batch_a"
+        b = self._scenario(USER_GOALS, "Runs logistics for a mid-size firm.")
+        b["id"] = "batch_b"
+
+        kept = generate_data.filter_near_duplicates([a, b], tmp_path)
+        assert [s["id"] for s in kept] == ["batch_a"]
+
+    def test_distinct_candidates_kept(self, tmp_path):
+        a = self._scenario(USER_GOALS, "Runs logistics for a mid-size firm.")
+        a["id"] = "distinct_a"
+        b = self._scenario(
+            [
+                "Dispute a duplicate charge on invoice INV-9904",
+                "Request a refund to the original payment method",
+                "Get written confirmation of the refund timeline",
+            ],
+            "Freelance designer who bills clients through the platform.",
+        )
+        b["id"] = "distinct_b"
+
+        kept = generate_data.filter_near_duplicates([a, b], tmp_path)
+        assert [s["id"] for s in kept] == ["distinct_a", "distinct_b"]
