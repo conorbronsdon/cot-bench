@@ -7,11 +7,10 @@ Prioritized improvements informed by analysis of leading leaderboards (HuggingFa
 **Goal:** Run the first real evaluation and publish results.
 
 - [ ] Generate scenarios at scale (20 per category × 5 categories × 2 domains = 200 scenarios)
-- [ ] Run first evaluation with Opus-only judging (no GPU needed)
-- [ ] Set up GPU access for MAX judge models (Lambda Labs / Vast.ai)
-- [ ] Run full 3-judge evaluation
+- [ ] Run a smoke eval (1 model, 1 scenario) to validate the pipeline end to end
+- [ ] Run full 3-judge evaluation (Kimi K2.6 + GLM-4.6 + Opus, all hosted — no GPU)
 - [ ] Publish first leaderboard results
-- [ ] Enable GitHub Pages deployment
+- [x] Enable GitHub Pages deployment
 
 ## v0.3 — Evaluation Quality
 

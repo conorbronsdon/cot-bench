@@ -132,14 +132,14 @@ Real conversation data is hard to obtain, contains PII, and can't be shared open
 
 ### Why three judges instead of one?
 
-A single judge introduces systematic bias. Using three judges from different training paradigms (Qwen, DeepSeek, Claude) means:
+A single judge introduces systematic bias. Using three judges from different labs (Moonshot's Kimi, Zhipu's GLM, Anthropic's Claude) means:
 - Shared biases are less likely to go undetected
 - Agreement rate is itself a useful metric
 - Individual scores let users weight judges by their own trust preferences
 
-### Why open-source judges on MAX?
+### Why these judges?
 
-If GPT-4o judges GPT-4o, there's an inherent conflict of interest. Running open-source judges on neutral infrastructure (Modular MAX) eliminates vendor bias in scoring.
+Two principles. First, **no judge is also a model under test** — if a model graded itself the conflict of interest would be structural, so judges are drawn only from models that aren't on the leaderboard (an earlier panel violated this with Qwen3-235B and DeepSeek-V3 judging while also competing). Second, **lab diversity**: two open-weight judges from different labs plus one frontier reference means a disagreement signals genuine ambiguity rather than a shared blind spot. Open judges run through OpenRouter (OpenAI-compatible), so the full panel needs no GPU or self-hosted inference.
 
 ### Why CLEAR weights of 35/25/20/20?
 

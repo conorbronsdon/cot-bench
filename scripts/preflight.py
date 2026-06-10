@@ -47,10 +47,8 @@ def main():
     key_checks = {
         "OPENAI_API_KEY": "Required — user/tool simulators + OpenAI models",
         "ANTHROPIC_API_KEY": "Required for Opus judge + Anthropic models",
+        "OPENROUTER_API_KEY": "Required for open judges (Kimi, GLM) + open models under test",
         "GOOGLE_API_KEY": "Optional — only for Gemini models",
-        "DEEPSEEK_API_KEY": "Optional — only for DeepSeek models via API",
-        "TOGETHER_API_KEY": "Optional — only for Llama 4 Maverick",
-        "MISTRAL_API_KEY": "Optional — only for Mistral Large",
     }
     for key, desc in key_checks.items():
         val = os.environ.get(key, "")

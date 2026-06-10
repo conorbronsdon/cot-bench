@@ -9,7 +9,7 @@ class TestRegistry:
             "openai",
             "anthropic",
             "google",
-            "max",
+            "openrouter",
             "deepseek",
             "qwen",
             "together",

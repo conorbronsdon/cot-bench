@@ -18,30 +18,27 @@ on:
 jobs:
   evaluate:
     runs-on: ubuntu-latest
-    # Self-hosted runner with GPU recommended for MAX judge models
-    # runs-on: [self-hosted, gpu]
     timeout-minutes: 360
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
-      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-      QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
 
     steps:
       # Fail fast with a one-line diagnosis when the run can't possibly work.
-      # The GHA path runs `--judges opus`, so the hard requirements are
-      # OPENAI_API_KEY (user/tool simulators) and ANTHROPIC_API_KEY (judge).
-      # Without this gate, a key-less run used to burn the whole job and die
-      # at the final `git add` with a pathspec error that said nothing.
+      # All three judges now run over hosted APIs (Kimi/GLM via OpenRouter,
+      # Opus via Anthropic) and the simulators need OpenAI — so those three
+      # keys are the hard requirements. Without this gate, a key-less run used
+      # to burn the whole job and die at the final `git add` with a pathspec
+      # error that said nothing.
       - name: Check required secrets
         run: |
           missing=""
           [ -z "$OPENAI_API_KEY" ] && missing="$missing OPENAI_API_KEY"
           [ -z "$ANTHROPIC_API_KEY" ] && missing="$missing ANTHROPIC_API_KEY"
+          [ -z "$OPENROUTER_API_KEY" ] && missing="$missing OPENROUTER_API_KEY"
           if [ -n "$missing" ]; then
             echo "::error::Missing required repo secrets:$missing — the weekly eval cannot run. Add them under Settings → Secrets and variables → Actions."
             exit 1
@@ -60,24 +57,14 @@ jobs:
       - name: Pre-flight check
         run: python -m scripts.preflight
 
-      # TODO: Install and start MAX for open-source judges
-      # For now, run with frontier judge only on GitHub Actions
-      # MAX judges require GPU runners
-      # - name: Install Modular MAX
-      #   run: |
-      #     pip install modular --index https://whl.modular.com/nightly/simple/ --prerelease allow
-      # - name: Start MAX judge servers
-      #   run: |
-      #     max serve --model Qwen/Qwen3-235B --port 8010 &
-      #     max serve --model deepseek-ai/DeepSeek-V3-0324 --port 8011 &
-      #     python -c "from infra.max_serve import wait_for_server; wait_for_server(8010); wait_for_server(8011)"
-
       - name: Run evaluation
         run: |
           DOMAINS="${{ github.event.inputs.domains || 'banking customer_success' }}"
           MODELS="${{ github.event.inputs.models }}"
 
-          ARGS="--domains $DOMAINS --judges opus"
+          # All three judges run on hosted APIs (no GPU). Pass --models via the
+          # workflow_dispatch 'models' input for a cheaper subset smoke run.
+          ARGS="--domains $DOMAINS"
           if [ -n "$MODELS" ]; then
             ARGS="$ARGS --models $MODELS"
           fi
