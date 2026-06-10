@@ -1,0 +1,63 @@
+% COT Bench: methods paper scaffold.
+% Compiles with a standard TeX Live install (article + common packages).
+% See paper/README.md for build instructions (latexmk or Overleaf).
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{authblk}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=blue
+}
+
+% TODO macro: bracketed, red, for headline numbers awaiting the eval run.
+% Every placeholder in this paper is wrapped in \TODO so a grep finds them all.
+\newcommand{\TODO}[1]{{\color{red}[TODO: #1]}}
+
+\title{COT Bench: A Multi-Judge, State-Verified Benchmark for\\Multi-Turn Tool-Calling Agents}
+
+\author[1]{Conor Bronsdon}
+\affil[1]{Chain of Thought (independent)\\\texttt{conorbronsdon.github.io/cot-bench}}
+
+\date{\today\\\footnotesize Draft scaffold. Results sections are placeholders pending the first evaluation run.}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\input{sections/abstract}
+\end{abstract}
+
+\input{sections/01-introduction}
+\input{sections/02-benchmark-design}
+\input{sections/03-scoring}
+\input{sections/04-statistical-methodology}
+\input{sections/05-governance}
+\input{sections/06-experiments}
+\input{sections/07-limitations}
+\input{sections/08-related-work}
+
+\section*{Acknowledgments}
+The evaluation methodology draws on Galileo's open agent-leaderboard (Apache 2.0)
+and aligns its metric framework with the CLEAR paper~\cite{clear2025}.
+Open-weight judge inference is served via OpenRouter; the trace format follows the
+OpenInference semantic conventions.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

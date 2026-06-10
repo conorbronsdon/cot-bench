@@ -1,0 +1,82 @@
+\section{Statistical Methodology}
+\label{sec:stats}
+
+A leaderboard that shows bare numbers violates the field's first rule. With few
+scenarios, model orderings are dominated by sampling noise rather than real
+capability differences, and the honest board has to say so.
+
+\subsection{Scenario-level paired bootstrap}
+
+Uncertainty is estimated with the nonparametric bootstrap: $B = 2000$ replicates,
+fixed seed 42. The unit of resampling is the \textbf{scenario}, not the individual
+row. All runs of a scenario share the same task and persona, so their scores are
+correlated; resampling rows would treat correlated repeats as independent draws and
+understate uncertainty. Each replicate draws scenario IDs with replacement (keeping
+every run of a resampled scenario) and recomputes the per-model means. The 2.5th and
+97.5th percentiles of the replicate distribution give each model's confidence
+interval. The board publishes intervals for efficacy and the CLEAR composite.
+
+\paragraph{Paired normalization.} Because the CLEAR composite is field-relative
+(min-max normalized across the evaluated models), its uncertainty must include
+normalization variance, not only the variance of each raw dimension. The
+\emph{same} resampled set of scenario IDs is applied to every model within a
+replicate (a paired bootstrap), and the full normalization plus weighted composite
+is recomputed inside each replicate across all models. This keeps the field
+consistent per replicate and propagates normalization variance into the CLEAR
+interval. Pairing on the scenario set is also what makes model-versus-model
+difference intervals valid, which is what ``is A really better than B'' requires.
+
+\subsection{Rank bands}
+
+Orderings are only meaningful where intervals separate. Models are clustered into
+rank bands by CLEAR-CI overlap with a greedy walk over models sorted by CLEAR
+descending: the current band's leader is the highest unbanded model, every
+following model whose CLEAR interval overlaps the leader's joins the band, and the
+first non-overlapping model starts a new band. Models within a band are not
+statistically distinguishable and are marked with a tied rank. This is the
+Arena-Hard ``separability with confidence'' idea applied to absolute
+scores~\cite{arenahard2024}: the honest way to present a roster where many gaps are
+noise. The leaderboard JSON carries a top-level note stating the scenario count and
+the band caveat.
+
+\subsection{Publish minimum}
+
+The board does not publish at all when any evaluated domain has fewer than 30
+scenarios. Below that, the bootstrap intervals on every dimension overlap almost
+completely, so any ranking is indistinguishable from chance. A publish gate
+enforces this alongside a run-completeness check; a partial flag downgrades it to a
+warning for deliberate previews. Edge cases are handled without crashing: a single
+scenario yields a degenerate zero-width interval, and a single-model run skips
+cross-model normalization so its CLEAR interval mirrors its efficacy interval.
+
+\subsection{Inter-judge reliability: Krippendorff's $\alpha$}
+
+A raw within-0.2 agreement rate is not chance-corrected, not comparable across
+score distributions, and uses an arbitrary threshold. Krippendorff's $\alpha$ is the
+field-standard chance-corrected metric for three or more raters on ordinal or
+interval labels (Cohen's $\kappa$ is for two raters and assumes nominal categories).
+$\alpha$ is computed at the interval level (squared-difference distance, appropriate
+for continuous 0--1 scores) over the published per-judge columns: each result row
+is a unit, each judge a rater, and a parse-failed judge is a missing value, which
+$\alpha$ handles natively (it uses only units with two or more present scores).
+$\alpha$ is published per dimension both overall and per model. It is implemented
+in-repo as a small test-validated function checked against worked examples from
+Krippendorff's reference material~\cite{krippendorff2011}, rather than adding a
+dependency, and is null when undefined. The within-0.2 rate is kept as a secondary
+human-readable readout.
+
+\subsection{Length-bias regression}
+
+LLM judges can favor verbose output, the AlpacaEval length-bias
+lesson~\cite{lengthcontrolled2024}. Rather than assert immunity, the benchmark
+measures it. At aggregation, an ordinary-least-squares regression fits each judge
+dimension's consensus on the agent's \texttt{output\_tokens} across all rows. The
+bias is a property of the judge panel, not of any one model, so the regression
+pools all rows; the deterministic state score is judge-independent and excluded.
+For each dimension the board publishes the slope, intercept, $R^2$, the slope's
+standard error and $t$-statistic, the sample size, and a significance flag
+($|t| > 1.96$). A materially positive, significant slope is direct evidence that
+longer outputs earn higher judge scores independent of correctness, and is the
+trigger for adding an explicit length-neutrality line to the rubrics. This is the
+single highest-leverage, lowest-effort robustness check available, because the
+output-length data already exists for the cost dimension.

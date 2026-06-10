@@ -1,0 +1,73 @@
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Deterministic outcome verification for agents.} tau-bench emulates
+dynamic conversations between a simulated user and a tool-using agent and verifies
+outcomes by comparing the final database state against an annotated goal state,
+with a binary reward and no LLM judge in the outcome check; it also introduced
+$\text{pass}^k$ as a reliability construct, showing frontier agents degrade sharply
+as $k$ grows~\cite{taubench2024}. tau2-bench extended this with a dual-control
+Dec-POMDP and a compositional task generator, and notably shipped a corrections
+pass that removed incorrect expected actions, evidence that even the leading
+benchmark had ground-truth defects in v1~\cite{tau2bench2025}. The Berkeley
+Function Calling Leaderboard evaluates multi-turn tool use with state-based and
+response-based checks that eliminate the LLM evaluator entirely, and makes
+relevance and irrelevance (when \emph{not} to call a tool) first-class
+metrics~\cite{bfcl2024}. COT Bench adopts state verification where a ground-truth
+world exists and $\text{pass}^k$ for reliability, but departs from the
+deterministic-only stance: it keeps a judge panel for the empathy and scope
+dimensions that pure state checks under-measure, and labels which signal is which.
+
+\paragraph{Test-based and contamination-aware benchmarks.} Terminal-Bench verifies
+CLI tasks with per-task tests rather than judges, with deliberate difficulty
+calibration that holds a performance ceiling for headroom~\cite{terminalbench2026}.
+SWE-bench grades real GitHub-issue patches against hidden tests~\cite{swebench2023};
+its Verified subset showed that a large fraction of nominally good tasks were
+underspecified or had unfair tests, the case for an independent review
+pass~\cite{swebenchverified2024}, and its eventual deprecation over training
+leakage motivated held-out splits, which SWE-bench Pro answered with public,
+never-released, and commercial sets~\cite{swebenchpro2025}. COT Bench's
+independent-review gate and hash-pinned private holdout are these lessons in
+miniature.
+
+\paragraph{LLM-as-judge methodology.} MT-Bench established the LLM-judge validation
+protocol and the canonical defense (GPT-4 agreed with humans at roughly the rate
+humans agree with each other) while naming position, verbosity, and self-enhancement
+bias as failure modes~\cite{mtbench2023}. PoLL showed that a panel of small judges
+from disjoint families beats a single strong judge on human agreement, is cheaper,
+and structurally fixes self-preference because the highest positive delta for a
+model occurs when it judges itself~\cite{poll2024}. Self-preference bias and its
+perplexity root cause are quantified in~\cite{selfpref2024}. COT Bench's cross-lab
+panel with no self-judging, its median consensus, and its published per-judge deltas
+operationalize these results; the calibration protocol is the MT-Bench/PoLL
+human-agreement move applied at a calibration-smoke-test scale.
+
+\paragraph{Leaderboard statistics and length bias.} Chatbot Arena grounds rankings
+in crowdsourced human preference with bootstrap confidence
+intervals~\cite{chatbotarena2024}, and its governance critique, the Leaderboard
+Illusion, catalogs how private-variant submission and silent deprecation distort
+rankings~\cite{leaderboardillusion2025}. COT Bench has a structurally lower exposure
+(fixed scenarios, no self-submitted private variants) but adopts the mapped lessons:
+intervals on everything, no silent retraction, and a written model-selection and
+contamination posture. Arena-Hard's separability-with-confidence is the basis for
+COT Bench's rank bands~\cite{arenahard2024}. Length-Controlled AlpacaEval showed
+that auto-annotators reward verbosity and that controlling for length raises
+correlation with human-grounded rankings~\cite{lengthcontrolled2024}; COT Bench does
+not run the full GLM debias (designed for pairwise win rates) but applies the
+principle at the right altitude with a pooled length-versus-score regression.
+Krippendorff's $\alpha$ is the chance-corrected agreement metric for three or more
+raters on ordinal or interval labels~\cite{krippendorff2011}.
+
+\paragraph{Anti-gaming and isolation.} The Berkeley RDI audit drove seven of eight
+agentic benchmarks to near-perfect scores with a trivial agent, largely through
+shared-container isolation failures and reachable answer keys, and recommended an
+exploit-agent self-test~\cite{rdi2026}. COT Bench is conversational rather than
+code-execution, so its isolation exposure is lower, but it adopts the do-nothing
+probe directly and keeps goal and answer data out of any surface the agent or tool
+simulator can read.
+
+\paragraph{The CLEAR framework and the Galileo lineage.} COT Bench aligns its
+metric framework with CLEAR, which reported that accuracy-only evaluation correlates
+about 0.41 with production success while multi-dimensional evaluation reaches about
+0.83~\cite{clear2025}. Its evaluation methodology draws on Galileo's open
+agent-leaderboard~\cite{galileo2025}.

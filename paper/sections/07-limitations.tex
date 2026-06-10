@@ -1,0 +1,56 @@
+\section{Limitations}
+\label{sec:limitations}
+
+We state the benchmark's limitations plainly; several are inherent to the design
+choices and are documented here rather than papered over.
+
+\paragraph{Two domains.} v1 covers banking and customer success only. Agent
+performance varies significantly by domain, so the composite should not be read as
+a general agentic-capability number. Domain expansion is the planned grant-funded
+scale-up, not a v1 claim.
+
+\paragraph{Synthetic scenarios, public on GitHub.} Scenarios are synthetic, which
+is a strong native contamination defense (there is no scraped dataset to leak), but
+they do not capture the full messiness of real interactions, and the public corpus
+sits on GitHub where a future model could train on it. The private holdout caps
+overfitting \emph{detection}, not its possibility; the public-versus-holdout gap is
+a tripwire, not a guarantee.
+
+\paragraph{LLM-as-judge for the soft dimensions.} Two thirds of efficacy is judge
+scored, and judge quality is bounded by the judge models' capabilities. The
+multi-judge panel, median consensus, published per-judge deltas, length-bias
+regression, and calibration protocol mitigate this, but they do not remove the
+underlying dependence. State verification, the judge-independent third, is the
+direct hedge.
+
+\paragraph{Tool simulation generates the response surface.} For v0.2 scenarios the
+underlying \emph{values} are pinned to a canonical ground-truth world the simulator
+must answer from and mutate, and the resulting state is verified deterministically,
+so balances, IDs, and records stay coherent. But the simulator still generates the
+response \emph{surface} with an LLM, so edge cases in real API behavior may not be
+perfectly represented.
+
+\paragraph{Unseeded simulators.} The user and tool simulators run unseeded and the
+user simulator at temperature above zero, so runs are not bit-for-bit reproducible;
+the pre-registration says so explicitly. The agent under test runs at temperature
+0.0, which aids reproducibility but misses failure modes that appear only at higher
+temperatures. A single LLM plays the user simulator, and which model plays the user
+can swing agent success by up to roughly nine points~\cite{lostinsim2026}; the
+completion-decoupling design removes the simulator from the success-declaration
+path, and a planned sim-sensitivity check will quantify the residual swing, but the
+single-simulator risk is real until that check runs.
+
+\paragraph{Field-relative composite.} CLEAR is min-max normalized across the
+evaluated models, so adding or removing a model rescales every other model's
+composite. Cross-run comparison must use raw per-dimension scores, and a single-run
+ranking is only as stable as its roster.
+
+\paragraph{Cost approximation.} Token costs use published per-token pricing; actual
+costs vary with volume discounts and cached tokens, and OpenRouter slugs pin the
+model but not the serving provider or quantization (recorded per run, but variable).
+
+\paragraph{Single maintainer.} The benchmark is run by one person plus community
+contributions. The governance policy (no silent retraction, pre-registration,
+pinning, automated weekly runs) is designed precisely to make a single-maintainer
+operation auditable, but it does not substitute for the institutional backing the
+larger benchmarks have.

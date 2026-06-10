@@ -1,0 +1,82 @@
+\section{Introduction}
+
+Agentic benchmarks increasingly decide which models teams deploy, yet many of them
+rest on a single weak load-bearing element: an LLM judge reading a transcript and
+assigning a score. A single judge introduces systematic bias, prefers verbose
+output, and can favor text from its own model family. When the judge's provider
+also has a model under test, the conflict is structural. The wider problem is
+sharper still. The Berkeley RDI audit pointed one trivial agent at eight published
+agentic benchmarks and drove seven of them to near-perfect scores without solving
+any task, usually because the scoring rewarded plausible-looking output rather than
+verified work~\cite{rdi2026}. A benchmark that can be gamed this way is not
+measuring agent capability.
+
+The most credible agentic benchmarks answer this by grading the world, not the
+prose. tau-bench verifies a customer-service rollout by comparing the final
+database state against an annotated goal state, with a binary reward and no LLM
+judge in the outcome check~\cite{taubench2024}. The Berkeley Function Calling
+Leaderboard (BFCL) evaluates multi-turn tool use through state-based and
+response-based checks that eliminate the LLM evaluator
+entirely~\cite{bfcl2024}. Terminal-Bench verifies each task with per-task tests
+rather than a judge~\cite{terminalbench2026}, and SWE-bench grades a patch by
+whether a repository's hidden tests pass~\cite{swebench2023}. The lesson is
+consistent: where ground truth exists, check it deterministically; reserve
+judgment for what genuinely needs it.
+
+But pure deterministic checking under-measures exactly the dimensions that matter
+in conversational domains. BFCL's state checks catch write and delete correctness
+but not whether an agent handled an emotionally charged escalation with
+appropriate empathy, asked the right clarifying question, or correctly refused an
+out-of-scope request~\cite{bfcl2024}. Customer-success work lives precisely in that
+soft-judgment space. The honest design is therefore hybrid: deterministic state
+verification where a canonical world exists, and a judge panel for the soft
+dimensions, with each clearly labeled as to which is which.
+
+COT Bench is that hybrid. It evaluates multi-turn, tool-calling agents across two
+production domains, banking and customer success, each with five scenario
+categories that probe distinct failure modes. The contributions are:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Hybrid, partly judge-independent efficacy.} A full third of the
+  efficacy score is a deterministic check against a per-scenario ground-truth
+  world: did the transfer actually land, was the fraud case filed, did an
+  out-of-scope request leave the world unchanged. The remaining two thirds are two
+  LLM-judge dimensions. The check needs no model and is free to compute
+  (Section~\ref{sec:scoring}).
+
+  \item \textbf{A cross-lab judge panel with published per-judge accountability.}
+  Three judges from three labs, none under test, with median consensus and
+  Krippendorff's $\alpha$ for reliability. Every judge's score is published, and a
+  per-judge-versus-consensus delta makes any judge's favoritism, including the one
+  remaining same-lab pairing, a measured quantity (Section~\ref{sec:scoring}).
+
+  \item \textbf{Statistics a serious leaderboard owes its readers.} Scenario-level
+  paired bootstrap confidence intervals on every headline number, rank bands over
+  overlapping intervals, a publish-minimum scenario count, $\text{pass}^k$
+  reliability, and a length-bias regression (Section~\ref{sec:stats}).
+
+  \item \textbf{Governance designed against the two failure modes a
+  single-maintainer benchmark is most exposed to:} silent judge drift and run
+  cherry-picking. Runs are pre-registered before the first model call, judges are
+  pinned with the actually-served model recorded, runs are never silently
+  retracted, and a hash-pinned private holdout gives a public-versus-holdout
+  overfitting tripwire (Section~\ref{sec:governance}).
+
+  \item \textbf{A standing anti-gaming probe.} A deterministic do-nothing agent is
+  run on demand and is expected to score near zero on both halves of efficacy;
+  publishing that floor is direct evidence the scores reflect verified work, not
+  the appearance of it (Section~\ref{sec:scoring}).
+\end{enumerate}
+
+\paragraph{Positioning.} COT Bench is not a re-implementation of tau-bench,
+Terminal-Bench, or BFCL. It differs on three axes. First, it is explicitly hybrid:
+deterministic state checks coexist with a judge panel for the soft dimensions,
+rather than choosing one (tau-bench and BFCL are deterministic-only;
+single-judge benchmarks are judge-only). Second, it scores production trade-offs
+directly through the CLEAR composite (efficacy, cost, reliability, latency) rather
+than a single success rate. Third, its judge methodology is itself a published
+object of study: the per-judge deltas, the length-bias regression, and the
+calibration protocol make the evaluation's own biases measurable. The benchmark
+reports $\text{pass}^k$ from tau-bench, an SWE-bench-Pro-style private holdout, and
+a do-nothing probe from the RDI audit, assembling lessons from across the field
+rather than competing on a single one.

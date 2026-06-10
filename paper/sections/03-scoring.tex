@@ -1,0 +1,164 @@
+\section{Scoring}
+\label{sec:scoring}
+
+After a rollout, a scenario is scored on four CLEAR-aligned dimensions: efficacy,
+cost, reliability, and latency. Efficacy is the only dimension involving judges,
+and even there a third is deterministic.
+
+\subsection{Efficacy: a hybrid, partly judge-independent score}
+
+For a v0.2 scenario carrying a ground-truth world, efficacy is
+\begin{equation}
+\text{efficacy} = 0.4 \cdot \text{task\_completion} + 0.3 \cdot \text{tool\_selection} + 0.3 \cdot \text{state\_verification},
+\end{equation}
+where the first two terms are LLM-judge consensus and the third is deterministic.
+A full third of efficacy is therefore objective. For legacy scenarios with no
+ground truth, state verification is inapplicable and efficacy renormalizes to an
+equal split over the two judge dimensions; all v1 public scenarios carry ground
+truth, so the hybrid form is the operative one.
+
+\paragraph{State verification (deterministic).} The final world, after the
+conversation, is checked against the scenario's \texttt{expected\_state\_changes}
+with no model in the loop. Each assertion uses the tiny vocabulary of
+Section~\ref{sec:design} (\texttt{equals}; \texttt{increased\_by}/%
+\texttt{decreased\_by} with float tolerance 0.01; \texttt{contains}), and the state
+score is the fraction of assertions that pass. An empty assertion list scores 1.0
+if and only if the world is unchanged, the no-unauthorized-mutation contract. This
+component is free to compute and not gameable by fluent text.
+
+\paragraph{Task completion (judge).} Each judge grades whether the agent
+accomplished the user's goals on a COMPLETE (1.0) / PARTIAL (0.5) / FAILED (0.0)
+anchor, with $\pm0.1$ adjustments for clarifying questions, error recovery, scope
+awareness, and dependency handling. The full rubric is published as code in
+\texttt{eval/scoring/rubrics.py}.
+
+\paragraph{Tool selection (judge).} Each judge grades every tool call on five
+dimensions: selection correctness, parameter accuracy, sequencing, necessity, and
+omissions.
+
+\paragraph{Combined judge prompt.} Task completion and tool selection are scored
+in a single call per judge. The combined prompt presents the shared context and the
+transcript once and asks for both dimensions in one JSON response nesting the two
+per-rubric shapes. The per-dimension criteria are the same published rubric text,
+reorganized under one shared context rather than rewritten, so the consensus math,
+per-judge columns, artifacts, aggregation, and downstream checks are unchanged. The
+benefit is that the judge call count is halved and, because the transcript is no
+longer duplicated across two calls, judge input tokens drop by roughly 45\%. The
+honest tradeoff is failure coupling: because both dimensions ride one API call and
+one parsed body, an API failure drops the judge from both panels, and a parse
+failure (unrecoverable JSON after one retry, or a body in which either dimension is
+missing or has an invalid score) flags the judge as parse-failed for both. The
+legacy two-call path remains available behind a flag for A/B validation.
+
+\subsection{The judge panel and consensus}
+
+Three judges score every transcript independently: two open-weight models from
+different labs (Kimi K2.6 from Moonshot and GLM-4.6 from Zhipu, both served via
+OpenRouter) and one frontier reference (Claude Opus, via the Anthropic API). Two
+principles govern the panel. First, \textbf{no judge is also a model under test};
+an earlier panel violated this and was corrected. Second, \textbf{lab diversity},
+so a disagreement signals genuine ambiguity rather than a shared blind spot. Open
+judges run over hosted APIs, so the full panel needs no GPU.
+
+\paragraph{Median consensus.} Consensus is the median of the valid judge scores.
+For an $n=3$ panel the median is the middle judge, so a single rogue or
+leniency-drifted judge cannot drag the consensus the way a mean would; for $n=2$ the
+median equals the mean. Bradley-Terry was rejected because it models pairwise
+preference data, while COT Bench produces absolute pointwise rubric scores. Every
+individual judge score is published, so any other aggregation can be recomputed.
+
+\paragraph{Judge-failure handling.} A parse failure is not treated as a real 0.0,
+which would crater both the consensus and the agreement rate indistinguishably from
+a genuine low score. The judge is called once more; if parsing still fails, the
+judge is excluded from consensus, agreement, and max-disagreement but retained in
+the per-row record. An API failure drops the judge from that row. Because failures
+shrink the panel, every row publishes explicit accounting: the number of valid
+judges per dimension, parse-failure and API-failure counts, and a \texttt{degraded}
+flag when fewer than two valid judges remain. Agreement is reported as null with
+fewer than two valid judges, since a single grader is not perfect agreement.
+
+\subsection{Per-judge accountability}
+
+For every contestant and every judge, the board publishes that judge's mean task
+completion and tool selection for the model and its delta against the full-panel
+consensus (\texttt{judge\_deltas}; $\text{delta} = \text{consensus\_mean} -
+\text{judge\_mean}$, so a positive delta means the judge rates the model lower than
+its peers). This makes any judge's systematic favoritism toward a model a published
+number. The one remaining same-lab pairing (the Claude judge shares a lab with the
+Claude contestants) is handled as a special case: each Anthropic contestant carries
+a \texttt{same\_lab\_check} block reporting its means over the open judges only and
+the delta versus the full panel, so any same-lab inflation is measured, not
+assumed away. Anyone can recompute consensus with the same-lab judge excluded from
+the published per-judge scores.
+
+\subsection{Cost, reliability, and latency}
+
+\paragraph{Cost.} $\text{cost\_per\_task} = \text{in\_tokens} \cdot p_{\text{in}} +
+\text{out\_tokens} \cdot p_{\text{out}}$ at published per-token provider pricing,
+tracked in \texttt{eval/config.py} and dated per run.
+
+\paragraph{Latency.} Wall-clock time summed across the agent's turns only; the user
+and tool simulators are excluded, so the number reflects the wait a user would
+actually experience.
+
+\paragraph{Reliability and $\text{pass}^k$.} Each scenario runs three times. The
+board reports the pass rate (fraction above a 0.7 threshold), consistency (1.0
+minus the high-low spread), variance, and $\text{pass}^k$. Borrowed from
+tau-bench~\cite{taubench2024}, $\text{pass}^k$ is the probability that \emph{every
+one} of $k$ independent trials succeeds, the opposite of $\text{pass}@k$. For
+i.i.d. trials it decays as $p^k$, so a model that passes 2 of 3 runs has
+$\text{pass}^1 = 0.67$ but $\text{pass}^3 = 0$: one failure across repeats sinks
+it. It is estimated per scenario as the average over all size-$k$ subsets of the
+$n$ collected trials of the all-pass indicator, with closed form
+$\binom{c}{k}/\binom{n}{k}$ for $c$ passing runs out of $n$. Each model publishes
+$\text{pass}^k$ alongside, not replacing, the pass@3 reliability. With three runs,
+$k \in \{1,2,3\}$; more repeats extend the autonomy horizon.
+
+\subsection{CLEAR composite}
+
+The composite adopts four of CLEAR's five dimensions~\cite{clear2025}: Cost,
+Latency, Efficacy, and Reliability. CLEAR's fifth dimension, Assurance
+(safety and policy adherence), is not scored as a separate axis here; policy
+behavior is instead exercised inside the scenarios themselves (the scope-management
+and adversarial-input categories) and graded through the same efficacy machinery.
+Dimensions are min-max normalized across the evaluated models, then weighted:
+\begin{equation}
+\text{CLEAR} = 0.35\,\text{eff}_{\text{norm}} + 0.25\,\text{rel}_{\text{norm}} + 0.20\,(1 - \text{cost}_{\text{norm}}) + 0.20\,(1 - \text{lat}_{\text{norm}}).
+\end{equation}
+Cost and latency are inverted because lower is better. Because normalization is
+field-relative, adding or removing a model rescales every other model's composite,
+so CLEAR scores are only comparable within a run; cross-run comparison must use raw
+per-dimension scores. With a single model, CLEAR equals raw efficacy.
+
+\subsection{Anti-gaming: the do-nothing agent}
+
+The RDI audit showed trivial agents can game several agentic benchmarks to
+near-perfect scores~\cite{rdi2026}. COT Bench includes a deterministic do-nothing
+agent that makes no tool calls and returns a single trivial deflecting message. It
+is expected to score near zero on both halves of efficacy: the state checks go to
+0.0 because the world is never mutated (judge-independent and not gameable by
+text), and the judges floor because the transcript shows no tools used and no
+goals resolved. The lone case where doing nothing is correct is a
+no-unauthorized-mutation scenario with an empty assertion list, where the
+do-nothing agent ``passes'' precisely because it changed nothing, which is the
+intended contract. The probe is deliberately excluded from the published board and
+from the bootstrap and rank-band math; publishing the result of a real judged run
+is a methodology credential that a near-zero floor exists.
+
+\subsection{Human calibration (protocol defined; study pending)}
+
+Inter-judge agreement is necessary but not sufficient: three judges can agree and
+all be wrong, the MT-Bench and PoLL precedent~\cite{mtbench2023,poll2024}. The
+calibration protocol is defined and tooled now; the study runs after the rehearsal
+run produces transcripts (it needs human hours, not API spend). From a run's
+artifacts, 50--80 transcripts (default 60) are drawn stratified by domain
+$\times$ category $\times$ difficulty band, one per (scenario, model) to avoid
+pseudo-replication, with the private holdout excluded by default. The sample is
+emitted as a blind labeling workbook (opaque token per sheet, rubric anchors
+printed inline, scores and model identity held in a separate key file). Filled
+labels are scored for human-versus-judge Krippendorff's $\alpha$, mean absolute
+difference, and Pearson correlation, against both the consensus and each individual
+judge. A materially higher human-vs-consensus $\alpha$ than the worst
+human-vs-single-judge $\alpha$ would be direct evidence the panel beats any one
+judge, the PoLL result~\cite{poll2024}. The published number will be labeled a
+calibration smoke test, not a powered study.
