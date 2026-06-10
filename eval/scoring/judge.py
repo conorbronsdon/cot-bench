@@ -307,8 +307,7 @@ def score_with_judge_combined(
         candidate = _parse_judge_response(content)
         # A whole-judge success requires BOTH dimensions to be present and valid.
         if candidate is not None and all(
-            _extract_combined_dimension(candidate, rt) is not None
-            for rt in COMBINED_RUBRIC_TYPES
+            _extract_combined_dimension(candidate, rt) is not None for rt in COMBINED_RUBRIC_TYPES
         ):
             parsed = candidate
             break
