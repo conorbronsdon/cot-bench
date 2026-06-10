@@ -60,6 +60,12 @@ jobs:
         run: pip install -e .
 
       - name: Generate scenarios
+        # generate_data writes ONLY valid scenarios (one-round repair loop +
+        # in-memory validation), reports attempted/repaired/discarded counts to
+        # the job summary via $GITHUB_STEP_SUMMARY, and is partial-yield: it
+        # exits 0 whenever at least one scenario was written, and nonzero only on
+        # TOTAL failure (zero produced). A few discarded scenarios no longer kill
+        # the run.
         run: |
           python -m scripts.generate_data \
             --domain "${{ github.event.inputs.domain }}" \
@@ -68,8 +74,9 @@ jobs:
             --temperature "${{ github.event.inputs.temperature }}"
 
       - name: Validate generated scenarios
-        # Structural gate only. Generation failures already skip bad scenarios;
-        # anything invalid here means a real schema problem worth surfacing.
+        # Structural backstop only. Generation already validates in-memory and
+        # writes only valid scenarios, so this should always pass; a failure here
+        # means a real schema regression worth surfacing.
         run: python -m scripts.validate_scenarios
 
       - name: Open draft PR with generated scenarios
