@@ -38,6 +38,7 @@ machine-checkable without sacrificing readability.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import random
@@ -109,13 +110,14 @@ class Evaluation:
     paths leaking machine-specific layout.
     """
 
-    artifact_id: str  # stable id: "{model-slug}/{scenario}_run{idx}"
+    artifact_id: str  # stable real id: "{model-slug}/{scenario}_run{idx}"
     artifact_path: Path
     scenario_id: str
     model: str
     run_index: int
     domain: str
     category: str
+    holdout: bool
     transcript: list[dict]
     # Judge consensus (median of valid judges) per dimension, and per-judge.
     consensus: dict[str, float | None] = field(default_factory=dict)
@@ -123,6 +125,20 @@ class Evaluation:
     state_score: float | None = None
     efficacy: float = 0.0
     band: str = ""
+
+
+def sheet_id_for(artifact_id: str, seed: int) -> str:
+    """Opaque, deterministic per-sheet token shown to the labeler.
+
+    The real ``artifact_id`` embeds the model slug, so printing it on a sheet
+    tells the labeler which model produced the transcript and invites pro/anti-
+    model priors. The visible sheet id is instead an opaque hash of the real id
+    (salted with the sample seed); the real id and the model live only in the key
+    file. ``score`` joins labels to the key by this same token, so the round trip
+    is unaffected. 12 hex chars (48 bits) — collision-free for an 80-sheet sample.
+    """
+    digest = hashlib.sha256(f"{seed}|{artifact_id}".encode()).hexdigest()
+    return f"tx-{digest[:12]}"
 
 
 def _valid_judge_scores(judge_list: list[dict]) -> dict[str, float]:
@@ -168,12 +184,12 @@ def load_evaluations(artifacts_run_dir: Path) -> list[Evaluation]:
     ``data/results/artifacts/{run_id}`` written by run_eval. Files live one
     level down per model slug: ``{model-slug}/{scenario}_run{idx}.json``.
 
-    Domain and category are not stored at the top level of the artifact, so we
-    derive domain from the scenario id prefix when absent and tolerate a missing
-    category (it falls back to "unknown" — stratification still works, the
-    bucket is just coarser). For each evaluation we reconstruct the judge
-    consensus (median of valid judges) per dimension and the efficacy band, so
-    the sample can span the full difficulty range.
+    Domain and category are persisted at the artifact top level (issue #46) and
+    read directly. For legacy artifacts that predate that field, domain is derived
+    from the known scenario-id prefixes and category falls back to "unknown" (see
+    ``_derive_domain`` / ``_derive_category``). For each evaluation we reconstruct
+    the judge consensus (median of valid judges) per dimension and the efficacy
+    band, so the sample can span the full difficulty range.
     """
     evals: list[Evaluation] = []
     for path in sorted(artifacts_run_dir.glob("*/*.json")):
@@ -213,6 +229,7 @@ def load_evaluations(artifacts_run_dir: Path) -> list[Evaluation]:
                 run_index=run_index,
                 domain=domain,
                 category=category,
+                holdout=bool(data.get("holdout", False)),
                 transcript=data.get("transcript", []),
                 consensus=consensus,
                 per_judge=per_judge,
@@ -224,26 +241,85 @@ def load_evaluations(artifacts_run_dir: Path) -> list[Evaluation]:
     return evals
 
 
+# Maps a real scenario-id prefix to its canonical domain. Used ONLY for the
+# legacy-artifact fallback (artifacts written before issue #46 added top-level
+# domain/category). Real ids are e.g. "banking_adaptive_tool_use_0001" and
+# "cs_adaptive_tool_use_0001" — note "cs_" -> "customer_success", which the old
+# regex got wrong. Keyed by the underscore-terminated prefix so a longer prefix
+# (were one ever added) is matched explicitly, not by a greedy regex.
+_DOMAIN_ID_PREFIXES = {
+    "banking_": "banking",
+    "cs_": "customer_success",
+}
+
+
 def _derive_domain(data: dict, path: Path) -> str:
-    """Domain for stratification: explicit field, else scenario-id prefix."""
+    """Domain for stratification: explicit field, else scenario-id prefix.
+
+    Post-#46 artifacts carry an explicit top-level ``domain`` (the authoritative
+    ``Domain.value``) and this is used directly. The fallback exists only for
+    legacy artifacts that predate that field: it matches the known corpus id
+    prefixes (``banking_`` -> ``banking``, ``cs_`` -> ``customer_success``) and
+    returns ``"unknown"`` for anything unrecognized rather than guessing.
+    """
     if data.get("domain"):
         return str(data["domain"])
     scenario_id = str(data.get("scenario_id", ""))
-    # Scenario ids look like "banking_001" / "customer_success_004".
-    m = re.match(r"^([a-z_]+?)_\d+$", scenario_id)
-    if m:
-        return m.group(1)
+    for prefix, domain in _DOMAIN_ID_PREFIXES.items():
+        if scenario_id.startswith(prefix):
+            return domain
     return "unknown"
 
 
 def _derive_category(data: dict) -> str:
-    """Category for stratification; artifacts may not carry it -> 'unknown'."""
+    """Category for stratification.
+
+    Post-#46 artifacts carry an explicit top-level ``category`` (the
+    authoritative ``Scenario.category``). Legacy artifacts do not, and the
+    category is NOT reliably recoverable from the id (the id's middle segment
+    happens to match for current scenarios but is not guaranteed), so the honest
+    fallback is ``"unknown"`` — the stratification is coarser but never mislabeled.
+    """
     return str(data.get("category") or "unknown")
 
 
 # --------------------------------------------------------------------------- #
 # Stratified sampling
 # --------------------------------------------------------------------------- #
+
+
+def exclude_holdout(evals: list[Evaluation]) -> tuple[list[Evaluation], int]:
+    """Drop holdout-scenario evaluations; return (kept, n_dropped).
+
+    A calibration workbook may be shared with an external (guest-network) labeler
+    (issue #33). The private holdout (issue #31) must never leave the team, so its
+    transcripts are excluded by default. ``--include-holdout`` overrides this with
+    a loud warning at the call site.
+    """
+    kept = [e for e in evals if not e.holdout]
+    return kept, len(evals) - len(kept)
+
+
+def dedup_reliability_runs(evals: list[Evaluation], seed: int) -> list[Evaluation]:
+    """Collapse to ONE evaluation per (scenario_id, model), seeded.
+
+    Reliability runs of the same (scenario, model) produce near-identical
+    transcripts. Labeling several of them wastes human effort and, worse, injects
+    correlated rows into the alpha/Pearson math (pseudo-replication), biasing the
+    headline agreement number. So by default the sampler keeps a single run per
+    (scenario_id, model), chosen by a seeded draw for reproducibility.
+    ``--all-runs`` keeps every run.
+    """
+    buckets: dict[tuple[str, str], list[Evaluation]] = {}
+    for ev in evals:
+        buckets.setdefault((ev.scenario_id, ev.model), []).append(ev)
+    chosen: list[Evaluation] = []
+    for key in sorted(buckets):
+        bucket = sorted(buckets[key], key=lambda e: e.artifact_id)
+        # Per-key derived seed so the choice is independent of iteration order.
+        rng = random.Random(f"{seed}|dedup|{key[0]}|{key[1]}")
+        chosen.append(rng.choice(bucket))
+    return chosen
 
 
 def stratify_key(ev: Evaluation) -> tuple[str, str, str]:
@@ -348,19 +424,21 @@ def render_transcript(transcript: list[dict]) -> str:
 SCORE_FIELD_RE = re.compile(r"^-\s*(task_completion|tool_selection)\s*:\s*(.*)$", re.MULTILINE)
 
 
-def render_sheet(ev: Evaluation, index: int, total: int) -> str:
+def render_sheet(ev: Evaluation, index: int, total: int, seed: int) -> str:
     """Render ONE blind labeling sheet for an evaluation.
 
-    Contains: a stable artifact id, the stratification context (domain,
-    category, difficulty band — the band is the human-facing 'how hard',
-    NOT a judge score), the empty score block, the rubric anchors, and the
-    rendered transcript. It does NOT contain any judge score — that lives only
-    in the key file, so labeling is blind.
+    Contains: an OPAQUE sheet token (not the real artifact id — that embeds the
+    model slug and would reveal model identity to the labeler), the
+    stratification context (domain, category, difficulty band — the band is the
+    human-facing 'how hard', NOT a judge score), the empty score block, the
+    rubric anchors, and the rendered transcript. It does NOT contain any judge
+    score or the model identity — those live only in the key file, so labeling is
+    blind to both the scores and which model produced the transcript.
     """
     anchors = "\n\n".join(RUBRIC_ANCHORS[d] for d in DIMENSIONS)
     return f"""# Calibration sheet {index}/{total}
 
-**Artifact:** `{ev.artifact_id}`
+**Sheet:** `{sheet_id_for(ev.artifact_id, seed)}`
 **Domain:** {ev.domain}  |  **Category:** {ev.category}  |  **Difficulty band:** {ev.band}
 
 > Difficulty band is a coarse stratification label so the sample spans easy and
@@ -387,7 +465,8 @@ Enter a number from 0.0 to 1.0 for each dimension. Leave as `_` if you skip it.
 def render_index(sample: list[Evaluation], seed: int, source: str) -> str:
     """Render the workbook index / instructions sheet."""
     rows = "\n".join(
-        f"| {i + 1} | `{ev.artifact_id}` | {ev.domain} | {ev.category} | {ev.band} |"
+        f"| {i + 1} | `{sheet_id_for(ev.artifact_id, seed)}` "
+        f"| {ev.domain} | {ev.category} | {ev.band} |"
         for i, ev in enumerate(sample)
     )
     strata = sorted({stratify_key(ev) for ev in sample})
@@ -396,7 +475,9 @@ def render_index(sample: list[Evaluation], seed: int, source: str) -> str:
 
 Blind double-labeling set (issue #33). {len(sample)} transcripts sampled from
 `{source}` with seed {seed}, stratified by domain x category x difficulty band so
-the full difficulty range is covered.
+the full difficulty range is covered. Sheets are identified by an opaque token;
+the model that produced each transcript is held in the key file, not shown here,
+so labeling is blind to both judge scores and model identity.
 
 ## How to label
 
@@ -418,8 +499,8 @@ When done, run:
 
 ## Sheets
 
-| # | Artifact | Domain | Category | Band |
-|---|----------|--------|----------|------|
+| # | Sheet | Domain | Category | Band |
+|---|-------|--------|----------|------|
 {rows}
 """
 
@@ -432,13 +513,17 @@ def build_key(sample: list[Evaluation], seed: int, source: str) -> dict:
     score() joins the human labels to this by artifact id.
     """
     return {
-        "schema": "cot-bench-calibration-key/1",
+        "schema": "cot-bench-calibration-key/2",
         "issue": 33,
         "seed": seed,
         "source": source,
         "n": len(sample),
+        # Keyed by the OPAQUE sheet token (what the labeler and `score` see); the
+        # real artifact id and model identity are fields inside each entry, kept
+        # in the key file only so the workbook stays blind to model identity.
         "evaluations": {
-            ev.artifact_id: {
+            sheet_id_for(ev.artifact_id, seed): {
+                "artifact_id": ev.artifact_id,
                 "scenario_id": ev.scenario_id,
                 "model": ev.model,
                 "run_index": ev.run_index,
@@ -472,7 +557,7 @@ def write_workbook(sample: list[Evaluation], out_dir: Path, seed: int, source: s
     width = max(3, len(str(len(sample))))
     for i, ev in enumerate(sample):
         name = f"sheet_{str(i + 1).zfill(width)}.md"
-        (out_dir / name).write_text(render_sheet(ev, i + 1, len(sample)), encoding="utf-8")
+        (out_dir / name).write_text(render_sheet(ev, i + 1, len(sample), seed), encoding="utf-8")
 
     key_path = out_dir.parent / f"{out_dir.name}_key.json"
     key_path.write_text(json.dumps(build_key(sample, seed, source), indent=2), encoding="utf-8")
@@ -499,23 +584,24 @@ def _parse_float_field(raw: str) -> float | None:
 def read_labels(workbook_dir: Path) -> dict[str, dict[str, float | None]]:
     """Read filled-in human labels from a workbook directory.
 
-    Returns ``{artifact_id: {dimension: score_or_None}}``. A sheet's artifact id
-    is read from its ``**Artifact:** `...` `` line; the two score fields are read
-    from the parseable "Your scores" block.
+    Returns ``{sheet_id: {dimension: score_or_None}}`` keyed by the opaque sheet
+    token (the same token used as the key file's evaluation id). A sheet's token
+    is read from its ``**Sheet:** `...` `` line; the two score fields are read from
+    the parseable "Your scores" block.
     """
     labels: dict[str, dict[str, float | None]] = {}
     for path in sorted(workbook_dir.glob("sheet_*.md")):
         text = path.read_text(encoding="utf-8")
-        m = re.search(r"\*\*Artifact:\*\*\s*`([^`]+)`", text)
+        m = re.search(r"\*\*Sheet:\*\*\s*`([^`]+)`", text)
         if not m:
-            logger.warning("No artifact id in %s; skipping", path.name)
+            logger.warning("No sheet id in %s; skipping", path.name)
             continue
-        artifact_id = m.group(1)
+        sheet_id = m.group(1)
         scores: dict[str, float | None] = {d: None for d in DIMENSIONS}
         for fm in SCORE_FIELD_RE.finditer(text):
             dim, raw = fm.group(1), fm.group(2)
             scores[dim] = _parse_float_field(raw)
-        labels[artifact_id] = scores
+        labels[sheet_id] = scores
     return labels
 
 
@@ -720,6 +806,43 @@ def cmd_sample(args: argparse.Namespace) -> int:
         return 1
     logger.info("Loaded %d evaluations from %s", len(evals), artifacts_run_dir)
 
+    # Exclude private-holdout transcripts by default (issue #31): a workbook may
+    # be shared with an external labeler and the holdout must not leak.
+    if args.include_holdout:
+        n_holdout = sum(1 for e in evals if e.holdout)
+        if n_holdout:
+            logger.warning(
+                "!!! --include-holdout: %d PRIVATE HOLDOUT transcript(s) WILL be "
+                "included in this workbook. Do NOT share it outside the team — "
+                "holdout exposure defeats the overfitting tripwire (issue #31).",
+                n_holdout,
+            )
+    else:
+        evals, n_dropped = exclude_holdout(evals)
+        if n_dropped:
+            logger.info(
+                "Excluded %d holdout transcript(s) from the workbook "
+                "(use --include-holdout to override; not recommended for shared sheets).",
+                n_dropped,
+            )
+
+    # Collapse reliability repeats to one transcript per (scenario, model) so the
+    # human never labels near-duplicates (pseudo-replication biases alpha).
+    if not args.all_runs:
+        before = len(evals)
+        evals = dedup_reliability_runs(evals, args.seed)
+        if len(evals) < before:
+            logger.info(
+                "Collapsed %d reliability repeats to %d unique (scenario, model) "
+                "transcripts (use --all-runs to keep every run).",
+                before,
+                len(evals),
+            )
+
+    if not evals:
+        logger.error("No eligible evaluations left after filtering. Nothing to sample.")
+        return 1
+
     sample = stratified_sample(evals, args.n, args.seed)
     out_dir = Path(args.out)
     key_path = write_workbook(sample, out_dir, args.seed, str(artifacts_run_dir))
@@ -791,6 +914,25 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=DEFAULT_SEED,
         help=f"Random seed for the stratified draw (default {DEFAULT_SEED}).",
+    )
+    p_sample.add_argument(
+        "--include-holdout",
+        action="store_true",
+        help=(
+            "Include private-holdout (issue #31) transcripts in the workbook. OFF "
+            "by default — a workbook may be shared with an external labeler and "
+            "the holdout must not leak. Prints a loud warning when used."
+        ),
+    )
+    p_sample.add_argument(
+        "--all-runs",
+        action="store_true",
+        help=(
+            "Keep every reliability run as a separate labeling candidate. OFF by "
+            "default — the sampler collapses to one transcript per (scenario, "
+            "model) so the human does not label near-duplicates, which would "
+            "inject correlated rows into the agreement math (pseudo-replication)."
+        ),
     )
     p_sample.set_defaults(func=cmd_sample)
 

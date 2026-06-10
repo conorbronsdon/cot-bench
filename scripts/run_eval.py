@@ -404,6 +404,11 @@ def evaluate_scenario(
                 tc_result,
                 ts_result,
                 state=state_result,
+                # Persist the authoritative taxonomy + holdout flag (issues #46,
+                # #31) so calibration stratifies and excludes correctly.
+                domain=scenario.domain.value,
+                category=scenario.category,
+                holdout=bool(getattr(scenario, "holdout", False)),
             )
         except OSError:
             logger.exception(

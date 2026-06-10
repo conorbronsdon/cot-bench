@@ -77,6 +77,9 @@ def build_artifact(
     tc_result,
     ts_result,
     state=None,
+    domain: str | None = None,
+    category: str | None = None,
+    holdout: bool = False,
 ) -> dict:
     """Assemble the artifact payload (pure — no I/O, unit-testable).
 
@@ -86,11 +89,28 @@ def build_artifact(
     that have no state grade; when supplied, a ``state`` block carrying the
     score, per-assertion checks, and the final world is added to the payload so a
     published state score is auditable back to the world it was computed from.
+
+    ``domain`` and ``category`` are persisted at the top level (issue #46) so the
+    calibration tooling stratifies on the authoritative scenario taxonomy
+    (``customer_success`` / ``adaptive_tool_use``) rather than re-deriving it from
+    the scenario-id prefix — real ids are ``cs_adaptive_tool_use_0001``, whose
+    prefix is neither the domain nor a clean category. They are the exact strings
+    on the ``Scenario`` (``domain.value`` and ``category``). ``holdout`` mirrors
+    the private-holdout flag carried on the result row (issue #31) so a workbook
+    sampler can exclude held-out transcripts before a sheet is ever shared with an
+    external labeler.
     """
     payload = {
         "scenario_id": scenario_id,
         "model": model,
         "run_index": run_index,
+        # Authoritative scenario taxonomy, persisted so calibration does not have
+        # to re-derive it from the id (issue #46).
+        "domain": domain,
+        "category": category,
+        # Private-holdout flag (issue #31): keep held-out transcripts out of
+        # shared calibration workbooks by default.
+        "holdout": bool(holdout),
         "evaluated_at": datetime.now(timezone.utc).isoformat(),
         "transcript": _serialize_transcript(sim_result.turns),
         "judges": {
@@ -134,14 +154,30 @@ def write_run_artifact(
     tc_result,
     ts_result,
     state=None,
+    domain: str | None = None,
+    category: str | None = None,
+    holdout: bool = False,
 ) -> Path:
     """Write one evaluation's artifact to disk and return its path.
 
     ``artifacts_root`` is the directory that holds per-run subdirectories
     (typically ``data/results/artifacts``). ``state`` is the optional
     deterministic state-grading result (see :func:`build_artifact`).
+    ``domain`` / ``category`` / ``holdout`` are passed through to the payload (see
+    :func:`build_artifact`).
     """
-    payload = build_artifact(scenario_id, model, run_index, sim_result, tc_result, ts_result, state)
+    payload = build_artifact(
+        scenario_id,
+        model,
+        run_index,
+        sim_result,
+        tc_result,
+        ts_result,
+        state,
+        domain=domain,
+        category=category,
+        holdout=holdout,
+    )
     out_dir = Path(artifacts_root) / run_id / model_slug(model)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{scenario_id}_run{run_index}.json"
