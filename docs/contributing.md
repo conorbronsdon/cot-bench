@@ -37,7 +37,12 @@ Generated scenarios are good but hand-crafted ones are often better at targeting
 - Edge cases that synthetic generation misses
 - Scenarios in underrepresented difficulty levels
 
-Format: see any JSON file in `data/scenarios/` for the schema.
+Format: see [`docs/scenario-schema.md`](scenario-schema.md) for the full schema,
+including the v0.2 `ground_truth` world state and `expected_state_changes`
+deterministic assertions, plus the banking worked example. Any JSON file in
+`data/scenarios/` is a working reference. Set `authorship.author_model` to
+`"human-handwritten"` for hand-written scenarios, and run
+`python -m scripts.validate_scenarios` before opening a PR.
 
 ## Development Setup
 

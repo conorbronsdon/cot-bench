@@ -1,6 +1,11 @@
 {
   "id": "banking_adaptive_tool_use_0001",
   "category": "adaptive_tool_use",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "human-handwritten",
+    "human_reviewed_by": "Conor Bronsdon"
+  },
   "persona": {
     "name": "Margaret Chen",
     "age": 58,
@@ -108,5 +113,38 @@
     "setup_recurring_transfer",
     "get_interest_rates",
     "report_suspicious_transaction"
+  ],
+  "ground_truth": {
+    "customer": {"customer_id": "CUST-88421", "name": "Margaret Chen", "ssn_last4": "4417", "verified": false},
+    "accounts": {
+      "BUS-CHK-001": {"type": "checking", "balance": 8420.55, "available": 8120.55},
+      "BUS-SAV-002": {"type": "savings", "balance": 15300.00, "interest_rate_apy": 0.041}
+    },
+    "transactions": {
+      "BUS-CHK-001": [
+        {"id": "TXN-7781", "date": "2026-06-05", "amount": -47.99, "merchant": "DIGITAL_SVC_LLC", "status": "posted"},
+        {"id": "TXN-7780", "date": "2026-06-04", "amount": -1200.00, "merchant": "FRESH FOODS WHOLESALE", "status": "posted"},
+        {"id": "TXN-7779", "date": "2026-06-03", "amount": 3850.00, "merchant": "EVENT DEPOSIT - HALE WEDDING", "status": "posted"},
+        {"id": "TXN-7778", "date": "2026-06-02", "amount": -325.40, "merchant": "CITY UTILITIES", "status": "posted"},
+        {"id": "TXN-7777", "date": "2026-06-01", "amount": -89.00, "merchant": "PAPER GOODS CO", "status": "posted"}
+      ]
+    },
+    "recurring_transfers": [],
+    "fraud_cases": [],
+    "interest_rates": {"savings": {"business": 0.041, "personal": 0.032}}
+  },
+  "expected_state_changes": [
+    {"assert": "accounts.BUS-CHK-001.balance", "op": "increased_by", "value": 2500.00,
+     "goal": "Transfer $2,500 from business savings to business checking to cover upcoming payroll"},
+    {"assert": "accounts.BUS-SAV-002.balance", "op": "decreased_by", "value": 2500.00,
+     "goal": "Transfer $2,500 from business savings to business checking to cover upcoming payroll"},
+    {"assert": "recurring_transfers", "op": "contains",
+     "match": {"from": "BUS-CHK-001", "to": "BUS-SAV-002", "amount": 500, "frequency": "weekly"},
+     "goal": "Set up a recurring weekly transfer of $500 from checking to savings starting next Monday"},
+    {"assert": "fraud_cases", "op": "contains",
+     "match": {"transaction_id": "TXN-7781", "reason_contains": "DIGITAL_SVC_LLC"},
+     "goal": "Report a suspicious $47.99 charge from 'DIGITAL_SVC_LLC' she doesn't recognize"},
+    {"assert": "customer.verified", "op": "equals", "value": true,
+     "goal": "Check the current balance of her business checking account"}
   ]
 }

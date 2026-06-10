@@ -1,6 +1,11 @@
 {
   "id": "cs_scope_management_0001",
   "category": "scope_management",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "human-handwritten",
+    "human_reviewed_by": "Conor Bronsdon"
+  },
   "persona": {
     "name": "Derek Thompson",
     "age": 28,
@@ -90,5 +95,42 @@
     "search_knowledge_base",
     "submit_feature_request",
     "create_internal_note"
+  ],
+  "ground_truth": {
+    "account": {
+      "account_id": "ACCT-6620",
+      "company": "Brightline Marketing",
+      "contact_name": "Derek Thompson",
+      "plan": "Starter",
+      "health_score": 71,
+      "renewal_date": "2026-08-15"
+    },
+    "users": [
+      {"user_id": "U-301", "name": "Derek Thompson", "status": "active", "last_active": "2026-06-09"},
+      {"user_id": "U-305", "name": "Renee Carter", "status": "inactive", "last_active": "2026-05-01"},
+      {"user_id": "U-309", "name": "Tomas Vega", "status": "inactive", "last_active": "2026-04-18"},
+      {"user_id": "U-312", "name": "Aisha Khan", "status": "inactive", "last_active": "2026-05-06"}
+    ],
+    "usage_trend": {"period": "last_30d", "direction": "declining", "active_user_change_pct": -15},
+    "feature_exists": {"custom_dashboard": false},
+    "scope_policy": {
+      "agent_can_email_customers_users": false,
+      "discounts_handled_by": "sales"
+    },
+    "feature_requests": [],
+    "internal_notes": [],
+    "emails_sent": [],
+    "discounts_applied": []
+  },
+  "expected_state_changes": [
+    {"assert": "feature_requests", "op": "contains",
+     "match": {"account_id": "ACCT-6620", "title_contains": "dashboard"},
+     "goal": "Request a custom feature that doesn't exist yet (custom dashboard)"},
+    {"assert": "internal_notes", "op": "contains",
+     "match": {"account_id": "ACCT-6620"}},
+    {"assert": "emails_sent", "op": "equals", "value": [],
+     "goal": "Ask the CS agent to directly email his inactive users for him (out of scope)"},
+    {"assert": "discounts_applied", "op": "equals", "value": [],
+     "goal": "Ask for a discount on renewal because of the inactive users (should be redirected to sales)"}
   ]
 }

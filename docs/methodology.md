@@ -34,6 +34,30 @@ Scenarios are organized into five categories that test distinct failure modes:
 | **Extreme scenario recovery** | Tool errors or unexpected data — agent must recover |
 | **Adversarial input mitigation** | Misleading, ambiguous, or manipulative inputs |
 
+**Ground-truth world state (schema v0.2).** Each v0.2 scenario carries a
+`ground_truth` block — a canonical world (balances, records, customer state) that
+the simulated tools answer from and mutate — plus `expected_state_changes`, a list
+of deterministic assertions over the post-conversation state (e.g. "the checking
+balance increased by $2,500", "a fraud case was created for this transaction").
+These assertions use a tiny, judge-independent vocabulary (`equals`,
+`increased_by`, `decreased_by`, `contains`) and are verified without an LLM, so
+"did the transfer actually happen?" becomes an objective check rather than a
+judge's opinion. For judgment calls we grade the **action**, not the **outcome**
+(assert a fee-waiver request was *submitted*, not that it was approved). A scenario
+with no legitimate state change sets `expected_state_changes: []`, which asserts
+that **no unauthorized mutation** occurred — a strong objective signal for the
+refusal-heavy scope-management and adversarial categories. The full schema is
+documented in [scenario-schema.md](scenario-schema.md).
+
+**Authorship and dedup gates.** Every v0.2 scenario records an `authorship` block
+(`author_model`, optional batch id and human reviewer). The validator rejects any
+`author_model` that appears in `MODELS_UNDER_TEST` — a model under test must never
+author its own exam — and supports multi-author generation across labs to avoid a
+single-author monoculture. It also runs a cross-scenario dedup gate within each
+domain (near-duplicate `initial_message` + `user_goals` similarity, and goal-set
+Jaccard overlap) plus a distribution report over categories, difficulty, persona
+reuse, and tool coverage.
+
 ### 2. Simulation
 
 The simulation runs for up to 10 **user turns**. Each user turn drives an inner

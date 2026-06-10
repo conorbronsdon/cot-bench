@@ -1,6 +1,11 @@
 {
   "id": "banking_empathetic_resolution_0001",
   "category": "empathetic_resolution",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "human-handwritten",
+    "human_reviewed_by": "Conor Bronsdon"
+  },
   "persona": {
     "name": "James Okafor",
     "age": 34,
@@ -111,5 +116,45 @@
     "request_fee_waiver",
     "setup_account_alerts",
     "generate_account_statement"
+  ],
+  "ground_truth": {
+    "customer": {"customer_id": "CUST-50912", "name": "James Okafor", "ssn_last4": "8830", "verified": false},
+    "accounts": {
+      "PERS-CHK-100": {"type": "checking", "balance": -35.00, "available": -35.00, "overdraft_protection": false}
+    },
+    "transactions": {
+      "PERS-CHK-100": [
+        {"id": "TXN-9001", "date": "2026-06-08", "amount": -1850.00, "merchant": "RENT - HARBORVIEW PROPERTIES", "status": "declined_nsf"},
+        {"id": "TXN-9000", "date": "2026-06-08", "amount": -35.00, "merchant": "OVERDRAFT FEE", "status": "posted"},
+        {"id": "TXN-8999", "date": "2026-06-06", "amount": -62.40, "merchant": "CORNER GROCERY", "status": "posted"}
+      ]
+    },
+    "fees": {
+      "PERS-CHK-100": [
+        {"id": "TXN-9000", "type": "overdraft", "amount": 35.00, "date": "2026-06-08", "waived": false}
+      ]
+    },
+    "fee_waivers_used_this_year": 0,
+    "fee_waiver_requests": [],
+    "pending_deposits": {
+      "PERS-CHK-100": [
+        {"amount": 3200.00, "source": "FREELANCE - PIXELFORGE STUDIO", "expected_clear_date": "2026-06-10"}
+      ]
+    },
+    "alerts": {"PERS-CHK-100": []},
+    "statements_generated": []
+  },
+  "expected_state_changes": [
+    {"assert": "customer.verified", "op": "equals", "value": true,
+     "goal": "Understand why his rent payment of $1,850 was declined"},
+    {"assert": "fee_waiver_requests", "op": "contains",
+     "match": {"account_id": "PERS-CHK-100", "fee_transaction_id": "TXN-9000", "reason_contains": "first"},
+     "goal": "Get the overdraft fee waived since it's his first one this year"},
+    {"assert": "alerts.PERS-CHK-100", "op": "contains",
+     "match": {"alert_type": "low_balance"},
+     "goal": "Set up low balance alerts so this doesn't happen again"},
+    {"assert": "statements_generated", "op": "contains",
+     "match": {"account_id": "PERS-CHK-100", "statement_type_contains": "confirmation"},
+     "goal": "Get a letter or confirmation he can show his landlord proving funds are now available"}
   ]
 }
