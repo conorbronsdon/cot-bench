@@ -124,6 +124,7 @@ jobs:
             data/results/*.parquet
             data/results/*.csv
             data/results/leaderboard.json
+            data/results/pre_registration.json
             data/results/run_manifest.json
             data/results/artifacts/
             data/results/traces/

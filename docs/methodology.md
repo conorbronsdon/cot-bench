@@ -427,7 +427,17 @@ We recommend comparing models within the same evaluation run rather than across 
 ### What every run publishes (for audit)
 
 A published score is only trustworthy if you can inspect the evidence behind it.
-Each run persists exactly three things, and nothing is claimed that isn't on disk:
+Each run persists exactly four things, and nothing is claimed that isn't on disk:
+
+0. **Pre-registration (written before any model call).**
+   `data/results/pre_registration.json` commits the run's definition — `run_id`
+   and timestamp, the requested models, the domains and per-domain scenario IDs
+   with a corpus-level `sha256` over the canonical serialized scenario set, the
+   configured judge panel, the reliability-run count, and the seeds/temperatures
+   (with the explicit caveat that the unseeded simulators make runs not
+   bit-for-bit reproducible) — to disk before the first agent/simulator/judge
+   call. The post-run manifest (item 3) links back to it by path and hash. See
+   [governance.md §3](governance.md) for why this ordering matters.
 
 1. **Per-evaluation artifacts.** For every `(scenario, model, run_index)` the run
    writes a JSON file to
@@ -458,10 +468,13 @@ Each run persists exactly three things, and nothing is claimed that isn't on dis
    write spans elsewhere. (Spans are exported to a file on disk; they are not held
    only in memory.)
 
-3. **Run manifest.** `data/results/run_manifest.json` records the `run_id`, the
-   models requested/completed/failed, domains, per-domain scenario counts, the
-   reliability-run count, and the artifact/trace directories for the run.
+3. **Run manifest (completion record).** `data/results/run_manifest.json` records
+   the `run_id`, the models requested/completed/failed, domains, per-domain
+   scenario counts, the reliability-run count, and the artifact/trace directories
+   for the run. It also carries a `pre_registration` block linking back to the
+   pre-registration (item 0) by path and `sha256` (plus the corpus hash), so the
+   pre-registration and completion record are a verifiable pair.
 
-All three are uploaded as workflow artifacts on every weekly evaluation run.
+All four are uploaded as workflow artifacts on every weekly evaluation run.
 
 The policies governing how these runs are published, corrected, and versioned — no silent retraction or rerun, judge pinning, run pre-registration, contamination handling, and what triggers a benchmark version bump — are documented in [governance.md](governance.md).
