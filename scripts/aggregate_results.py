@@ -290,6 +290,94 @@ def compute_judge_alpha(df: pd.DataFrame, judge_columns: list[str]) -> dict:
     }
 
 
+def _ols_slope(x: np.ndarray, y: np.ndarray) -> dict | None:
+    """Simple OLS of y on x (plain math, no deps). Returns slope diagnostics.
+
+    Fits ``y = intercept + slope * x`` by least squares and returns the slope,
+    intercept, R², the slope's standard error, its t-statistic, and a simple
+    significance flag (``|t| > 1.96``, the ~5% two-sided normal threshold). All
+    computed from closed-form formulas:
+
+        slope = Cov(x, y) / Var(x)
+        SE(slope) = sqrt( (RSS / (n - 2)) / Sxx )
+        t = slope / SE(slope)
+
+    Returns ``None`` when the fit is undefined: fewer than 3 points (no residual
+    degrees of freedom for an SE), or x has zero variance (slope undefined).
+    """
+    n = x.size
+    if n < 3:
+        return None
+    x_mean = float(x.mean())
+    y_mean = float(y.mean())
+    sxx = float(((x - x_mean) ** 2).sum())
+    if sxx <= 0:
+        return None
+    sxy = float(((x - x_mean) * (y - y_mean)).sum())
+    slope = sxy / sxx
+    intercept = y_mean - slope * x_mean
+    pred = intercept + slope * x
+    residuals = y - pred
+    rss = float((residuals**2).sum())
+    syy = float(((y - y_mean) ** 2).sum())
+    r_squared = 0.0 if syy <= 0 else 1.0 - rss / syy
+    # Residual variance with n-2 degrees of freedom (two estimated params);
+    # the SE of the slope follows from it and the spread of x (Sxx).
+    resid_var = rss / (n - 2)
+    se_slope = (resid_var / sxx) ** 0.5
+    if se_slope == 0:
+        # Perfect fit (or degenerate): slope is exact, t is infinite. Treat as
+        # significant only if the slope is actually non-zero.
+        t_stat = float("inf") if slope != 0 else 0.0
+    else:
+        t_stat = slope / se_slope
+    return {
+        "slope": round(slope, 8),
+        "intercept": round(intercept, 6),
+        "r_squared": round(r_squared, 4),
+        "se_slope": round(se_slope, 8),
+        "t_stat": round(t_stat, 4) if t_stat not in (float("inf"), float("-inf")) else None,
+        "n": int(n),
+        "significant": bool(abs(t_stat) > 1.96),
+    }
+
+
+def compute_length_bias(df: pd.DataFrame) -> dict:
+    """OLS regression of judge scores on agent output length (length-bias check).
+
+    Judges may favor verbose agents (the AlpacaEval length-bias lesson). The
+    per-row agent ``output_tokens`` already exists, so we regress each judge-
+    derived score on it and publish the slope so the bias is *measured*, not
+    denied. A materially positive, significant slope means longer agent outputs
+    get higher judge scores independent of correctness.
+
+    We regress the two judge dimensions — ``task_completion`` and
+    ``tool_selection`` consensus — on ``output_tokens`` across all rows (the bias
+    is a property of the judge panel, not of any one model). The deterministic
+    ``state_score`` is judge-independent so it is not a length-bias surface and is
+    excluded.
+
+    Returns ``{dimension: {slope, intercept, r_squared, se_slope, t_stat, n,
+    significant}}`` for each dimension fit. A dimension is omitted when its fit is
+    undefined (missing column, too few rows, or no length variation).
+    """
+    if "output_tokens" not in df.columns:
+        return {}
+    out: dict[str, dict] = {}
+    for dim in ("task_completion", "tool_selection"):
+        if dim not in df.columns:
+            continue
+        sub = df[["output_tokens", dim]].dropna()
+        if sub.empty:
+            continue
+        x = sub["output_tokens"].to_numpy(dtype=float)
+        y = sub[dim].to_numpy(dtype=float)
+        fit = _ols_slope(x, y)
+        if fit is not None:
+            out[dim] = fit
+    return out
+
+
 def compute_pass_hat_k_by_model(df: pd.DataFrame) -> dict:
     """Per-model pass^k (tau-bench) means, keyed by model name.
 
@@ -569,6 +657,10 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
     # one entry per k. Published alongside pass@3 (reliability) and consistency.
     pass_hat_k = compute_pass_hat_k_by_model(df)
 
+    # Length-bias check: OLS of judge scores on agent output length, so verbosity
+    # bias is a measured slope rather than an assumption.
+    length_bias = compute_length_bias(df)
+
     # Build leaderboard JSON
     leaderboard = {
         "updated": pd.Timestamp.now().isoformat(),
@@ -579,6 +671,7 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
         "domain_scores": domain_scores,
         "judge_scores": judge_scores,
         "judge_alpha": judge_alpha,
+        "length_bias": length_bias,
     }
 
     for _, row in overall.iterrows():

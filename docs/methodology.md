@@ -205,6 +205,10 @@ Because failures shrink the panel, every row publishes explicit accounting so co
 
 **Agreement is undefined with fewer than 2 valid judges.** Agreement rate and max-disagreement are reported as **null** in that case — a single grader is not "perfect agreement." Downstream aggregation skips these nulls (a model whose rows are all single-judge will show a null judge-agreement rather than a misleading 1.0).
 
+##### Length-bias check
+
+LLM judges can favor verbose outputs (the AlpacaEval length-bias lesson). Rather than assert we are immune, we measure it: the per-row agent `output_tokens` already exists, so at aggregation we fit a simple ordinary-least-squares regression of each judge dimension (`task_completion` and `tool_selection` consensus) on `output_tokens` across all rows — the bias is a property of the judge panel, not of any one model, so the regression pools all rows. The deterministic `state_score` is judge-independent and therefore excluded. The regression is plain math (no new dependency): for each dimension we publish the slope, intercept, R², the slope's standard error, its t-statistic, the sample size, and a simple significance flag (`|t| > 1.96`, the ~5% two-sided threshold) under the top-level `length_bias` key in `leaderboard.json`. A materially positive, significant slope is direct evidence that longer agent outputs earn higher judge scores independent of correctness; publishing it makes the confound measurable rather than deniable, and is the trigger for adding an explicit length-neutrality line to the rubrics.
+
 ### 4. CLEAR Dimensions
 
 #### Efficacy (weight: 35%)
