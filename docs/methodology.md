@@ -316,7 +316,7 @@ All evaluation code, scenarios, and rubrics are open source. To reproduce:
 ```bash
 git clone https://github.com/conorbronsdon/cot-bench.git
 cd cot-bench && pip install -e .
-python -m scripts.run_eval --domains banking --models "GPT-4.1"
+python -m scripts.run_eval --domains banking --models "GPT-5.5"
 ```
 
 Results may vary slightly due to:

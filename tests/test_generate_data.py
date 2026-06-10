@@ -20,13 +20,15 @@ class TestAuthorGuard:
             assert_author_allowed("Claude Sonnet 4.6")
 
     def test_clean_author_allowed(self):
-        # gpt-4.5-preview is on neither the under-test nor judge lists.
-        assert_author_allowed("gpt-4.5-preview")  # should not raise
+        # A non-contestant author id (no prefix relation to any contestant)
+        # passes the guard.
+        assert_author_allowed("anthropic/claude-opus-4.6")  # should not raise
 
     def test_resolve_friendly_name(self):
-        spec = resolve_author("gpt-4.5")
-        assert spec["model_id"] == AUTHOR_MODELS["gpt-4.5"]["model_id"]
-        assert spec["provider"] == "openai"
+        # claude-opus is the default friendly author (OpenRouter-served).
+        spec = resolve_author("claude-opus")
+        assert spec["model_id"] == AUTHOR_MODELS["claude-opus"]["model_id"]
+        assert spec["provider"] == "openrouter"
 
     def test_resolve_raw_model_id_defaults_openai(self):
         spec = resolve_author("some-clean-author-x")

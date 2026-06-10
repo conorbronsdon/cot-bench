@@ -3,8 +3,8 @@
   "category": "adaptive_tool_use",
   "schema_version": "0.2",
   "authorship": {
-    "author_model": "claude-opus-4-8",
-    "author_run": "2026-06-10-subagent-wave1"
+    "author_model": "anthropic/claude-opus-4.6",
+    "author_run": "2026-06-10-roster-reattribution"
   },
   "persona": {
     "name": "Frank Delgado",

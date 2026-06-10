@@ -65,20 +65,24 @@ Two open-weight judges from different labs (Kimi from Moonshot AI, GLM from Zhip
 
 ## Models Evaluated
 
-V1 targets 10 models across 2 domains:
+The launch roster spans 12 models across 2 domains — 11 current frontier/
+efficient/open-weight models plus one legacy cross-generation anchor (verified
+against live provider sources 2026-06-10):
 
 | Model | Provider | Category |
 |-------|----------|----------|
-| GPT-4.1 | OpenAI | Frontier |
-| GPT-4.1-mini | OpenAI | Efficient |
-| Claude Sonnet 4.6 | Anthropic | Frontier |
-| Claude Haiku 4.5 | Anthropic | Efficient |
-| Gemini 2.5 Pro | Google | Frontier |
-| Gemini 2.5 Flash | Google | Efficient |
-| DeepSeek-V3 | DeepSeek (via OpenRouter) | Open-weight |
-| Qwen3-235B | Alibaba (via OpenRouter) | Open-weight |
-| Llama 4 Maverick | Meta (via OpenRouter) | Open-weight |
-| Mistral Large | Mistral (via OpenRouter) | Open-weight |
+| GPT-5.5 | OpenAI | Frontier closed |
+| Claude Opus 4.8 | Anthropic | Frontier closed |
+| Gemini 3.1 Pro | Google | Frontier closed |
+| GPT-5.4-mini | OpenAI | Efficient closed |
+| Claude Sonnet 4.6 | Anthropic | Mid closed |
+| Claude Haiku 4.5 | Anthropic | Efficient closed |
+| Gemini 3.5 Flash | Google | Efficient closed |
+| DeepSeek-V4 Pro | DeepSeek (via OpenRouter) | Open-weight |
+| Qwen3.7-Max | Alibaba (via OpenRouter) | Open-weight |
+| MiniMax M3 | MiniMax (via OpenRouter) | Open-weight |
+| Mistral Large 3 | Mistral (via OpenRouter) | Open-weight |
+| GPT-4.1 (anchor) | OpenAI | Legacy cross-gen anchor |
 
 ## Domains
 
@@ -121,7 +125,7 @@ python -m scripts.generate_data --domain customer_success --scenarios-per-catego
 # Quick run — a subset of models on one domain (one frontier judge)
 python -m scripts.run_eval \
   --domains banking \
-  --models "GPT-4.1" "Claude Sonnet 4.6" \
+  --models "GPT-5.5" "Claude Opus 4.8" \
   --judges opus
 
 # Full evaluation — all models, all three judges (no GPU; open judges via OpenRouter)

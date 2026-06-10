@@ -139,14 +139,23 @@ def _validate_v02_blocks(scenario: ScenarioSchema) -> list[str]:
     if scenario.expected_state_changes is None:
         errors.append("schema_version 0.2 requires 'expected_state_changes' (may be [])")
 
-    # Authorship: author must not be a contestant
+    # Authorship: author must not be a contestant. FAMILY-AWARE (prefix) match,
+    # mirroring scripts/generate_data.assert_author_allowed — a different
+    # snapshot/display-name of a contestant is still a contestant. (Exact match
+    # alone silently misses e.g. author "gpt-4.1" vs contestant snapshot
+    # "gpt-4.1-2025-04-14", or a contestant whose display name carries a suffix
+    # like "GPT-4.1 (anchor)".)
     if scenario.authorship is not None:
-        author = scenario.authorship.author_model.strip()
-        if author.lower() != "human-handwritten" and author.lower() in _author_blocklist():
-            errors.append(
-                f"authorship.author_model '{author}' is in MODELS_UNDER_TEST "
-                "(a contestant must not author its own exam)"
-            )
+        author = scenario.authorship.author_model.strip().lower()
+        if author != "human-handwritten":
+            for blocked in _author_blocklist():
+                if author == blocked or author.startswith(blocked) or blocked.startswith(author):
+                    errors.append(
+                        f"authorship.author_model '{scenario.authorship.author_model.strip()}' "
+                        f"matches MODELS_UNDER_TEST entry '{blocked}' "
+                        "(a contestant must not author its own exam)"
+                    )
+                    break
 
     # Assertions resolve against ground_truth + goals fuzzy-match
     if scenario.ground_truth is not None and scenario.expected_state_changes is not None:

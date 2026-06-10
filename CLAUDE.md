@@ -22,7 +22,7 @@ Open agent evaluation leaderboard. Part of the Chain of Thought brand.
 ## Running
 ```bash
 pip install -e ".[dev]"
-python -m scripts.run_eval --domains banking --models "GPT-4.1" --judges opus
+python -m scripts.run_eval --domains banking --models "GPT-5.5" --judges opus
 python -m scripts.aggregate_results
 ```
 
