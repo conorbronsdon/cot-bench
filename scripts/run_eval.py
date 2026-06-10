@@ -19,6 +19,7 @@ from eval.config import (
     RELIABILITY_RUNS,
     TOKEN_COSTS,
     Domain,
+    SimulationConfig,
 )
 from eval.cost import (
     BUDGET_EXCEEDED_EXIT_CODE,
@@ -35,7 +36,7 @@ from eval.pre_registration import (
     write_pre_registration,
 )
 from eval.providers.null_agent import NULL_AGENT_NAME
-from eval.providers.registry import ModelSpec
+from eval.providers.registry import ModelSpec, infer_provider
 from eval.resume import (
     completed_tuples,
     load_pre_registration,
@@ -243,6 +244,12 @@ def build_result_row(
         "premature_end": bool(getattr(sim_result, "premature_end", False)),
         # Provider-reported model actually served (vs the pinned request id)
         "resolved_model": getattr(sim_result, "resolved_model", None),
+        # Simulator model ids actually used this run (issue #50). Recorded on every
+        # row so a sensitivity-test delta — same agents, different user/tool sim —
+        # can be computed by aggregating two runs. resolved_model above covers the
+        # AGENT; these cover the simulators.
+        "user_sim_model": getattr(sim_result, "user_sim_model", None),
+        "tool_sim_model": getattr(sim_result, "tool_sim_model", None),
         "tc_agreement": _round_or_none(tc_result.agreement_rate, 4),
         "ts_agreement": _round_or_none(ts_result.agreement_rate, 4),
         "tc_max_disagreement": _round_or_none(tc_result.max_disagreement, 4),
@@ -505,14 +512,18 @@ def _run_model_scenarios(
     artifacts_root=None,
     separate_judge_calls=False,
     runner=None,
+    sim_config=None,
     cost_acc=None,
     completed_keys=None,
 ):
     """Evaluate a single model across all domains/scenarios. Runs in a thread.
 
-    ``runner`` lets a caller inject a pre-built SimulationRunner with overridden
-    simulator models (issue #50); when None a default one is created here, so
-    every existing caller keeps the previous behavior. ``cost_acc`` is the run's
+    ``sim_config`` (issue #50) is the run's SimulationConfig, including any
+    user/tool simulator-model overrides; the runner is built from it HERE, in the
+    worker thread, so each model owns its own simulator instances and no API client
+    is created on the main thread. ``runner`` lets a test inject a pre-built runner
+    directly (skipping construction); when both are None a default runner is used.
+    ``cost_acc`` is the run's
     shared :class:`CostAccumulator` (issue #47): each completed evaluation adds its
     actual spend, and once the cap is crossed this model stops submitting new
     evaluations (in-flight work already finished, its artifacts persisted). The
@@ -526,10 +537,11 @@ def _run_model_scenarios(
         model_id=model_cfg["model_id"],
         provider=model_cfg["provider"],
     )
-    # Each model gets its own runner (owns its own simulator model instances)
-    # unless one was injected (sim-model override path, issue #50).
+    # Each model gets its own runner (owns its own simulator model instances),
+    # built from the run's sim config (sim-model overrides, issue #50) unless a
+    # runner was injected directly (tests).
     if runner is None:
-        runner = SimulationRunner()
+        runner = SimulationRunner(config=sim_config)
     completed_keys = completed_keys or set()
     results = []
 
@@ -782,6 +794,28 @@ def main():
         ),
     )
     parser.add_argument(
+        "--user-sim-model",
+        type=str,
+        default=None,
+        help=(
+            "Override the USER simulator model id for this run (default: "
+            f"SimulationConfig.user_simulator_model = {DEFAULT_SIMULATION.user_simulator_model}). "
+            "Provider is inferred from the id and routed through the registry (e.g. "
+            "a claude-* id -> anthropic). Recorded in pre_registration.json and on "
+            "result rows so a sensitivity-test delta is attributable. Issue #50."
+        ),
+    )
+    parser.add_argument(
+        "--tool-sim-model",
+        type=str,
+        default=None,
+        help=(
+            "Override the TOOL simulator model id for this run (default: "
+            f"SimulationConfig.tool_simulator_model = {DEFAULT_SIMULATION.tool_simulator_model}). "
+            "Provider inferred + registry-routed like --user-sim-model. Issue #50."
+        ),
+    )
+    parser.add_argument(
         "--separate-judge-calls",
         action="store_true",
         help=(
@@ -906,6 +940,38 @@ def main():
             NULL_AGENT_NAME,
         )
 
+    # Resolve the simulation config for this run (issue #50). The simulator models
+    # default to SimulationConfig (the single source of those defaults); the CLI
+    # overrides swap one or both for the sensitivity test. The provider for an
+    # overridden sim is inferred from its model id and routed through the existing
+    # registry (a default id keeps provider "openai"). The resolved ids/providers
+    # flow into the pre-registration and onto result rows.
+    sim_config = SimulationConfig(
+        max_turns=DEFAULT_SIMULATION.max_turns,
+        user_simulator_model=args.user_sim_model or DEFAULT_SIMULATION.user_simulator_model,
+        tool_simulator_model=args.tool_sim_model or DEFAULT_SIMULATION.tool_simulator_model,
+        user_simulator_temperature=DEFAULT_SIMULATION.user_simulator_temperature,
+        tool_simulator_temperature=DEFAULT_SIMULATION.tool_simulator_temperature,
+        user_simulator_provider=(
+            infer_provider(args.user_sim_model)
+            if args.user_sim_model
+            else DEFAULT_SIMULATION.user_simulator_provider
+        ),
+        tool_simulator_provider=(
+            infer_provider(args.tool_sim_model)
+            if args.tool_sim_model
+            else DEFAULT_SIMULATION.tool_simulator_provider
+        ),
+    )
+    if args.user_sim_model or args.tool_sim_model:
+        logger.info(
+            "Sim-model overrides (issue #50): user=%s (%s), tool=%s (%s)",
+            sim_config.user_simulator_model,
+            sim_config.user_simulator_provider,
+            sim_config.tool_simulator_model,
+            sim_config.tool_simulator_provider,
+        )
+
     # Pre-registration (issue #38): commit the run's definition to disk BEFORE
     # the first agent/simulator/judge call. This is what makes it a real
     # pre-registration rather than the post-hoc run_manifest.json below — the
@@ -952,6 +1018,8 @@ def main():
             agent_temperature=ModelSpec.temperature,
             user_simulator_temperature=DEFAULT_SIMULATION.user_simulator_temperature,
             tool_simulator_temperature=DEFAULT_SIMULATION.tool_simulator_temperature,
+            user_simulator_model=sim_config.user_simulator_model,
+            tool_simulator_model=sim_config.tool_simulator_model,
             separate_judge_calls=args.separate_judge_calls,
             artifacts_dir=(str(Path(artifacts_root) / run_id) if artifacts_root else None),
             trace_dir=str(trace_dir),
@@ -970,8 +1038,8 @@ def main():
         n_scenarios=n_scenarios,
         reliability_runs=args.reliability_runs,
         judge_keys=args.judges,
-        user_sim_model_id=DEFAULT_SIMULATION.user_simulator_model,
-        tool_sim_model_id=DEFAULT_SIMULATION.tool_simulator_model,
+        user_sim_model_id=sim_config.user_simulator_model,
+        tool_sim_model_id=sim_config.tool_simulator_model,
         separate_judge_calls=args.separate_judge_calls,
     )
     logger.info(
@@ -1027,6 +1095,12 @@ def main():
                 run_id,
                 artifacts_root,
                 args.separate_judge_calls,
+                # Sim config (issue #50) is passed, not a built runner: each model
+                # builds its OWN runner inside the worker thread from this config
+                # (owning its simulator instances + per-run sim token counters), so
+                # the overrides apply per model and no API client is created on the
+                # main thread (keeps the stubbed tests offline).
+                sim_config=sim_config,
                 cost_acc=cost_acc,
                 completed_keys=completed_keys,
             ): model_cfg["name"]

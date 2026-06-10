@@ -31,13 +31,23 @@ class JudgeConfig:
 
 @dataclass(frozen=True)
 class SimulationConfig:
-    """Settings for the multi-turn simulation loop."""
+    """Settings for the multi-turn simulation loop.
+
+    The simulator models default to gpt-4.1-mini and are the SINGLE SOURCE of
+    those defaults; ``run_eval --user-sim-model`` / ``--tool-sim-model`` override
+    them per run for the sensitivity test (issue #50) without editing code. Each
+    simulator's provider defaults to ``openai`` but is resolved from the model id
+    when overridden (e.g. a Claude user-sim resolves to ``anthropic``), so an
+    override is provider-routed through the existing registry.
+    """
 
     max_turns: int = 10
     user_simulator_model: str = "gpt-4.1-mini-2025-04-14"
     tool_simulator_model: str = "gpt-4.1-mini-2025-04-14"
     user_simulator_temperature: float = 0.7
     tool_simulator_temperature: float = 0.0
+    user_simulator_provider: str = "openai"
+    tool_simulator_provider: str = "openai"
 
 
 # --- Judge Panel ---

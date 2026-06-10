@@ -300,22 +300,24 @@ class SimulationRunner:
     def __init__(self, config: SimulationConfig | None = None):
         self.config = config or DEFAULT_SIMULATION
 
-        # User simulator — generates realistic user turns
+        # User simulator — generates realistic user turns. Provider comes from the
+        # config (default "openai") so an override (issue #50) can route the sim to
+        # a different family (e.g. Claude) through the existing registry.
         self._user_sim = create_model(
             ModelSpec(
                 name="user_simulator",
                 model_id=self.config.user_simulator_model,
-                provider="openai",
+                provider=self.config.user_simulator_provider,
                 temperature=self.config.user_simulator_temperature,
             )
         )
 
-        # Tool simulator — generates realistic tool responses
+        # Tool simulator — generates realistic tool responses.
         self._tool_sim = create_model(
             ModelSpec(
                 name="tool_simulator",
                 model_id=self.config.tool_simulator_model,
-                provider="openai",
+                provider=self.config.tool_simulator_provider,
                 temperature=self.config.tool_simulator_temperature,
             )
         )

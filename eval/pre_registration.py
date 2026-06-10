@@ -155,6 +155,8 @@ def build_pre_registration(
     user_simulator_temperature: float,
     tool_simulator_temperature: float,
     separate_judge_calls: bool,
+    user_simulator_model: str | None = None,
+    tool_simulator_model: str | None = None,
     artifacts_dir=None,
     trace_dir=None,
 ) -> dict:
@@ -178,8 +180,9 @@ def build_pre_registration(
       provider + temperature). ``resolved_model`` is intentionally absent: it is
       only knowable at call time and is recorded in the post-run artifacts.
     - ``reliability_runs`` and ``seeds_and_temperatures`` (bootstrap seed, agent
-      temp, simulator temps) with an explicit note that the user/tool simulators
-      are unseeded at temp > 0, so runs are not bit-for-bit reproducible.
+      temp, simulator temps, AND the requested simulator model ids — issue #50)
+      with an explicit note that the user/tool simulators are unseeded at temp > 0,
+      so runs are not bit-for-bit reproducible.
     - ``judge_prompt_mode`` — "combined" (default) or "separate".
     """
     corpus_hash, scenario_index = scenario_set_hash(scenarios_by_domain)
@@ -252,6 +255,13 @@ def build_pre_registration(
             "agent_temperature": agent_temperature,
             "user_simulator_temperature": user_simulator_temperature,
             "tool_simulator_temperature": tool_simulator_temperature,
+            # Simulator MODEL identity is part of the run definition (issue #50):
+            # the user/tool simulators can be overridden per run for the
+            # sensitivity test, so the requested model ids are pre-registered
+            # alongside their temperatures. None falls back to the configured
+            # defaults at the call site; they are recorded here as resolved.
+            "user_simulator_model": user_simulator_model,
+            "tool_simulator_model": tool_simulator_model,
             "reproducibility_note": (
                 "The agent under test runs at temperature 0.0 and the bootstrap "
                 "uses a fixed seed for reproducible confidence intervals. The "
