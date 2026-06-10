@@ -295,7 +295,18 @@ def generate_scenario(
 
         # Attach full tool definitions (not just summaries)
         tool_names = [t["name"] for t in scenario_data.get("tools", tools_summary)]
-        scenario_data["tools"] = [t for t in tools if t["name"] in tool_names] or tools
+        matched_tools = [t for t in tools if t["name"] in tool_names]
+        if not matched_tools:
+            # None of the LLM-returned tool names matched a real domain tool.
+            # Falling back to ALL domain tools would silently change scenario
+            # difficulty, so treat this as a generation failure instead.
+            logger.warning(
+                "Scenario %s referenced no known tools (got %s); skipping",
+                scenario_data["id"],
+                tool_names,
+            )
+            return None
+        scenario_data["tools"] = matched_tools
 
         scenario = Scenario(**scenario_data)
         return scenario.model_dump()
