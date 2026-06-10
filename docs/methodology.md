@@ -36,14 +36,20 @@ Scenarios are organized into five categories that test distinct failure modes:
 
 ### 2. Simulation
 
-The simulation loop runs for up to 10 turns:
+The simulation runs for up to 10 **user turns**. Each user turn drives an inner
+agent loop that lets the agent act on tool results *before* the user replies:
 
 1. **User simulator** (GPT-4.1-mini, temperature 0.7) generates a message in-character for the persona, pursuing unmet goals
-2. **Agent under test** (the model being evaluated, temperature 0.0) responds and optionally makes tool calls
-3. **Tool simulator** (GPT-4.1-mini, temperature 0.0) generates realistic tool responses conforming to the tool's schema
-4. The user simulator evaluates whether all goals are met. If yes, the conversation ends. Otherwise, loop continues.
+2. **Agent under test** (the model being evaluated, temperature 0.0) responds. Tools are provided through **native function calling** (LangChain `bind_tools`): each scenario tool definition is converted to an OpenAI-style JSON Schema function, and tool calls are read from the model's structured `tool_calls`. The agent is not asked to emit a bespoke JSON-in-text convention.
+3. If the agent calls one or more tools, the **tool simulator** (GPT-4.1-mini, temperature 0.0) generates realistic responses conforming to each tool's schema. Results are returned to the agent as `ToolMessage`s, and **the agent is re-invoked** on those results.
+4. Steps 2–3 repeat within the turn until the agent produces a user-facing message (no tool calls), or an inner cap of **5 tool rounds per user turn** is reached (a safeguard against runaway tool loops).
+5. The user simulator then evaluates whether all goals are met. If yes, the conversation ends. Otherwise the outer loop continues with a new user turn.
 
-Temperature 0.0 for the agent under test ensures reproducibility. The user simulator uses 0.7 for natural variation in conversation flow.
+This agent→tool→agent iteration means the model sees and reasons over tool output within the same turn, rather than only on the following turn. The transcript preserves true conversational order — user → agent (with tool calls) → tool results → agent follow-up → … → user — so judges read each tool call before its result.
+
+Native tool calling (rather than a regex-parsed JSON-in-text protocol) measures real tool-calling ability and avoids penalizing models tuned for function-calling APIs. A content-embedded fallback parser exists only for providers that return no native tool calls; it logs a warning whenever it fires so its use is measurable.
+
+Temperature 0.0 for the agent under test ensures reproducibility. The user simulator uses 0.7 for natural variation in conversation flow. Token and latency accounting cover every agent invocation, including inner tool-loop rounds; latency sums agent wall-times only (simulators excluded).
 
 ### 3. Scoring
 
