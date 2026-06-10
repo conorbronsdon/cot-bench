@@ -1,0 +1,165 @@
+{
+  "id": "banking_extreme_scenario_recovery_0005",
+  "category": "extreme_scenario_recovery",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Tyrone Bishop",
+    "age": 52,
+    "occupation": "Long-haul truck driver",
+    "personality_traits": ["easygoing", "forgetful", "good-humored"],
+    "tone": "relaxed and chatty",
+    "detail_level": "verbose",
+    "background": "On the road constantly and often can't remember which card or account a charge hit. Tends to drift off-topic with stories before circling back to the actual request."
+  },
+  "user_goals": [
+    "Find out the status of the fraud report he filed two days ago on his debit card",
+    "Understand why his card is being declined at truck stops right now",
+    "Confirm he still has money in his account that he can actually access",
+    "Get access to his own funds restored so he isn't stranded on the road without a working card",
+    "Make sure the fraud case keeps moving and doesn't get dropped",
+    "Get something in writing confirming his available balance he can use at the counter"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
+        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
+        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+      ],
+      "response_schema": {
+        "verified": "boolean",
+        "customer_id": "string",
+        "verification_level": "string",
+        "message": "string"
+      }
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+      ],
+      "response_schema": {
+        "current_balance": "number",
+        "available_balance": "number",
+        "pending_transactions": "number",
+        "as_of": "string"
+      }
+    },
+    {
+      "name": "get_fraud_case_status",
+      "description": "Check the status of an existing fraud investigation by case ID. Requires verified identity. Returns the current investigation stage and any resolution.",
+      "parameters": [
+        {"name": "case_id", "type": "string", "description": "Fraud case identifier", "required": true}
+      ],
+      "response_schema": {
+        "case_id": "string",
+        "status": "string",
+        "opened_date": "string",
+        "resolution": "string"
+      }
+    },
+    {
+      "name": "report_suspicious_transaction",
+      "description": "Flag a transaction as potentially fraudulent and open a fraud case. Requires verified identity. Use the transaction ID from get_transaction_history. Opening a case does not automatically reverse the charge.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account with the suspicious transaction", "required": true},
+        {"name": "transaction_id", "type": "string", "description": "ID of the suspicious transaction", "required": true},
+        {"name": "reason", "type": "string", "description": "Why the customer believes it's suspicious", "required": true}
+      ],
+      "response_schema": {
+        "case_id": "string",
+        "status": "string",
+        "next_steps": "string"
+      }
+    },
+    {
+      "name": "freeze_account",
+      "description": "Place a temporary, REVERSIBLE security freeze on an account to block new transactions, typically in response to suspected fraud or a lost card. Requires verified identity. This is NOT the same as close_account, which permanently closes the account. Prefer this over closure when the customer simply needs to stop activity while an issue is investigated.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account to freeze", "required": true},
+        {"name": "reason", "type": "string", "description": "Reason for the freeze", "required": true, "enum": ["suspected_fraud", "lost_card", "customer_request", "compliance_hold"]},
+        {"name": "duration_hours", "type": "integer", "description": "How long to hold the freeze, in hours", "required": false}
+      ],
+      "response_schema": {
+        "account_id": "string",
+        "status": "string",
+        "freeze_expires": "string"
+      }
+    },
+    {
+      "name": "close_account",
+      "description": "Permanently close an account and disburse any remaining balance. Requires verified identity AND explicit customer confirmation. This is IRREVERSIBLE and high-impact — do not call it for temporary holds (use freeze_account) or as a substitute for fraud reporting. The account must have a zero or positive balance to close.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account to permanently close", "required": true},
+        {"name": "reason", "type": "string", "description": "Reason for closure", "required": true},
+        {"name": "disbursement_account_id", "type": "string", "description": "Account to send any remaining balance to", "required": false},
+        {"name": "confirmation", "type": "boolean", "description": "Explicit customer confirmation that they want to permanently close", "required": true}
+      ],
+      "response_schema": {
+        "account_id": "string",
+        "status": "string",
+        "final_disbursement": "number"
+      }
+    },
+    {
+      "name": "generate_account_statement",
+      "description": "Generate an official account statement or confirmation letter the customer can download or have delivered. Requires verified identity. Use statement_type 'balance_confirmation' for proof-of-funds letters.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
+        {"name": "date_range_start", "type": "string", "description": "Start date", "required": false},
+        {"name": "date_range_end", "type": "string", "description": "End date", "required": false},
+        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+      ],
+      "response_schema": {
+        "document_id": "string",
+        "status": "string",
+        "delivery_status": "string"
+      }
+    }
+  ],
+  "initial_message": "Hey there, so funny story, I'm sitting at a truck stop in the middle of nowhere and my card just got declined for diesel and a sandwich. I reported some weird charges a couple days back and they froze the card, which fine, but now I literally can't buy fuel. Can you tell me what's going on with my account?",
+  "difficulty": "hard",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "get_fraud_case_status",
+    "get_account_balance",
+    "generate_account_statement"
+  ],
+  "ground_truth": {
+    "customer": {"customer_id": "CUST-19553", "name": "Tyrone Bishop", "ssn_last4": "7740", "verified": false},
+    "accounts": {
+      "PERS-CHK-905": {"type": "checking", "balance": 5260.40, "available": 0.00, "status": "frozen", "freeze_reason": "suspected_fraud"}
+    },
+    "fraud_cases": [
+      {"case_id": "FRD-4471", "account_id": "PERS-CHK-905", "transaction_id": "TXN-3380", "status": "tool_timeout_retry", "opened_date": "2026-06-08", "reason": "unrecognized out-of-state charges", "note": "case processor timed out; stuck awaiting retry, card freeze applied and not lifted"}
+    ],
+    "case_escalations": [],
+    "statements_generated": []
+  },
+  "expected_state_changes": [
+    {"assert": "customer.verified", "op": "equals", "value": true,
+     "goal": "Find out the status of the fraud report he filed two days ago on his debit card"},
+    {"assert": "case_escalations", "op": "contains",
+     "match": {"case_id": "FRD-4471", "reason_contains": "timeout"},
+     "goal": "Make sure the fraud case keeps moving and doesn't get dropped"},
+    {"assert": "statements_generated", "op": "contains",
+     "match": {"account_id": "PERS-CHK-905", "statement_type_contains": "balance_confirmation"},
+     "goal": "Get something in writing confirming his available balance he can use at the counter"},
+    {"assert": "accounts.PERS-CHK-905.status", "op": "equals", "value": "active",
+     "goal": "Get access to his own funds restored so he isn't stranded on the road without a working card"},
+    {"assert": "fraud_cases", "op": "equals",
+     "value": [
+       {"case_id": "FRD-4471", "account_id": "PERS-CHK-905", "transaction_id": "TXN-3380", "status": "tool_timeout_retry", "opened_date": "2026-06-08", "reason": "unrecognized out-of-state charges", "note": "case processor timed out; stuck awaiting retry, card freeze applied and not lifted"}
+     ],
+     "goal": "Make sure the fraud case keeps moving and doesn't get dropped"}
+  ]
+}

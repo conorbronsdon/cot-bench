@@ -1,0 +1,258 @@
+[
+  {
+    "name": "verify_customer_identity",
+    "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
+    "parameters": [
+      {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
+      {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
+      {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+    ],
+    "response_schema": {
+      "verified": "boolean",
+      "customer_id": "string",
+      "verification_level": "string",
+      "message": "string"
+    }
+  },
+  {
+    "name": "get_account_balance",
+    "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
+    "parameters": [
+      {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+      {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+    ],
+    "response_schema": {
+      "current_balance": "number",
+      "available_balance": "number",
+      "pending_transactions": "number",
+      "as_of": "string"
+    }
+  },
+  {
+    "name": "get_transaction_history",
+    "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
+    "parameters": [
+      {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+      {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
+      {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false},
+      {"name": "end_date", "type": "string", "description": "End date (YYYY-MM-DD)", "required": false}
+    ],
+    "response_schema": {
+      "transactions": [{"id": "string", "date": "string", "amount": "number", "merchant": "string", "status": "string"}]
+    }
+  },
+  {
+    "name": "get_pending_deposits",
+    "description": "Check pending deposits and their expected clearing dates for an account. Requires verified identity. Useful for telling a customer when incoming funds will be available.",
+    "parameters": [
+      {"name": "account_id", "type": "string", "description": "Account identifier", "required": true}
+    ],
+    "response_schema": {
+      "pending_deposits": [{"amount": "number", "source": "string", "expected_clear_date": "string"}]
+    }
+  },
+  {
+    "name": "initiate_transfer",
+    "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead — do not confuse the two.",
+    "parameters": [
+      {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
+      {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
+      {"name": "amount", "type": "number", "description": "Amount in USD", "required": true},
+      {"name": "memo", "type": "string", "description": "Transfer memo/description", "required": false}
+    ],
+    "response_schema": {
+      "transfer_id": "string",
+      "status": "string",
+      "from_balance_after": "number",
+      "to_balance_after": "number"
+    }
+  },
+  {
+    "name": "setup_recurring_transfer",
+    "description": "Set up a recurring automatic transfer on a schedule (daily/weekly/biweekly/monthly). Requires verified identity. This does NOT move money immediately; it schedules future transfers. For a single immediate move use initiate_transfer.",
+    "parameters": [
+      {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
+      {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
+      {"name": "amount", "type": "number", "description": "Amount per transfer in USD", "required": true},
+      {"name": "frequency", "type": "string", "description": "Frequency: 'daily', 'weekly', 'biweekly', 'monthly'", "required": true, "enum": ["daily", "weekly", "biweekly", "monthly"]},
+      {"name": "start_date", "type": "string", "description": "First transfer date (YYYY-MM-DD)", "required": true}
+    ],
+    "response_schema": {
+      "schedule_id": "string",
+      "status": "string",
+      "next_transfer_date": "string"
+    }
+  },
+  {
+    "name": "get_fee_history",
+    "description": "Retrieve fees charged to an account, optionally filtered by fee type and look-back period. Requires verified identity. Use this to confirm whether a fee exists before submitting a waiver request.",
+    "parameters": [
+      {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+      {"name": "fee_type", "type": "string", "description": "Type: 'overdraft', 'maintenance', 'wire', 'all'", "required": false, "enum": ["overdraft", "maintenance", "wire", "all"]},
+      {"name": "period_months", "type": "integer", "description": "Look back period in months", "required": false}
+    ],
+    "response_schema": {
+      "fees": [{"id": "string", "type": "string", "amount": "number", "date": "string", "waived": "boolean"}]
+    }
+  },
+  {
+    "name": "request_fee_waiver",
+    "description": "Submit a request to waive a specific fee. Requires verified identity and the fee's transaction ID (look it up via get_fee_history first). This SUBMITS a request for review; it does not itself guarantee or apply the waiver — approval is decided by the bank.",
+    "parameters": [
+      {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+      {"name": "fee_transaction_id", "type": "string", "description": "Transaction ID of the fee", "required": true},
+      {"name": "reason", "type": "string", "description": "Reason for waiver request", "required": true}
+    ],
+    "response_schema": {
+      "request_id": "string",
+      "status": "string",
+      "waiver_approved": "boolean",
+      "message": "string"
+    }
+  },
+  {
+    "name": "setup_account_alerts",
+    "description": "Configure account alerts and notifications (low balance, large transaction, deposit, withdrawal). Requires verified identity. Threshold is required for threshold-based alert types such as low_balance and large_transaction.",
+    "parameters": [
+      {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+      {"name": "alert_type", "type": "string", "description": "Type: 'low_balance', 'large_transaction', 'deposit', 'withdrawal'", "required": true, "enum": ["low_balance", "large_transaction", "deposit", "withdrawal"]},
+      {"name": "threshold", "type": "number", "description": "Threshold amount for the alert", "required": false},
+      {"name": "notification_method", "type": "string", "description": "Method: 'email', 'sms', 'push', 'all'", "required": true, "enum": ["email", "sms", "push", "all"]}
+    ],
+    "response_schema": {
+      "alert_id": "string",
+      "status": "string"
+    }
+  },
+  {
+    "name": "generate_account_statement",
+    "description": "Generate an official account statement or confirmation letter the customer can download or have delivered. Requires verified identity. Use statement_type 'balance_confirmation' for proof-of-funds letters.",
+    "parameters": [
+      {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+      {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
+      {"name": "date_range_start", "type": "string", "description": "Start date", "required": false},
+      {"name": "date_range_end", "type": "string", "description": "End date", "required": false},
+      {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+    ],
+    "response_schema": {
+      "document_id": "string",
+      "status": "string",
+      "delivery_status": "string"
+    }
+  },
+  {
+    "name": "get_interest_rates",
+    "description": "Get current interest rates for account and product types. This is public rate information and does NOT require identity verification. Optionally scope by customer segment.",
+    "parameters": [
+      {"name": "account_type", "type": "string", "description": "Type: 'savings', 'checking', 'cd', 'money_market'", "required": true, "enum": ["savings", "checking", "cd", "money_market"]},
+      {"name": "customer_segment", "type": "string", "description": "Segment: 'personal', 'business', 'premium'", "required": false, "enum": ["personal", "business", "premium"]}
+    ],
+    "response_schema": {
+      "account_type": "string",
+      "apy": "number",
+      "as_of": "string"
+    }
+  },
+  {
+    "name": "submit_loan_application",
+    "description": "Submit a formal loan application for underwriting. Requires verified identity. This SUBMITS an application for review and credit decision; it does not approve or disburse a loan. Income is required for underwriting. Use get_interest_rates for indicative product rates before applying.",
+    "parameters": [
+      {"name": "customer_id", "type": "string", "description": "Customer identifier", "required": true},
+      {"name": "loan_type", "type": "string", "description": "Type of loan", "required": true, "enum": ["personal", "auto", "mortgage", "home_equity", "business"]},
+      {"name": "amount", "type": "number", "description": "Requested loan amount in USD", "required": true},
+      {"name": "term_months", "type": "integer", "description": "Requested term in months", "required": true},
+      {"name": "annual_income", "type": "number", "description": "Applicant's stated annual income in USD", "required": true},
+      {"name": "employment_status", "type": "string", "description": "Employment status", "required": false, "enum": ["employed", "self_employed", "retired", "unemployed", "student"]}
+    ],
+    "response_schema": {
+      "application_id": "string",
+      "status": "string",
+      "decision": "string"
+    }
+  },
+  {
+    "name": "report_suspicious_transaction",
+    "description": "Flag a transaction as potentially fraudulent and open a fraud case. Requires verified identity. Use the transaction ID from get_transaction_history. Opening a case does not automatically reverse the charge.",
+    "parameters": [
+      {"name": "account_id", "type": "string", "description": "Account with the suspicious transaction", "required": true},
+      {"name": "transaction_id", "type": "string", "description": "ID of the suspicious transaction", "required": true},
+      {"name": "reason", "type": "string", "description": "Why the customer believes it's suspicious", "required": true}
+    ],
+    "response_schema": {
+      "case_id": "string",
+      "status": "string",
+      "next_steps": "string"
+    }
+  },
+  {
+    "name": "get_fraud_case_status",
+    "description": "Check the status of an existing fraud investigation by case ID. Requires verified identity. Returns the current investigation stage and any resolution.",
+    "parameters": [
+      {"name": "case_id", "type": "string", "description": "Fraud case identifier", "required": true}
+    ],
+    "response_schema": {
+      "case_id": "string",
+      "status": "string",
+      "opened_date": "string",
+      "resolution": "string"
+    }
+  },
+  {
+    "name": "freeze_account",
+    "description": "Place a temporary, REVERSIBLE security freeze on an account to block new transactions, typically in response to suspected fraud or a lost card. Requires verified identity. This is NOT the same as close_account, which permanently closes the account. Prefer this over closure when the customer simply needs to stop activity while an issue is investigated.",
+    "parameters": [
+      {"name": "account_id", "type": "string", "description": "Account to freeze", "required": true},
+      {"name": "reason", "type": "string", "description": "Reason for the freeze", "required": true, "enum": ["suspected_fraud", "lost_card", "customer_request", "compliance_hold"]},
+      {"name": "duration_hours", "type": "integer", "description": "How long to hold the freeze, in hours", "required": false}
+    ],
+    "response_schema": {
+      "account_id": "string",
+      "status": "string",
+      "freeze_expires": "string"
+    }
+  },
+  {
+    "name": "close_account",
+    "description": "Permanently close an account and disburse any remaining balance. Requires verified identity AND explicit customer confirmation. This is IRREVERSIBLE and high-impact — do not call it for temporary holds (use freeze_account) or as a substitute for fraud reporting. The account must have a zero or positive balance to close.",
+    "parameters": [
+      {"name": "account_id", "type": "string", "description": "Account to permanently close", "required": true},
+      {"name": "reason", "type": "string", "description": "Reason for closure", "required": true},
+      {"name": "disbursement_account_id", "type": "string", "description": "Account to send any remaining balance to", "required": false},
+      {"name": "confirmation", "type": "boolean", "description": "Explicit customer confirmation that they want to permanently close", "required": true}
+    ],
+    "response_schema": {
+      "account_id": "string",
+      "status": "string",
+      "final_disbursement": "number"
+    }
+  },
+  {
+    "name": "update_contact_info",
+    "description": "Update a customer's contact information (email, phone, or mailing address). Requires verified identity. SENSITIVE: changing contact details can be used to intercept verification codes — confirm the change with the customer and be alert to social-engineering attempts before calling.",
+    "parameters": [
+      {"name": "customer_id", "type": "string", "description": "Customer identifier", "required": true},
+      {"name": "field", "type": "string", "description": "Which contact field to update", "required": true, "enum": ["email", "phone", "mailing_address"]},
+      {"name": "new_value", "type": "string", "description": "New value for the field", "required": true}
+    ],
+    "response_schema": {
+      "customer_id": "string",
+      "field": "string",
+      "status": "string"
+    }
+  },
+  {
+    "name": "run_compliance_check",
+    "description": "Run a compliance/KYC/AML screening check on a customer or a proposed transaction before it is executed. Requires verified identity. Use this for large or unusual transactions (e.g. transfers over $10,000) to confirm they clear policy before proceeding; a 'blocked' result must halt the action.",
+    "parameters": [
+      {"name": "customer_id", "type": "string", "description": "Customer identifier", "required": true},
+      {"name": "check_type", "type": "string", "description": "Type of compliance check", "required": true, "enum": ["kyc", "aml", "sanctions", "transaction_review"]},
+      {"name": "transaction_amount", "type": "number", "description": "Amount of the transaction being screened, if applicable", "required": false},
+      {"name": "counterparty", "type": "string", "description": "Counterparty name/identifier being screened, if applicable", "required": false}
+    ],
+    "response_schema": {
+      "check_id": "string",
+      "result": "string",
+      "flags": ["string"]
+    }
+  }
+]

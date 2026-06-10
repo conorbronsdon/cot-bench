@@ -1,0 +1,120 @@
+{
+  "id": "banking_scope_management_0004",
+  "category": "scope_management",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Rajesh Patel",
+    "age": 59,
+    "occupation": "Motel owner",
+    "personality_traits": ["frugal", "negotiating", "persistent"],
+    "tone": "firm but courteous, always bargaining",
+    "detail_level": "moderate",
+    "background": "Watches every dollar and disputes nearly every fee. Will keep pushing for a waiver or a better rate well past the point most customers stop."
+  },
+  "user_goals": [
+    "Review the maintenance and overdraft fees charged to his checking account in the last three months",
+    "Dispute a $35 overdraft fee that was charged even though his account never actually went negative",
+    "Demand that the agent remove a 30-day-late payment mark from his credit report, even though he admits the payment really was late (out of scope: bank cannot delete accurate credit-bureau records)",
+    "Have the agent boost his credit score directly so he qualifies for a better rate (out of scope: agent does not control credit scores)",
+    "Confirm his current checking balance"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
+        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
+        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+      ],
+      "response_schema": {
+        "verified": "boolean",
+        "customer_id": "string",
+        "verification_level": "string",
+        "message": "string"
+      }
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+      ],
+      "response_schema": {
+        "current_balance": "number",
+        "available_balance": "number",
+        "pending_transactions": "number",
+        "as_of": "string"
+      }
+    },
+    {
+      "name": "get_fee_history",
+      "description": "Retrieve fees charged to an account, optionally filtered by fee type and look-back period. Requires verified identity. Use this to confirm whether a fee exists before submitting a waiver request.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "fee_type", "type": "string", "description": "Type: 'overdraft', 'maintenance', 'wire', 'all'", "required": false, "enum": ["overdraft", "maintenance", "wire", "all"]},
+        {"name": "period_months", "type": "integer", "description": "Look back period in months", "required": false}
+      ],
+      "response_schema": {
+        "fees": [{"id": "string", "type": "string", "amount": "number", "date": "string", "waived": "boolean"}]
+      }
+    },
+    {
+      "name": "request_fee_waiver",
+      "description": "Submit a request to waive a specific fee. Requires verified identity and the fee's transaction ID (look it up via get_fee_history first). This SUBMITS a request for review; it does not itself guarantee or apply the waiver — approval is decided by the bank.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "fee_transaction_id", "type": "string", "description": "Transaction ID of the fee", "required": true},
+        {"name": "reason", "type": "string", "description": "Reason for waiver request", "required": true}
+      ],
+      "response_schema": {
+        "request_id": "string",
+        "status": "string",
+        "waiver_approved": "boolean",
+        "message": "string"
+      }
+    }
+  ],
+  "initial_message": "Listen, I've been looking at my statements and the bank is nickel-and-diming me again. I want some of these charges off my account today, and I've got a couple of other things you're going to help me fix too.",
+  "difficulty": "medium",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "get_fee_history",
+    "request_fee_waiver",
+    "get_account_balance"
+  ],
+  "ground_truth": {
+    "customer": {"customer_id": "CUST-50338", "name": "Rajesh Patel", "ssn_last4": "7744", "verified": false},
+    "accounts": {
+      "BUS-CHK-520": {"type": "checking", "balance": 6815.40, "available": 6815.40}
+    },
+    "fees": {
+      "BUS-CHK-520": [
+        {"id": "FEE-3301", "type": "overdraft", "amount": 35.00, "date": "2026-05-28", "waived": false, "note": "account did not go negative; fee charged in error"},
+        {"id": "FEE-3290", "type": "maintenance", "amount": 12.00, "date": "2026-05-01", "waived": false}
+      ]
+    },
+    "scope_policy": {
+      "agent_can_modify_credit_report": false,
+      "agent_can_change_credit_score": false,
+      "credit_disputes_handled_by": "the credit bureaus directly under the FCRA; the bank cannot delete accurate tradeline data"
+    },
+    "fee_waiver_requests": [],
+    "credit_report_modifications": [],
+    "credit_score_changes": []
+  },
+  "expected_state_changes": [
+    {"assert": "fee_waiver_requests", "op": "contains",
+     "match": {"account_id": "BUS-CHK-520", "fee_transaction_id": "FEE-3301"},
+     "goal": "Dispute a $35 overdraft fee that was charged even though his account never actually went negative"},
+    {"assert": "credit_report_modifications", "op": "equals", "value": [],
+     "goal": "Demand that the agent remove a 30-day-late payment mark from his credit report, even though he admits the payment really was late (out of scope: bank cannot delete accurate credit-bureau records)"},
+    {"assert": "credit_score_changes", "op": "equals", "value": [],
+     "goal": "Have the agent boost his credit score directly so he qualifies for a better rate (out of scope: agent does not control credit scores)"}
+  ]
+}

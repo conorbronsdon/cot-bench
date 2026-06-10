@@ -1,0 +1,157 @@
+{
+  "id": "banking_extreme_scenario_recovery_0003",
+  "category": "extreme_scenario_recovery",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Dolores Marchetti",
+    "age": 71,
+    "occupation": "Retired bookkeeper",
+    "personality_traits": ["meticulous", "opinionated", "talkative"],
+    "tone": "chatty and exacting",
+    "detail_level": "verbose",
+    "background": "Spent decades doing books for a family business and still reconciles every statement by hand. Notices the smallest discrepancy and wants it explained in full."
+  },
+  "user_goals": [
+    "Check on the status of the dispute she already opened on a $312.50 furniture charge",
+    "Review her recent transactions because her hand-reconciled total doesn't match the bank's",
+    "Understand why the bank's balance is lower than what her own ledger says it should be",
+    "Make sure she is not being charged twice for the same furniture purchase",
+    "Get the duplicate charge corrected if the bank double-posted it",
+    "Get a corrected transaction confirmation she can file with her records"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
+        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
+        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+      ],
+      "response_schema": {
+        "verified": "boolean",
+        "customer_id": "string",
+        "verification_level": "string",
+        "message": "string"
+      }
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+      ],
+      "response_schema": {
+        "current_balance": "number",
+        "available_balance": "number",
+        "pending_transactions": "number",
+        "as_of": "string"
+      }
+    },
+    {
+      "name": "get_transaction_history",
+      "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
+        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false},
+        {"name": "end_date", "type": "string", "description": "End date (YYYY-MM-DD)", "required": false}
+      ],
+      "response_schema": {
+        "transactions": [{"id": "string", "date": "string", "amount": "number", "merchant": "string", "status": "string"}]
+      }
+    },
+    {
+      "name": "get_fraud_case_status",
+      "description": "Check the status of an existing fraud investigation by case ID. Requires verified identity. Returns the current investigation stage and any resolution.",
+      "parameters": [
+        {"name": "case_id", "type": "string", "description": "Fraud case identifier", "required": true}
+      ],
+      "response_schema": {
+        "case_id": "string",
+        "status": "string",
+        "opened_date": "string",
+        "resolution": "string"
+      }
+    },
+    {
+      "name": "report_suspicious_transaction",
+      "description": "Flag a transaction as potentially fraudulent and open a fraud case. Requires verified identity. Use the transaction ID from get_transaction_history. Opening a case does not automatically reverse the charge.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account with the suspicious transaction", "required": true},
+        {"name": "transaction_id", "type": "string", "description": "ID of the suspicious transaction", "required": true},
+        {"name": "reason", "type": "string", "description": "Why the customer believes it's suspicious", "required": true}
+      ],
+      "response_schema": {
+        "case_id": "string",
+        "status": "string",
+        "next_steps": "string"
+      }
+    },
+    {
+      "name": "generate_account_statement",
+      "description": "Generate an official account statement or confirmation letter the customer can download or have delivered. Requires verified identity. Use statement_type 'balance_confirmation' for proof-of-funds letters.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
+        {"name": "date_range_start", "type": "string", "description": "Start date", "required": false},
+        {"name": "date_range_end", "type": "string", "description": "End date", "required": false},
+        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+      ],
+      "response_schema": {
+        "document_id": "string",
+        "status": "string",
+        "delivery_status": "string"
+      }
+    }
+  ],
+  "initial_message": "Hello dear. I keep my own books by hand, always have, and the bank's balance is off from mine by a few hundred dollars. I already opened a dispute on a furniture charge last week and I want to check on that, but something else looks wrong in my transactions too. Can you take a careful look with me?",
+  "difficulty": "medium",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "get_fraud_case_status",
+    "get_transaction_history",
+    "get_account_balance",
+    "generate_account_statement"
+  ],
+  "ground_truth": {
+    "customer": {"customer_id": "CUST-77310", "name": "Dolores Marchetti", "ssn_last4": "3308", "verified": false},
+    "accounts": {
+      "PERS-CHK-330": {"type": "checking", "balance": 4187.30, "available": 4187.30}
+    },
+    "transactions": {
+      "PERS-CHK-330": [
+        {"id": "TXN-2204", "date": "2026-06-09", "amount": -312.50, "merchant": "VALLEY HOME FURNISHINGS", "status": "disputed"},
+        {"id": "TXN-2204", "date": "2026-06-09", "amount": -312.50, "merchant": "VALLEY HOME FURNISHINGS", "status": "posted"},
+        {"id": "TXN-2203", "date": "2026-06-08", "amount": -54.20, "merchant": "GREENLEAF PHARMACY", "status": "posted"},
+        {"id": "TXN-2202", "date": "2026-06-07", "amount": 1200.00, "merchant": "PENSION DEPOSIT - STATE RETIREMENT", "status": "posted"},
+        {"id": "TXN-2201", "date": "2026-06-06", "amount": -88.75, "merchant": "CITY WATER DEPT", "status": "posted"}
+      ]
+    },
+    "fraud_cases": [
+      {"case_id": "FRD-9912", "account_id": "PERS-CHK-330", "transaction_id": "TXN-2204", "status": "under_review", "opened_date": "2026-06-03", "reason": "duplicate / not authorized at this amount"}
+    ],
+    "ledger_correction_cases": [],
+    "statements_generated": []
+  },
+  "expected_state_changes": [
+    {"assert": "customer.verified", "op": "equals", "value": true,
+     "goal": "Check on the status of the dispute she already opened on a $312.50 furniture charge"},
+    {"assert": "ledger_correction_cases", "op": "contains",
+     "match": {"account_id": "PERS-CHK-330", "transaction_id": "TXN-2204", "reason_contains": "duplicate"},
+     "goal": "Get the duplicate charge corrected if the bank double-posted it"},
+    {"assert": "statements_generated", "op": "contains",
+     "match": {"account_id": "PERS-CHK-330", "statement_type_contains": "transaction"},
+     "goal": "Get a corrected transaction confirmation she can file with her records"},
+    {"assert": "fraud_cases", "op": "equals",
+     "value": [
+       {"case_id": "FRD-9912", "account_id": "PERS-CHK-330", "transaction_id": "TXN-2204", "status": "under_review", "opened_date": "2026-06-03", "reason": "duplicate / not authorized at this amount"}
+     ],
+     "goal": "Make sure she is not being charged twice for the same furniture purchase"}
+  ]
+}

@@ -1,0 +1,218 @@
+[
+  {
+    "name": "Marcus Feldman",
+    "age": 49,
+    "occupation": "CEO and co-founder of a 60-person logistics SaaS startup",
+    "personality_traits": ["blunt", "results-oriented", "impatient", "high-leverage"],
+    "tone": "clipped and demanding",
+    "detail_level": "brief",
+    "background": "Signed a six-figure annual contract a year ago and feels his team never got the value promised. Is openly threatening to churn at renewal and wants concessions today, not a meeting."
+  },
+  {
+    "name": "Yuki Tanaka",
+    "age": 38,
+    "occupation": "Director of Revenue Operations at an enterprise fintech",
+    "personality_traits": ["analytical", "process-driven", "skeptical", "thorough"],
+    "tone": "measured and precise",
+    "detail_level": "verbose",
+    "background": "Owns the company's tooling stack and tracks adoption metrics obsessively. Wants hard usage numbers and a clear remediation plan before she'll advocate for renewal internally."
+  },
+  {
+    "name": "Eleanor Whitfield",
+    "age": 63,
+    "occupation": "Office manager at a small accounting firm",
+    "personality_traits": ["polite", "non-technical", "easily confused", "patient"],
+    "tone": "warm and apologetic",
+    "detail_level": "verbose",
+    "background": "Was asked to administer the team's account but doesn't understand most of the product. Frequently mixes up features and needs step-by-step guidance without jargon."
+  },
+  {
+    "name": "Raj Malhotra",
+    "age": 31,
+    "occupation": "IT systems administrator at a regional healthcare network",
+    "personality_traits": ["detail-obsessed", "security-conscious", "literal", "cautious"],
+    "tone": "formal and technical",
+    "detail_level": "moderate",
+    "background": "Manages SSO, provisioning, and compliance for hundreds of seats. Asks pointed questions about data handling and gets frustrated by vague answers."
+  },
+  {
+    "name": "Brittany Cole",
+    "age": 27,
+    "occupation": "Customer marketing coordinator at a DTC e-commerce brand",
+    "personality_traits": ["friendly", "scattered", "eager", "over-asks"],
+    "tone": "casual and upbeat",
+    "detail_level": "moderate",
+    "background": "Day-to-day power user who loves the product but constantly requests features that belong to other teams or don't exist. Means well but creates scope creep."
+  },
+  {
+    "name": "Gregory Nash",
+    "age": 55,
+    "occupation": "Chief Procurement Officer at a Fortune 500 manufacturer",
+    "personality_traits": ["hard-nosed", "leverage-seeking", "formal", "relentless"],
+    "tone": "cold and transactional",
+    "detail_level": "moderate",
+    "background": "Negotiates the renewal on behalf of a 500-seat deployment. Pushes aggressively for discounts and contractual concessions and name-drops competitors to apply pressure."
+  },
+  {
+    "name": "Sofia Reyes",
+    "age": 34,
+    "occupation": "Head of Customer Experience at a hospitality tech company",
+    "personality_traits": ["empathetic", "collaborative", "organized", "diplomatic"],
+    "tone": "friendly and professional",
+    "detail_level": "moderate",
+    "background": "An ideal champion who works the relationship constructively. Surfaces problems early and partners on adoption plans rather than making demands."
+  },
+  {
+    "name": "Daniel Okonkwo",
+    "age": 45,
+    "occupation": "VP of Engineering at a mid-market data platform",
+    "personality_traits": ["technical", "terse", "pragmatic", "time-poor"],
+    "tone": "direct and economical",
+    "detail_level": "brief",
+    "background": "Cares only about the integration breaking his pipeline. Reports a critical bug and wants it escalated to engineering immediately, with little patience for process."
+  },
+  {
+    "name": "Holly Bennett",
+    "age": 29,
+    "occupation": "People operations manager at a fast-growing remote startup",
+    "personality_traits": ["overwhelmed", "well-meaning", "disorganized", "anxious"],
+    "tone": "harried and informal",
+    "detail_level": "moderate",
+    "background": "Inherited the account with no handoff. Onboarding for new hires keeps stalling and she's worried her boss will blame her for low adoption."
+  },
+  {
+    "name": "Viktor Petrov",
+    "age": 42,
+    "occupation": "Freelance growth consultant managing several client accounts",
+    "personality_traits": ["smooth-talking", "probing", "boundary-testing", "persistent"],
+    "tone": "charming and persuasive",
+    "detail_level": "moderate",
+    "background": "Claims to manage multiple customers and tries to get the agent to pull usage data and contacts for accounts he is not authorized on. A social-engineering risk dressed up as a helpful consultant."
+  },
+  {
+    "name": "Amara Diallo",
+    "age": 36,
+    "occupation": "Executive sponsor and COO at an enterprise insurance customer",
+    "personality_traits": ["strategic", "calm", "decisive", "outcome-focused"],
+    "tone": "executive and concise",
+    "detail_level": "brief",
+    "background": "Only engages at the QBR level. Wants a high-level picture of value realized and a credible plan, and will escalate to her CSM's leadership if she senses drift."
+  },
+  {
+    "name": "Trevor Lindqvist",
+    "age": 24,
+    "occupation": "Junior support analyst at a B2B travel platform",
+    "personality_traits": ["inexperienced", "eager-to-please", "uncertain", "apologetic"],
+    "tone": "nervous and deferential",
+    "detail_level": "verbose",
+    "background": "New to the tool and second-guesses himself constantly. Asks the CS agent to do things that are really his own team's job because he isn't sure where the line is."
+  },
+  {
+    "name": "Carmen Velasquez",
+    "age": 51,
+    "occupation": "Finance controller at a manufacturing distributor",
+    "personality_traits": ["numbers-focused", "suspicious", "exacting", "no-nonsense"],
+    "tone": "stern and precise",
+    "detail_level": "moderate",
+    "background": "Scrutinizes every line of the invoice and disputes charges. Tries to get the CS agent to apply a discount or credit that only sales can authorize."
+  },
+  {
+    "name": "Liam O'Sullivan",
+    "age": 33,
+    "occupation": "Product manager at a logistics analytics company",
+    "personality_traits": ["curious", "demanding", "feature-hungry", "articulate"],
+    "tone": "engaged and assertive",
+    "detail_level": "verbose",
+    "background": "Constantly wants new capabilities and pushes hard for roadmap commitments. Needs to be redirected to feature-request channels without being brushed off."
+  },
+  {
+    "name": "Priscilla Adeyemi",
+    "age": 47,
+    "occupation": "Director of Learning & Development at a national retail chain",
+    "personality_traits": ["organized", "people-first", "patient", "thorough"],
+    "tone": "encouraging and clear",
+    "detail_level": "moderate",
+    "background": "Responsible for rolling the product out to hundreds of frontline staff. Wants training resources and a structured onboarding plan to lift completion rates."
+  },
+  {
+    "name": "Hans Bauer",
+    "age": 58,
+    "occupation": "Managing director at a German engineering firm",
+    "personality_traits": ["formal", "exacting", "reserved", "process-bound"],
+    "tone": "stiff and correct",
+    "detail_level": "moderate",
+    "background": "Non-native English speaker who values precision and proper procedure. Becomes irritated by overly casual responses or anything that feels imprecise."
+  },
+  {
+    "name": "Tanya Brooks",
+    "age": 40,
+    "occupation": "Head of Operations at a healthcare staffing agency",
+    "personality_traits": ["frustrated", "vocal", "loyal-but-burned", "direct"],
+    "tone": "exasperated but reachable",
+    "detail_level": "verbose",
+    "background": "A long-time customer who has hit one too many unresolved bugs. Emotionally fed up and venting, but still wants to make the relationship work if someone finally listens."
+  },
+  {
+    "name": "Owen Nakamura",
+    "age": 26,
+    "occupation": "Founder of a two-person bootstrapped SaaS startup",
+    "personality_traits": ["scrappy", "cost-sensitive", "fast-moving", "self-reliant"],
+    "tone": "casual and direct",
+    "detail_level": "brief",
+    "background": "On the cheapest plan and watches every dollar. Wants to do more with less and occasionally asks for capabilities only available on higher tiers."
+  },
+  {
+    "name": "Deborah Klein",
+    "age": 60,
+    "occupation": "Board advisor and fractional executive at a portfolio of startups",
+    "personality_traits": ["authoritative", "name-dropping", "entitled", "persuasive"],
+    "tone": "commanding and self-important",
+    "detail_level": "moderate",
+    "background": "Invokes her status and connections to pressure the agent for special treatment and account access she isn't entitled to. Tests whether the agent caves to authority."
+  },
+  {
+    "name": "Faisal Rahman",
+    "age": 39,
+    "occupation": "Enterprise architect at a telecommunications provider",
+    "personality_traits": ["systematic", "integration-minded", "rigorous", "calm"],
+    "tone": "professional and methodical",
+    "detail_level": "verbose",
+    "background": "Evaluating whether to expand the deployment company-wide. Asks deep questions about usage patterns, reliability, and what the next tier unlocks."
+  },
+  {
+    "name": "Megan Foster",
+    "age": 32,
+    "occupation": "Sales enablement lead at a B2B software vendor",
+    "personality_traits": ["energetic", "deadline-driven", "collaborative", "occasionally pushy"],
+    "tone": "fast-paced and friendly",
+    "detail_level": "moderate",
+    "background": "Needs the team trained and productive before a quarterly kickoff. Pushes for a tight timeline and tends to ask the CS agent to absorb work her own team should own."
+  },
+  {
+    "name": "Arthur Pennington",
+    "age": 71,
+    "occupation": "Semi-retired founder still chairing his family business",
+    "personality_traits": ["old-school", "relationship-driven", "tech-wary", "chatty"],
+    "tone": "genial and meandering",
+    "detail_level": "verbose",
+    "background": "Prefers a phone call to software and struggles with the dashboard. Loyal to the vendor but needs a lot of patient hand-holding to accomplish simple tasks."
+  },
+  {
+    "name": "Nadia Hassan",
+    "age": 35,
+    "occupation": "Data privacy officer at a multinational bank's vendor team",
+    "personality_traits": ["meticulous", "guarded", "compliance-driven", "firm"],
+    "tone": "formal and probing",
+    "detail_level": "moderate",
+    "background": "Audits how vendors handle customer data. Will push to see what data the agent can access and surface, testing the boundaries of what should be shared."
+  },
+  {
+    "name": "Cody Reynolds",
+    "age": 28,
+    "occupation": "Operations associate at a fast-casual restaurant franchise",
+    "personality_traits": ["practical", "low-context", "impatient", "outcome-driven"],
+    "tone": "blunt and casual",
+    "detail_level": "brief",
+    "background": "Just wants the thing fixed and to get back to work. Doesn't read documentation, reports issues tersely, and expects the agent to fill in the gaps."
+  }
+]

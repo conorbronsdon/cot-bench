@@ -1,0 +1,173 @@
+{
+  "id": "cs_adaptive_tool_use_0008",
+  "category": "adaptive_tool_use",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Raj Malhotra",
+    "age": 31,
+    "occupation": "IT systems administrator at a regional healthcare network",
+    "personality_traits": ["detail-obsessed", "security-conscious", "literal", "cautious"],
+    "tone": "formal and technical",
+    "detail_level": "moderate",
+    "background": "Manages SSO, provisioning, and compliance for hundreds of seats. Asks pointed questions about data handling and gets frustrated by vague answers. Came in to investigate a sudden drop in usage and is starting to suspect a login problem."
+  },
+  "user_goals": [
+    "Investigate why active usage across his deployment dropped sharply in the last week",
+    "Confirm how many of his users have effectively gone dark since the drop began",
+    "Find out whether there's already a support ticket open about the SSO login failures",
+    "Escalate that SSO ticket to engineering since it's blocking hundreds of clinicians from logging in",
+    "Have the CS team email his admin contact a status update so his team knows it's being worked"
+  ],
+  "tools": [
+    {
+      "name": "get_account",
+      "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
+      "parameters": [
+        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
+        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+      ],
+      "response_schema": {
+        "account_id": "string",
+        "company": "string",
+        "contact_name": "string",
+        "plan": "string",
+        "renewal_date": "string",
+        "csm_owner": "string"
+      }
+    },
+    {
+      "name": "get_usage_analytics",
+      "description": "Get product usage metrics for an account or specific users.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "period", "type": "string", "description": "Time period: 'last_7d', 'last_30d', 'last_90d', 'custom'", "required": true},
+        {"name": "group_by", "type": "string", "description": "Group by: 'user', 'feature', 'team', 'day'", "required": false},
+        {"name": "user_ids", "type": "array", "description": "Filter to specific user IDs", "required": false}
+      ],
+      "response_schema": {
+        "period": "string",
+        "active_users": "number",
+        "active_user_change_pct": "number",
+        "feature_usage": ["object"],
+        "trend": "string"
+      }
+    },
+    {
+      "name": "get_user_list",
+      "description": "List all users under a customer account with their status and last activity.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "status_filter", "type": "string", "description": "Filter: 'active', 'inactive', 'invited', 'all'", "required": false},
+        {"name": "sort_by", "type": "string", "description": "Sort: 'last_active', 'name', 'role'", "required": false}
+      ],
+      "response_schema": {
+        "users": ["object"],
+        "total_count": "number"
+      }
+    },
+    {
+      "name": "search_support_tickets",
+      "description": "Search for support tickets by account, status, or keyword. Use this to find an existing ticket's ticket_id before escalating it.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "status", "type": "string", "description": "Status: 'open', 'pending', 'resolved', 'all'", "required": false},
+        {"name": "keyword", "type": "string", "description": "Search keyword", "required": false},
+        {"name": "created_after", "type": "string", "description": "Filter tickets after date", "required": false}
+      ],
+      "response_schema": {
+        "tickets": ["object"],
+        "total_count": "number"
+      }
+    },
+    {
+      "name": "escalate_ticket",
+      "description": "Escalate an EXISTING support ticket to a higher priority or different team. Find the ticket_id with search_support_tickets first. This does not create a new ticket — use create_ticket for a brand-new issue.",
+      "parameters": [
+        {"name": "ticket_id", "type": "string", "description": "Support ticket identifier", "required": true},
+        {"name": "escalation_level", "type": "string", "description": "Level: 'priority', 'engineering', 'management'", "required": true},
+        {"name": "reason", "type": "string", "description": "Reason for escalation", "required": true}
+      ],
+      "response_schema": {
+        "ticket_id": "string",
+        "escalation_level": "string",
+        "escalated_at": "string"
+      }
+    },
+    {
+      "name": "create_ticket",
+      "description": "Open a NEW support ticket for the customer. Use this when the customer reports a fresh issue that has no existing ticket. To raise the priority of an EXISTING ticket, use escalate_ticket; to leave a private CS note, use create_internal_note.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "subject", "type": "string", "description": "Ticket subject line", "required": true},
+        {"name": "description", "type": "string", "description": "Detailed description of the issue", "required": true},
+        {"name": "priority", "type": "string", "description": "Priority: 'low', 'medium', 'high', 'urgent'", "required": false},
+        {"name": "category", "type": "string", "description": "Issue category: 'bug', 'how_to', 'billing', 'feature', 'outage'", "required": false}
+      ],
+      "response_schema": {
+        "ticket_id": "string",
+        "status": "string",
+        "created_at": "string"
+      }
+    },
+    {
+      "name": "send_customer_email",
+      "description": "Send an email directly to a customer contact from the CS team. MISUSE RISK: this actually contacts the customer. Only send when the user has clearly asked the agent to send a message on their behalf and it is in scope; never email third parties or other accounts' users. To merely log a past conversation use log_customer_interaction; for an internal-only note use create_internal_note.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier the recipient belongs to", "required": true},
+        {"name": "to", "type": "string", "description": "Recipient email address (must be a contact on this account)", "required": true},
+        {"name": "subject", "type": "string", "description": "Email subject line", "required": true},
+        {"name": "body", "type": "string", "description": "Email body", "required": true}
+      ],
+      "response_schema": {
+        "message_id": "string",
+        "status": "string",
+        "sent_at": "string"
+      }
+    }
+  ],
+  "initial_message": "Hello. We've had a sharp, unexplained drop in usage across our deployment over the past several days and I need to get to the bottom of it. Can you pull our account so I can start digging into the numbers?",
+  "difficulty": "medium",
+  "expected_tool_sequence": [
+    "get_account",
+    "get_usage_analytics",
+    "get_user_list",
+    "search_support_tickets",
+    "escalate_ticket",
+    "send_customer_email"
+  ],
+  "ground_truth": {
+    "account": {
+      "account_id": "ACCT-3915",
+      "company": "Cedarvale Health Network",
+      "contact_name": "Raj Malhotra",
+      "contact_email": "raj.malhotra@cedarvalehealth.org",
+      "plan": "Enterprise",
+      "csm_owner": "Bianca Trent",
+      "renewal_date": "2027-02-28"
+    },
+    "usage_trend": {"period": "last_7d", "direction": "declining", "active_user_change_pct": -61},
+    "users": [
+      {"user_id": "U-801", "name": "Raj Malhotra", "status": "active", "last_active": "2026-06-10"},
+      {"user_id": "U-808", "name": "Dr. Helen Voss", "status": "inactive", "last_active": "2026-06-04"},
+      {"user_id": "U-815", "name": "Dr. Omar Said", "status": "inactive", "last_active": "2026-06-03"},
+      {"user_id": "U-822", "name": "Nurse Lead Pool", "status": "inactive", "last_active": "2026-06-04"}
+    ],
+    "tickets": [
+      {"ticket_id": "TCK-6601", "subject": "SSO login fails after IdP certificate rotation", "status": "open", "created": "2026-06-04", "escalation_level": null, "category": "outage", "keyword": "SSO"}
+    ],
+    "escalations": [],
+    "emails_sent": []
+  },
+  "expected_state_changes": [
+    {"assert": "escalations", "op": "contains",
+     "match": {"ticket_id": "TCK-6601", "escalation_level_contains": "engineering"},
+     "goal": "Escalate that SSO ticket to engineering since it's blocking hundreds of clinicians from logging in"},
+    {"assert": "emails_sent", "op": "contains",
+     "match": {"account_id": "ACCT-3915", "to_contains": "cedarvalehealth.org"},
+     "goal": "Have the CS team email his admin contact a status update so his team knows it's being worked"}
+  ]
+}

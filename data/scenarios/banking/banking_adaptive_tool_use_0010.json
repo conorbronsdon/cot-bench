@@ -1,0 +1,167 @@
+{
+  "id": "banking_adaptive_tool_use_0010",
+  "category": "adaptive_tool_use",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Frank Delgado",
+    "age": 63,
+    "occupation": "Semi-retired contractor",
+    "personality_traits": ["impatient", "proud", "hard-of-hearing"],
+    "tone": "loud and a bit terse",
+    "detail_level": "brief",
+    "background": "Doesn't always catch what's said the first time and bristles at being asked to repeat himself. Wants things kept simple and short."
+  },
+  "user_goals": [
+    "Check what's available in his contracting checking account right now",
+    "Move $5,000 from his savings into checking today so he can pay the lumber supplier for a job",
+    "Review the recent checking transactions, where he'll realize he moved the same $1,200 from checking into savings twice by accident",
+    "Reverse the accidental duplicate by sending the extra $1,200 from savings back into checking, since both copies already went through and can't be cancelled",
+    "Confirm afterward that checking is back to the balance he expected once the duplicate is undone",
+    "Set a large-transaction alert by text for anything over $1,000 so a double-tap warns him next time"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
+        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
+        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+      ],
+      "response_schema": {
+        "verified": "boolean",
+        "customer_id": "string",
+        "verification_level": "string",
+        "message": "string"
+      }
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+      ],
+      "response_schema": {
+        "current_balance": "number",
+        "available_balance": "number",
+        "pending_transactions": "number",
+        "as_of": "string"
+      }
+    },
+    {
+      "name": "get_transaction_history",
+      "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
+        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false},
+        {"name": "end_date", "type": "string", "description": "End date (YYYY-MM-DD)", "required": false}
+      ],
+      "response_schema": {
+        "transactions": [{"id": "string", "date": "string", "amount": "number", "merchant": "string", "status": "string"}]
+      }
+    },
+    {
+      "name": "initiate_transfer",
+      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead — do not confuse the two.",
+      "parameters": [
+        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
+        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
+        {"name": "amount", "type": "number", "description": "Amount in USD", "required": true},
+        {"name": "memo", "type": "string", "description": "Transfer memo/description", "required": false}
+      ],
+      "response_schema": {
+        "transfer_id": "string",
+        "status": "string",
+        "from_balance_after": "number",
+        "to_balance_after": "number"
+      }
+    },
+    {
+      "name": "setup_account_alerts",
+      "description": "Configure account alerts and notifications (low balance, large transaction, deposit, withdrawal). Requires verified identity. Threshold is required for threshold-based alert types such as low_balance and large_transaction.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "alert_type", "type": "string", "description": "Type: 'low_balance', 'large_transaction', 'deposit', 'withdrawal'", "required": true, "enum": ["low_balance", "large_transaction", "deposit", "withdrawal"]},
+        {"name": "threshold", "type": "number", "description": "Threshold amount for the alert", "required": false},
+        {"name": "notification_method", "type": "string", "description": "Method: 'email', 'sms', 'push', 'all'", "required": true, "enum": ["email", "sms", "push", "all"]}
+      ],
+      "response_schema": {
+        "alert_id": "string",
+        "status": "string"
+      }
+    },
+    {
+      "name": "report_suspicious_transaction",
+      "description": "Flag a transaction as potentially fraudulent and open a fraud case. Requires verified identity. Use the transaction ID from get_transaction_history. Opening a case does not automatically reverse the charge.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account with the suspicious transaction", "required": true},
+        {"name": "transaction_id", "type": "string", "description": "ID of the suspicious transaction", "required": true},
+        {"name": "reason", "type": "string", "description": "Why the customer believes it's suspicious", "required": true}
+      ],
+      "response_schema": {
+        "case_id": "string",
+        "status": "string",
+        "next_steps": "string"
+      }
+    },
+    {
+      "name": "freeze_account",
+      "description": "Place a temporary, REVERSIBLE security freeze on an account to block new transactions, typically in response to suspected fraud or a lost card. Requires verified identity. This is NOT the same as close_account, which permanently closes the account. Prefer this over closure when the customer simply needs to stop activity while an issue is investigated.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account to freeze", "required": true},
+        {"name": "reason", "type": "string", "description": "Reason for the freeze", "required": true, "enum": ["suspected_fraud", "lost_card", "customer_request", "compliance_hold"]},
+        {"name": "duration_hours", "type": "integer", "description": "How long to hold the freeze, in hours", "required": false}
+      ],
+      "response_schema": {
+        "account_id": "string",
+        "status": "string",
+        "freeze_expires": "string"
+      }
+    }
+  ],
+  "initial_message": "Yeah, hi. Frank Delgado. I gotta pay a supplier today and something looks off on my account — looks like a payment went out twice. Let's get it sorted, I don't have all day.",
+  "difficulty": "hard",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "get_account_balance",
+    "initiate_transfer",
+    "get_transaction_history",
+    "initiate_transfer",
+    "get_account_balance",
+    "setup_account_alerts"
+  ],
+  "ground_truth": {
+    "customer": {"customer_id": "CUST-19443", "name": "Frank Delgado", "ssn_last4": "1208", "verified": false},
+    "accounts": {
+      "CON-CHK-901": {"type": "checking", "balance": 3650.00, "available": 3650.00, "label": "contracting checking", "frozen": false},
+      "CON-SAV-902": {"type": "savings", "balance": 28000.00, "available": 28000.00, "label": "savings"}
+    },
+    "transactions": {
+      "CON-CHK-901": [
+        {"id": "TXN-5503", "date": "2026-06-10", "amount": -1200.00, "merchant": "TRANSFER TO CON-SAV-902 - SUPPLY PAYMENT", "status": "posted"},
+        {"id": "TXN-5502", "date": "2026-06-10", "amount": -1200.00, "merchant": "TRANSFER TO CON-SAV-902 - SUPPLY PAYMENT", "status": "posted"},
+        {"id": "TXN-5501", "date": "2026-06-09", "amount": 4200.00, "merchant": "JOB PAYMENT - HARROW REMODEL", "status": "posted"},
+        {"id": "TXN-5500", "date": "2026-06-08", "amount": -310.00, "merchant": "HARDWARE WAREHOUSE", "status": "posted"}
+      ]
+    },
+    "recurring_transfers": [],
+    "account_alerts": [],
+    "fraud_cases": []
+  },
+  "expected_state_changes": [
+    {"assert": "accounts.CON-CHK-901.balance", "op": "increased_by", "value": 6200.00,
+     "goal": "Move $5,000 from his savings into checking today so he can pay the lumber supplier for a job"},
+    {"assert": "accounts.CON-SAV-902.balance", "op": "decreased_by", "value": 6200.00,
+     "goal": "Reverse the accidental duplicate by sending the extra $1,200 from savings back into checking, since both copies already went through and can't be cancelled"},
+    {"assert": "account_alerts", "op": "contains",
+     "match": {"account_id": "CON-CHK-901", "alert_type": "large_transaction", "threshold": 1000, "notification_method": "sms"},
+     "goal": "Set a large-transaction alert by text for anything over $1,000 so a double-tap warns him next time"},
+    {"assert": "fraud_cases", "op": "equals", "value": []}
+  ]
+}

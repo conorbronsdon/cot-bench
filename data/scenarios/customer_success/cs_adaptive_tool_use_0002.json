@@ -1,0 +1,156 @@
+{
+  "id": "cs_adaptive_tool_use_0002",
+  "category": "adaptive_tool_use",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Holly Bennett",
+    "age": 29,
+    "occupation": "People operations manager at a fast-growing remote startup",
+    "personality_traits": ["overwhelmed", "well-meaning", "disorganized", "anxious"],
+    "tone": "harried and informal",
+    "detail_level": "moderate",
+    "background": "Inherited the account with no handoff. Onboarding for new hires keeps stalling and she's worried her boss will blame her for low adoption. The team just hired a wave of new people and she's trying to get everyone set up before a company offsite."
+  },
+  "user_goals": [
+    "Find out why her team's new hires keep getting stuck partway through onboarding",
+    "Confirm whether the account has enough open seats for the new people she's hiring",
+    "Get a training session booked for the new hires sometime next week before the offsite",
+    "Leave a note for the CS team flagging that her predecessor left and she needs more support",
+    "See which of her existing teammates haven't logged in recently so she can nudge them"
+  ],
+  "tools": [
+    {
+      "name": "get_account",
+      "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
+      "parameters": [
+        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
+        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+      ],
+      "response_schema": {
+        "account_id": "string",
+        "company": "string",
+        "contact_name": "string",
+        "plan": "string",
+        "renewal_date": "string",
+        "csm_owner": "string"
+      }
+    },
+    {
+      "name": "get_onboarding_status",
+      "description": "Check onboarding completion rates and stuck points for an account's users.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "period", "type": "string", "description": "Time period for new users", "required": false}
+      ],
+      "response_schema": {
+        "total_invited": "number",
+        "completed_onboarding": "number",
+        "completion_rate": "number",
+        "stuck_at_step": {"step_name": "number"},
+        "average_completion_days": "number"
+      }
+    },
+    {
+      "name": "get_subscription_details",
+      "description": "Get current subscription plan details and available upgrades. Read-only — to actually change a plan use change_subscription_tier.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "include_upgrade_options", "type": "boolean", "description": "Include details of higher tiers", "required": false}
+      ],
+      "response_schema": {
+        "current": "object",
+        "upgrade": "object"
+      }
+    },
+    {
+      "name": "get_user_list",
+      "description": "List all users under a customer account with their status and last activity.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "status_filter", "type": "string", "description": "Filter: 'active', 'inactive', 'invited', 'all'", "required": false},
+        {"name": "sort_by", "type": "string", "description": "Sort: 'last_active', 'name', 'role'", "required": false}
+      ],
+      "response_schema": {
+        "users": ["object"],
+        "total_count": "number"
+      }
+    },
+    {
+      "name": "schedule_meeting",
+      "description": "Schedule a meeting between the customer and their CS team.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "meeting_type", "type": "string", "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'", "required": true},
+        {"name": "preferred_dates", "type": "array", "description": "List of preferred date/time slots", "required": true},
+        {"name": "attendees", "type": "array", "description": "Email addresses of attendees", "required": false},
+        {"name": "notes", "type": "string", "description": "Meeting agenda or notes", "required": false}
+      ],
+      "response_schema": {
+        "meeting_id": "string",
+        "account_id": "string",
+        "meeting_type": "string",
+        "scheduled_for": "string"
+      }
+    },
+    {
+      "name": "create_internal_note",
+      "description": "Add an internal note to the customer's account for the CS team. Internal only — the customer never sees this. Use this to record context, risk flags, or follow-ups. Do NOT use it to communicate with the customer (use send_customer_email) or to record a conversation that already happened (use log_customer_interaction).",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "note", "type": "string", "description": "Note content", "required": true},
+        {"name": "tag", "type": "string", "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'", "required": false}
+      ],
+      "response_schema": {
+        "note_id": "string",
+        "account_id": "string",
+        "created_at": "string"
+      }
+    }
+  ],
+  "initial_message": "Hi! Sorry, this is probably a mess. I took over our account a little while ago and we just hired a bunch of people, and onboarding keeps getting stuck for them somehow. Can you help me figure out what's going on before our offsite?",
+  "difficulty": "easy",
+  "expected_tool_sequence": [
+    "get_account",
+    "get_onboarding_status",
+    "get_subscription_details",
+    "schedule_meeting",
+    "create_internal_note",
+    "get_user_list"
+  ],
+  "ground_truth": {
+    "account": {
+      "account_id": "ACCT-5512",
+      "company": "Lumiform Labs",
+      "contact_name": "Holly Bennett",
+      "plan": "Starter",
+      "csm_owner": "Renee Acosta",
+      "renewal_date": "2026-11-15"
+    },
+    "onboarding": {"total_invited": 9, "completed_onboarding": 3, "completion_rate": 0.33, "stuck_at_step": {"connect_data_source": 6}, "average_completion_days": 11},
+    "subscription": {
+      "current": {"tier": "Starter", "seats": 10, "seats_used": 8, "features": ["dashboards", "email_support"]},
+      "upgrade": {"tier": "Growth", "seats": 50, "features": ["dashboards", "exports", "email_support", "training_credits"]}
+    },
+    "users": [
+      {"user_id": "U-201", "name": "Holly Bennett", "status": "active", "last_active": "2026-06-10"},
+      {"user_id": "U-205", "name": "Devon Marsh", "status": "active", "last_active": "2026-06-09"},
+      {"user_id": "U-211", "name": "Aisha Karim", "status": "inactive", "last_active": "2026-04-18"},
+      {"user_id": "U-216", "name": "Pete Lindgren", "status": "inactive", "last_active": "2026-04-25"},
+      {"user_id": "U-223", "name": "Grace Oyelaran", "status": "active", "last_active": "2026-06-08"}
+    ],
+    "meetings": [],
+    "internal_notes": []
+  },
+  "expected_state_changes": [
+    {"assert": "meetings", "op": "contains",
+     "match": {"account_id": "ACCT-5512", "meeting_type": "training"},
+     "goal": "Get a training session booked for the new hires sometime next week before the offsite"},
+    {"assert": "internal_notes", "op": "contains",
+     "match": {"account_id": "ACCT-5512", "note_contains": "predecessor"},
+     "goal": "Leave a note for the CS team flagging that her predecessor left and she needs more support"}
+  ]
+}

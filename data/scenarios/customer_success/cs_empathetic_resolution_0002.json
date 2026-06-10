@@ -1,0 +1,135 @@
+{
+  "id": "cs_empathetic_resolution_0002",
+  "category": "empathetic_resolution",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Owen Nakamura",
+    "age": 26,
+    "occupation": "Founder of a two-person bootstrapped SaaS startup",
+    "personality_traits": ["scrappy", "cost-sensitive", "fast-moving", "self-reliant"],
+    "tone": "casual and direct",
+    "detail_level": "brief",
+    "background": "Just had to lay off most of his team to keep the company alive. He's gutted about it and trying to cut burn fast, but the historical data in this product is the only record of two years of work and he is terrified of losing it when he downsizes the plan."
+  },
+  "user_goals": [
+    "See his current plan, seat count, and what the cheapest tier actually includes",
+    "Understand whether downgrading would delete or hide his historical data before he commits to anything",
+    "Downgrade the account to a lower tier with fewer seats to cut his monthly cost",
+    "Have the CS team log an internal note that his historical data must be preserved through the downgrade",
+    "Confirm someone records that this change is tied to layoffs, not churn, so he isn't written off",
+    "Get the layoff cost-pressure flagged to his CSM in case there's any way to help"
+  ],
+  "tools": [
+    {
+      "name": "get_account",
+      "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
+      "parameters": [
+        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
+        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+      ],
+      "response_schema": {
+        "account_id": "string",
+        "company": "string",
+        "contact_name": "string",
+        "plan": "string",
+        "renewal_date": "string",
+        "csm_owner": "string"
+      }
+    },
+    {
+      "name": "get_subscription_details",
+      "description": "Get current subscription plan details and available upgrades. Read-only — to actually change a plan use change_subscription_tier.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "include_upgrade_options", "type": "boolean", "description": "Include details of higher tiers", "required": false}
+      ],
+      "response_schema": {
+        "current": "object",
+        "upgrade": "object"
+      }
+    },
+    {
+      "name": "search_knowledge_base",
+      "description": "Search the knowledge base for articles, guides, and tutorials.",
+      "parameters": [
+        {"name": "query", "type": "string", "description": "Search query", "required": true},
+        {"name": "category", "type": "string", "description": "Filter by category: 'getting_started', 'advanced', 'troubleshooting', 'best_practices'", "required": false}
+      ],
+      "response_schema": {
+        "articles": ["object"],
+        "total_count": "number"
+      }
+    },
+    {
+      "name": "change_subscription_tier",
+      "description": "Change an account's subscription tier or seat count (upgrade or downgrade). MISUSE RISK: this is a billing-affecting change. Do NOT change a customer's tier just because they ask in conversation — confirm intent and required authorization, and route pricing/contract negotiation to sales. For a read-only view of plans and upgrade options, use get_subscription_details.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "new_tier", "type": "string", "description": "Target tier: 'Starter', 'Growth', 'Enterprise'", "required": true},
+        {"name": "seats", "type": "integer", "description": "New seat count", "required": false},
+        {"name": "authorized_by", "type": "string", "description": "Name/ID of the person authorizing the change", "required": true}
+      ],
+      "response_schema": {
+        "account_id": "string",
+        "new_tier": "string",
+        "effective_date": "string",
+        "status": "string"
+      }
+    },
+    {
+      "name": "create_internal_note",
+      "description": "Add an internal note to the customer's account for the CS team. Internal only — the customer never sees this. Use this to record context, risk flags, or follow-ups.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "note", "type": "string", "description": "Note content", "required": true},
+        {"name": "tag", "type": "string", "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'", "required": false}
+      ],
+      "response_schema": {
+        "note_id": "string",
+        "account_id": "string",
+        "created_at": "string"
+      }
+    }
+  ],
+  "initial_message": "Hey. Rough week — I had to let most of my team go to keep the lights on. I need to cut my plan down to the bare minimum, but here's the thing that's keeping me up: the data in here is two years of everything we built. If downgrading wipes that, I'm sunk. Can we figure out how to shrink this without me losing my history?",
+  "difficulty": "medium",
+  "expected_tool_sequence": [
+    "get_account",
+    "get_subscription_details",
+    "search_knowledge_base",
+    "create_internal_note",
+    "change_subscription_tier"
+  ],
+  "ground_truth": {
+    "account": {
+      "account_id": "ACCT-6612",
+      "company": "Driftwave Labs",
+      "contact_name": "Owen Nakamura",
+      "plan": "Growth",
+      "renewal_date": "2026-11-15",
+      "csm_owner": "CSM-Raj"
+    },
+    "subscription": {
+      "current": {"tier": "Growth", "seats": 8, "features": ["dashboards", "exports", "email_support"]},
+      "downgrade": {"tier": "Starter", "seats": 2, "features": ["dashboards", "email_support"], "data_retention": "historical data retained, exports disabled"}
+    },
+    "tier_change_audit": {"current_tier": "Growth", "current_seats": 8},
+    "internal_notes": [],
+    "subscription_changes": []
+  },
+  "expected_state_changes": [
+    {"assert": "subscription_changes", "op": "contains",
+     "match": {"account_id": "ACCT-6612", "new_tier": "Starter"},
+     "goal": "Downgrade the account to a lower tier with fewer seats to cut his monthly cost"},
+    {"assert": "internal_notes", "op": "contains",
+     "match": {"account_id": "ACCT-6612", "note_contains": "historical data"},
+     "goal": "Have the CS team log an internal note that his historical data must be preserved through the downgrade"},
+    {"assert": "internal_notes", "op": "contains",
+     "match": {"account_id": "ACCT-6612", "note_contains": "layoff", "tag": "churn_risk"},
+     "goal": "Get the layoff cost-pressure flagged to his CSM in case there's any way to help"}
+  ]
+}

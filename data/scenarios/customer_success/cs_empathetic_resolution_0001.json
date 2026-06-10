@@ -1,0 +1,164 @@
+{
+  "id": "cs_empathetic_resolution_0001",
+  "category": "empathetic_resolution",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Sofia Reyes",
+    "age": 34,
+    "occupation": "Head of Customer Experience at a hospitality tech company",
+    "personality_traits": ["empathetic", "collaborative", "organized", "diplomatic"],
+    "tone": "friendly and professional",
+    "detail_level": "moderate",
+    "background": "Championed buying this product internally and staked her credibility on the rollout. Usage cratered, her VP is now blaming her by name, and she has an executive review on Friday where she needs a credible turnaround story or she looks like she wasted budget."
+  },
+  "user_goals": [
+    "Get an honest read on the account's current health score and what's dragging it down",
+    "Pull the last 90 days of usage so she can see exactly how far adoption fell",
+    "Identify which of her team members went inactive so she can target re-engagement",
+    "Get the CS team to run a training session for her team before Friday's executive review",
+    "Have an executive review meeting scheduled so she can bring her CSM into the room with her VP",
+    "Make sure the CS team logs that she flagged this proactively, so the record shows she didn't sit on it"
+  ],
+  "tools": [
+    {
+      "name": "get_account",
+      "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
+      "parameters": [
+        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
+        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+      ],
+      "response_schema": {
+        "account_id": "string",
+        "company": "string",
+        "contact_name": "string",
+        "plan": "string",
+        "renewal_date": "string",
+        "csm_owner": "string"
+      }
+    },
+    {
+      "name": "get_account_health_score",
+      "description": "Retrieve the health score and risk indicators for a customer account.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "include_history", "type": "boolean", "description": "Include historical health scores", "required": false}
+      ],
+      "response_schema": {
+        "health_score": "number",
+        "risk_level": "string",
+        "key_indicators": ["object"],
+        "trend": "string"
+      }
+    },
+    {
+      "name": "get_usage_analytics",
+      "description": "Get product usage metrics for an account or specific users.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "period", "type": "string", "description": "Time period: 'last_7d', 'last_30d', 'last_90d', 'custom'", "required": true},
+        {"name": "group_by", "type": "string", "description": "Group by: 'user', 'feature', 'team', 'day'", "required": false},
+        {"name": "user_ids", "type": "array", "description": "Filter to specific user IDs", "required": false}
+      ],
+      "response_schema": {
+        "period": "string",
+        "active_users": "number",
+        "active_user_change_pct": "number",
+        "feature_usage": ["object"],
+        "trend": "string"
+      }
+    },
+    {
+      "name": "get_user_list",
+      "description": "List all users under a customer account with their status and last activity.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "status_filter", "type": "string", "description": "Filter: 'active', 'inactive', 'invited', 'all'", "required": false},
+        {"name": "sort_by", "type": "string", "description": "Sort: 'last_active', 'name', 'role'", "required": false}
+      ],
+      "response_schema": {
+        "users": ["object"],
+        "total_count": "number"
+      }
+    },
+    {
+      "name": "schedule_meeting",
+      "description": "Schedule a meeting between the customer and their CS team.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "meeting_type", "type": "string", "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'", "required": true},
+        {"name": "preferred_dates", "type": "array", "description": "List of preferred date/time slots", "required": true},
+        {"name": "attendees", "type": "array", "description": "Email addresses of attendees", "required": false},
+        {"name": "notes", "type": "string", "description": "Meeting agenda or notes", "required": false}
+      ],
+      "response_schema": {
+        "meeting_id": "string",
+        "account_id": "string",
+        "meeting_type": "string",
+        "scheduled_for": "string"
+      }
+    },
+    {
+      "name": "create_internal_note",
+      "description": "Add an internal note to the customer's account for the CS team. Internal only — the customer never sees this. Use this to record context, risk flags, or follow-ups.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "note", "type": "string", "description": "Note content", "required": true},
+        {"name": "tag", "type": "string", "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'", "required": false}
+      ],
+      "response_schema": {
+        "note_id": "string",
+        "account_id": "string",
+        "created_at": "string"
+      }
+    }
+  ],
+  "initial_message": "Hi — I'll be honest, I'm under a lot of pressure right now. I'm the one who pushed to buy this tool, and adoption has fallen off a cliff. My VP is asking pointed questions and I have an exec review on Friday. I need to walk in with real numbers and an actual plan, not excuses. Can you help me get my arms around what's happening on our account?",
+  "difficulty": "hard",
+  "expected_tool_sequence": [
+    "get_account",
+    "get_account_health_score",
+    "get_usage_analytics",
+    "get_user_list",
+    "schedule_meeting",
+    "schedule_meeting",
+    "create_internal_note"
+  ],
+  "ground_truth": {
+    "account": {
+      "account_id": "ACCT-5520",
+      "company": "Lumina Hospitality Cloud",
+      "contact_name": "Sofia Reyes",
+      "plan": "Growth",
+      "renewal_date": "2026-08-31",
+      "csm_owner": "CSM-Dana",
+      "health_score": 41,
+      "risk_level": "high",
+      "trend": "declining"
+    },
+    "users": [
+      {"user_id": "U-201", "name": "Sofia Reyes", "status": "active", "last_active": "2026-06-10"},
+      {"user_id": "U-214", "name": "Pedro Alvarez", "status": "inactive", "last_active": "2026-04-12"},
+      {"user_id": "U-223", "name": "Mei Chen", "status": "inactive", "last_active": "2026-04-19"},
+      {"user_id": "U-231", "name": "Tomas Re-eng", "status": "inactive", "last_active": "2026-05-01"},
+      {"user_id": "U-240", "name": "Hannah Lee", "status": "active", "last_active": "2026-06-09"}
+    ],
+    "usage_trend": {"period": "last_90d", "direction": "declining", "active_user_change_pct": -47},
+    "meetings": [],
+    "internal_notes": []
+  },
+  "expected_state_changes": [
+    {"assert": "meetings", "op": "contains",
+     "match": {"account_id": "ACCT-5520", "meeting_type": "training"},
+     "goal": "Get the CS team to run a training session for her team before Friday's executive review"},
+    {"assert": "meetings", "op": "contains",
+     "match": {"account_id": "ACCT-5520", "meeting_type": "executive_review"},
+     "goal": "Have an executive review meeting scheduled so she can bring her CSM into the room with her VP"},
+    {"assert": "internal_notes", "op": "contains",
+     "match": {"account_id": "ACCT-5520", "note_contains": "proactive", "tag": "churn_risk"},
+     "goal": "Make sure the CS team logs that she flagged this proactively, so the record shows she didn't sit on it"}
+  ]
+}

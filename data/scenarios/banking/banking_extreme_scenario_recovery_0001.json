@@ -1,0 +1,155 @@
+{
+  "id": "banking_extreme_scenario_recovery_0001",
+  "category": "extreme_scenario_recovery",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Darnell Hayes",
+    "age": 41,
+    "occupation": "Auto repair shop owner",
+    "personality_traits": ["frustrated", "blunt", "results-oriented"],
+    "tone": "angry and impatient, raises his voice",
+    "detail_level": "brief",
+    "background": "Runs a busy small business and is furious that a hold on a customer's check has left him unable to make payroll. Has little patience for process and wants the problem fixed now."
+  },
+  "user_goals": [
+    "Confirm that this morning's payroll transfer to his employees actually went through",
+    "Check the current balance of his business checking account",
+    "Review the most recent transactions on the business account to see what happened to the payroll money",
+    "Make sure his employees actually get paid today without being charged twice",
+    "Get the failed payroll debit reversed back into his account if the money never reached the staff",
+    "Get written confirmation he can show his bookkeeper about how this was resolved"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
+        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
+        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+      ],
+      "response_schema": {
+        "verified": "boolean",
+        "customer_id": "string",
+        "verification_level": "string",
+        "message": "string"
+      }
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+      ],
+      "response_schema": {
+        "current_balance": "number",
+        "available_balance": "number",
+        "pending_transactions": "number",
+        "as_of": "string"
+      }
+    },
+    {
+      "name": "get_transaction_history",
+      "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
+        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false},
+        {"name": "end_date", "type": "string", "description": "End date (YYYY-MM-DD)", "required": false}
+      ],
+      "response_schema": {
+        "transactions": [{"id": "string", "date": "string", "amount": "number", "merchant": "string", "status": "string"}]
+      }
+    },
+    {
+      "name": "initiate_transfer",
+      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead — do not confuse the two.",
+      "parameters": [
+        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
+        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
+        {"name": "amount", "type": "number", "description": "Amount in USD", "required": true},
+        {"name": "memo", "type": "string", "description": "Transfer memo/description", "required": false}
+      ],
+      "response_schema": {
+        "transfer_id": "string",
+        "status": "string",
+        "from_balance_after": "number",
+        "to_balance_after": "number"
+      }
+    },
+    {
+      "name": "report_suspicious_transaction",
+      "description": "Flag a transaction as potentially fraudulent and open a fraud case. Requires verified identity. Use the transaction ID from get_transaction_history. Opening a case does not automatically reverse the charge.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account with the suspicious transaction", "required": true},
+        {"name": "transaction_id", "type": "string", "description": "ID of the suspicious transaction", "required": true},
+        {"name": "reason", "type": "string", "description": "Why the customer believes it's suspicious", "required": true}
+      ],
+      "response_schema": {
+        "case_id": "string",
+        "status": "string",
+        "next_steps": "string"
+      }
+    },
+    {
+      "name": "generate_account_statement",
+      "description": "Generate an official account statement or confirmation letter the customer can download or have delivered. Requires verified identity. Use statement_type 'balance_confirmation' for proof-of-funds letters.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
+        {"name": "date_range_start", "type": "string", "description": "Start date", "required": false},
+        {"name": "date_range_end", "type": "string", "description": "End date", "required": false},
+        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+      ],
+      "response_schema": {
+        "document_id": "string",
+        "status": "string",
+        "delivery_status": "string"
+      }
+    }
+  ],
+  "initial_message": "I ran payroll for my shop this morning and the money's gone from my account but two of my guys are texting me saying they never got paid. I need this fixed NOW, it's payday and I'm not having my crew walk out over a bank glitch.",
+  "difficulty": "hard",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "get_account_balance",
+    "get_transaction_history",
+    "report_suspicious_transaction",
+    "generate_account_statement"
+  ],
+  "ground_truth": {
+    "customer": {"customer_id": "CUST-31207", "name": "Darnell Hayes", "ssn_last4": "6052", "verified": false},
+    "accounts": {
+      "BIZ-CHK-410": {"type": "checking", "balance": 9240.18, "available": 9240.18}
+    },
+    "transactions": {
+      "BIZ-CHK-410": [
+        {"id": "TXN-5510", "date": "2026-06-10", "amount": -4200.00, "merchant": "PAYROLL BATCH - HAYES AUTO", "status": "failed_settlement", "note": "debited from source; ACH credit to recipients did not settle"},
+        {"id": "TXN-5509", "date": "2026-06-09", "amount": -118.40, "merchant": "NAPA AUTO PARTS", "status": "posted"},
+        {"id": "TXN-5508", "date": "2026-06-09", "amount": 1875.00, "merchant": "REPAIR INVOICE - GARCIA", "status": "posted"},
+        {"id": "TXN-5507", "date": "2026-06-08", "amount": -340.00, "merchant": "CITY POWER & LIGHT", "status": "posted"}
+      ]
+    },
+    "transfers_executed": [],
+    "fraud_cases": [],
+    "internal_escalations": [],
+    "statements_generated": []
+  },
+  "expected_state_changes": [
+    {"assert": "customer.verified", "op": "equals", "value": true,
+     "goal": "Confirm that this morning's payroll transfer to his employees actually went through"},
+    {"assert": "fraud_cases", "op": "contains",
+     "match": {"account_id": "BIZ-CHK-410", "transaction_id": "TXN-5510", "reason_contains": "settlement"},
+     "goal": "Get the failed payroll debit reversed back into his account if the money never reached the staff"},
+    {"assert": "statements_generated", "op": "contains",
+     "match": {"account_id": "BIZ-CHK-410", "statement_type_contains": "confirmation"},
+     "goal": "Get written confirmation he can show his bookkeeper about how this was resolved"},
+    {"assert": "transfers_executed", "op": "equals", "value": [],
+     "goal": "Make sure his employees actually get paid today without being charged twice"}
+  ]
+}

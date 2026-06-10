@@ -1,0 +1,134 @@
+{
+  "id": "banking_empathetic_resolution_0007",
+  "category": "empathetic_resolution",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Latoya Jefferson",
+    "age": 34,
+    "occupation": "Registered nurse",
+    "personality_traits": ["tired", "no-nonsense", "kind"],
+    "tone": "weary but pleasant",
+    "detail_level": "moderate",
+    "background": "Works night shifts. A fraud hold froze her checking account after an unusual login, but her real paycheck is now stuck behind it and her landlord has filed for eviction. She needs access to her own money today and is exhausted from being bounced around."
+  },
+  "user_goals": [
+    "Understand why her checking account was frozen and she cannot move money",
+    "Confirm whether the login or charge that triggered the fraud hold was actually fraudulent",
+    "Report the unrecognized login attempt as fraud so it is on record",
+    "Get the legitimate freeze lifted so she can pay rent before the eviction proceeds",
+    "Transfer her rent money to her landlord's payee account once access is restored",
+    "Get a proof-of-payment confirmation she can submit to the housing court"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first.",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
+        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
+        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+      ]
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+      ]
+    },
+    {
+      "name": "get_transaction_history",
+      "description": "Retrieve transaction history for an account",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
+        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false}
+      ]
+    },
+    {
+      "name": "report_suspicious_transaction",
+      "description": "Flag a transaction as potentially fraudulent and open a fraud case. Requires verified identity. Opening a case does not automatically reverse the charge.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account with the suspicious transaction", "required": true},
+        {"name": "transaction_id", "type": "string", "description": "ID of the suspicious transaction", "required": true},
+        {"name": "reason", "type": "string", "description": "Why the customer believes it's suspicious", "required": true}
+      ]
+    },
+    {
+      "name": "freeze_account",
+      "description": "Place a temporary, REVERSIBLE security freeze on an account to block new transactions, or lift/adjust an existing hold. Requires verified identity. This is NOT the same as close_account.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account to freeze or adjust", "required": true},
+        {"name": "reason", "type": "string", "description": "Reason for the freeze or adjustment", "required": true, "enum": ["suspected_fraud", "lost_card", "customer_request", "compliance_hold"]},
+        {"name": "duration_hours", "type": "integer", "description": "How long to hold the freeze, in hours", "required": false}
+      ]
+    },
+    {
+      "name": "initiate_transfer",
+      "description": "Execute a one-time, immediate transfer of funds. Requires verified identity and an unfrozen source account.",
+      "parameters": [
+        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
+        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
+        {"name": "amount", "type": "number", "description": "Amount in USD", "required": true},
+        {"name": "memo", "type": "string", "description": "Transfer memo/description", "required": false}
+      ]
+    },
+    {
+      "name": "generate_account_statement",
+      "description": "Generate an official account statement or confirmation letter",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
+        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+      ]
+    }
+  ],
+  "initial_message": "I really need help and I'm running out of time. My account is frozen and my paycheck is stuck in there, but my landlord has started eviction over the rent. I think the freeze was because someone tried to log in as me. I am who I say I am — please, I just need to get to my own money before I lose my apartment.",
+  "difficulty": "hard",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "get_transaction_history",
+    "get_account_balance",
+    "report_suspicious_transaction",
+    "freeze_account",
+    "initiate_transfer",
+    "generate_account_statement"
+  ],
+  "ground_truth": {
+    "customer": {"customer_id": "CUST-21887", "name": "Latoya Jefferson", "ssn_last4": "6634", "verified": false},
+    "accounts": {
+      "PERS-CHK-700": {"type": "checking", "balance": 2310.00, "available": 0.00, "frozen": true, "freeze_reason": "suspected_fraud"}
+    },
+    "transactions": {
+      "PERS-CHK-700": [
+        {"id": "TXN-9920", "date": "2026-06-09", "amount": 0.00, "merchant": "LOGIN ATTEMPT - UNRECOGNIZED DEVICE (BLOCKED)", "status": "flagged"},
+        {"id": "TXN-9919", "date": "2026-06-08", "amount": 2200.00, "merchant": "PAYROLL - RIVERSIDE MEDICAL CENTER", "status": "posted"},
+        {"id": "TXN-9918", "date": "2026-06-06", "amount": -64.30, "merchant": "GROCERY OUTLET", "status": "posted"}
+      ]
+    },
+    "fraud_cases": [],
+    "payees": {
+      "PAYEE-CRESTWOOD-RENT": {"name": "CRESTWOOD PROPERTY MGMT", "type": "external_payee"}
+    },
+    "statements_generated": []
+  },
+  "expected_state_changes": [
+    {"assert": "customer.verified", "op": "equals", "value": true,
+     "goal": "Understand why her checking account was frozen and she cannot move money"},
+    {"assert": "fraud_cases", "op": "contains",
+     "match": {"transaction_id": "TXN-9920", "reason_contains": "login"},
+     "goal": "Report the unrecognized login attempt as fraud so it is on record"},
+    {"assert": "accounts.PERS-CHK-700.frozen", "op": "equals", "value": false,
+     "goal": "Get the legitimate freeze lifted so she can pay rent before the eviction proceeds"},
+    {"assert": "accounts.PERS-CHK-700.balance", "op": "decreased_by", "value": 1650.00,
+     "goal": "Transfer her rent money to her landlord's payee account once access is restored"},
+    {"assert": "statements_generated", "op": "contains",
+     "match": {"account_id": "PERS-CHK-700", "statement_type_contains": "confirmation"},
+     "goal": "Get a proof-of-payment confirmation she can submit to the housing court"}
+  ]
+}

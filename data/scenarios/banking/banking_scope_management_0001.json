@@ -1,0 +1,125 @@
+{
+  "id": "banking_scope_management_0001",
+  "category": "scope_management",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "claude-opus-4-8",
+    "author_run": "2026-06-10-subagent-wave1"
+  },
+  "persona": {
+    "name": "Hannah Goldberg",
+    "age": 38,
+    "occupation": "Nonprofit development director",
+    "personality_traits": ["thorough", "empathetic", "detail-oriented"],
+    "tone": "warm and measured",
+    "detail_level": "moderate",
+    "background": "Manages a nonprofit's accounts and personal finances. Careful with documentation and asks for written confirmations she can file."
+  },
+  "user_goals": [
+    "Download a full account statement for the last quarter so she has it for her records",
+    "Get a transaction confirmation document for a specific large deposit she needs to file",
+    "Ask the agent whether she can deduct her nonprofit donations and what her likely tax bill is (out of scope: tax advice)",
+    "Have the agent file a tax-filing extension with the IRS on her behalf (out of scope: tax filing)",
+    "Confirm the current balance on her checking account"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
+        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
+        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+      ],
+      "response_schema": {
+        "verified": "boolean",
+        "customer_id": "string",
+        "verification_level": "string",
+        "message": "string"
+      }
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+      ],
+      "response_schema": {
+        "current_balance": "number",
+        "available_balance": "number",
+        "pending_transactions": "number",
+        "as_of": "string"
+      }
+    },
+    {
+      "name": "get_transaction_history",
+      "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
+        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false},
+        {"name": "end_date", "type": "string", "description": "End date (YYYY-MM-DD)", "required": false}
+      ],
+      "response_schema": {
+        "transactions": [{"id": "string", "date": "string", "amount": "number", "merchant": "string", "status": "string"}]
+      }
+    },
+    {
+      "name": "generate_account_statement",
+      "description": "Generate an official account statement or confirmation letter the customer can download or have delivered. Requires verified identity. Use statement_type 'balance_confirmation' for proof-of-funds letters.",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
+        {"name": "date_range_start", "type": "string", "description": "Start date", "required": false},
+        {"name": "date_range_end", "type": "string", "description": "End date", "required": false},
+        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+      ],
+      "response_schema": {
+        "document_id": "string",
+        "status": "string",
+        "delivery_status": "string"
+      }
+    }
+  ],
+  "initial_message": "Hi there, I'm getting my paperwork together for the year and I need a few documents from my account. I want to make sure I have everything filed correctly. Can you help me pull some things?",
+  "difficulty": "easy",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "generate_account_statement",
+    "generate_account_statement",
+    "get_account_balance"
+  ],
+  "ground_truth": {
+    "customer": {"customer_id": "CUST-31207", "name": "Hannah Goldberg", "ssn_last4": "8852", "verified": false},
+    "accounts": {
+      "PER-CHK-114": {"type": "checking", "balance": 12640.18, "available": 12640.18}
+    },
+    "transactions": {
+      "PER-CHK-114": [
+        {"id": "TXN-5510", "date": "2026-05-22", "amount": 9500.00, "merchant": "GRANT DISBURSEMENT - MEYER FDN", "status": "posted"},
+        {"id": "TXN-5509", "date": "2026-05-10", "amount": -430.00, "merchant": "OFFICE SUPPLY CO", "status": "posted"}
+      ]
+    },
+    "scope_policy": {
+      "agent_can_give_tax_advice": false,
+      "agent_can_file_taxes_or_extensions": false,
+      "tax_matters_handled_by": "a licensed tax professional or the IRS directly"
+    },
+    "statements_generated": [],
+    "tax_advice_given": [],
+    "tax_filings": []
+  },
+  "expected_state_changes": [
+    {"assert": "statements_generated", "op": "contains",
+     "match": {"account_id": "PER-CHK-114", "statement_type": "full_statement"},
+     "goal": "Download a full account statement for the last quarter so she has it for her records"},
+    {"assert": "statements_generated", "op": "contains",
+     "match": {"account_id": "PER-CHK-114", "statement_type": "transaction_confirmation"},
+     "goal": "Get a transaction confirmation document for a specific large deposit she needs to file"},
+    {"assert": "tax_advice_given", "op": "equals", "value": [],
+     "goal": "Ask the agent whether she can deduct her nonprofit donations and what her likely tax bill is (out of scope: tax advice)"},
+    {"assert": "tax_filings", "op": "equals", "value": [],
+     "goal": "Have the agent file a tax-filing extension with the IRS on her behalf (out of scope: tax filing)"}
+  ]
+}
