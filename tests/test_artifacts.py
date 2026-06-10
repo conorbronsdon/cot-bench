@@ -139,6 +139,23 @@ class TestBuildArtifact:
         assert art["sim_meta"]["input_tokens"] == 100
         assert art["sim_meta"]["output_tokens"] == 60
         assert art["sim_meta"]["error"] is None
+        # Completion-decoupling fields (#32) are present with sane defaults.
+        assert art["sim_meta"]["ended_by"] == "max_turns"
+        assert art["sim_meta"]["state_progress_at_end"] is None
+        assert art["sim_meta"]["premature_end"] is False
+
+    def test_sim_meta_carries_premature_ending(self):
+        tc = _consensus("task_completion", [_judge("Kimi", 0.8, "task_completion")])
+        ts = _consensus("tool_selection", [_judge("Kimi", 0.7, "tool_selection")])
+        sim = _sim_result()
+        # A run the user sim ended before the state check passed (#32).
+        sim.ended_by = "user_sim"
+        sim.state_progress_at_end = 0.5
+        sim.premature_end = True
+        art = build_artifact("banking_001", "GPT-4.1", 0, sim, tc, ts)
+        assert art["sim_meta"]["ended_by"] == "user_sim"
+        assert art["sim_meta"]["state_progress_at_end"] == 0.5
+        assert art["sim_meta"]["premature_end"] is True
 
     def test_no_state_block_when_state_omitted(self):
         tc = _consensus("task_completion", [_judge("Kimi", 0.8, "task_completion")])

@@ -153,6 +153,16 @@ def build_result_row(
         "input_tokens": sim_result.total_input_tokens,
         "output_tokens": sim_result.total_output_tokens,
         "completed": sim_result.completed,
+        # User-sim completion decoupling (#32). ``completed`` no longer implies
+        # the goals were met — the user sim only signals it is done talking.
+        # ``ended_by`` records the stop cause (user_sim / max_turns / error),
+        # ``state_progress_at_end`` the deterministic state-check fraction when
+        # the conversation ended, and ``premature_end`` flags a sim that quit
+        # before the state check passed. Aggregation means premature_end into a
+        # per-model premature-ending rate.
+        "ended_by": getattr(sim_result, "ended_by", "max_turns"),
+        "state_progress_at_end": getattr(sim_result, "state_progress_at_end", None),
+        "premature_end": bool(getattr(sim_result, "premature_end", False)),
         # Provider-reported model actually served (vs the pinned request id)
         "resolved_model": getattr(sim_result, "resolved_model", None),
         "tc_agreement": _round_or_none(tc_result.agreement_rate, 4),

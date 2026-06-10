@@ -23,6 +23,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 
 from eval.config import DEFAULT_SIMULATION, DOMAIN_CONFIGS, Domain, SimulationConfig
 from eval.providers.registry import ModelSpec, create_model
+from eval.scoring.state_check import score_state_changes
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,26 @@ class SimulationResult:
     total_output_tokens: int
     completed: bool  # Whether conversation reached natural completion
     error: str | None = None
+    # --- User-sim completion decoupling (#32, part 1) ---
+    # How the conversation ended, decoupled from whether the user sim was
+    # satisfied. The user simulator no longer gets to DECLARE the goals met; it
+    # only signals it is done talking. Whether the goals were actually met is the
+    # deterministic state check, recorded separately so a miscalibrated sim that
+    # ends early becomes visible in the artifact rather than silently passing.
+    #   - "user_sim"  : the user simulator emitted CONVERSATION_COMPLETE.
+    #   - "max_turns" : the outer turn budget was exhausted with no sim signal.
+    #   - "error"     : the agent raised and the run aborted.
+    ended_by: str = "max_turns"
+    # Deterministic state-check pass fraction (n_passed / n_total) computed
+    # against the mutated world AT THE MOMENT the conversation ended. None when
+    # the scenario carries no ground_truth (state grading inapplicable) — those
+    # scenarios still rely on the judges, and the sim signal is all we have.
+    state_progress_at_end: float | None = None
+    # True iff the user sim ended the conversation (ended_by == "user_sim") while
+    # the deterministic state check was still below 1.0 — i.e. the sim declared
+    # itself done before the goals were verifiably met. This is the premature-
+    # ending signal that aggregate_results can turn into a premature-ending rate.
+    premature_end: bool = False
     # Final mutable world state at end of run. None for legacy (stateless)
     # scenarios that carry no ground_truth.
     final_world: dict | None = None
@@ -279,6 +300,29 @@ class SimulationRunner:
             )
         )
 
+    @staticmethod
+    def _state_progress(scenario: Scenario, world: dict | None) -> float | None:
+        """Deterministic state-check pass fraction for ``world`` right now.
+
+        Runs the same grader the post-run scorer uses (``score_state_changes``)
+        against the run's *current* mutated world, so we can tell whether the
+        scenario's goals are verifiably met at any point — independent of whether
+        the user simulator thinks it is done. Returns the pass fraction in
+        ``[0, 1]``, or ``None`` when the scenario has no ``ground_truth`` (state
+        grading is inapplicable). Never raises: a grader hiccup must not sink a
+        run, so any exception degrades to ``None``.
+        """
+        if scenario.ground_truth is None or world is None:
+            return None
+        try:
+            result = score_state_changes(
+                scenario.ground_truth, world, scenario.expected_state_changes
+            )
+        except Exception:
+            logger.exception("State-progress grading failed for %s; recording None", scenario.id)
+            return None
+        return None if result is None else result["score"]
+
     def run(self, scenario: Scenario, agent_spec: ModelSpec) -> SimulationResult:
         """Run a complete multi-turn simulation for one scenario.
 
@@ -312,6 +356,12 @@ class SimulationRunner:
         total_latency_ms = 0.0
         completed = False
         resolved_model: str | None = None
+        # End-condition bookkeeping (#32). Default is max-turns exhaustion; the
+        # completion branch below overrides ended_by to "user_sim" if the sim
+        # stops the conversation. state_progress_at_end is filled at the end.
+        ended_by = "max_turns"
+        state_progress_at_end: float | None = None
+        premature_end = False
 
         # Stateful world for this run. Deep-copy so each reliability run starts
         # from a pristine ground_truth and mutations never leak across runs.
@@ -368,6 +418,9 @@ class SimulationRunner:
                         error=str(e),
                         final_world=world,
                         resolved_model=resolved_model,
+                        ended_by="error",
+                        state_progress_at_end=self._state_progress(scenario, world),
+                        premature_end=False,
                     )
                 agent_latency = (time.perf_counter() - start) * 1000
                 total_latency_ms += agent_latency
@@ -479,9 +532,32 @@ class SimulationRunner:
             # Generate next user turn (or detect completion).
             user_response = self._simulate_user_turn(scenario, turns, last_agent_content)
             if CONVERSATION_COMPLETE in user_response:
+                # The user sim has signaled it is DONE TALKING. It does NOT get
+                # to declare the goals MET — that is the deterministic state
+                # check's job (#32). Record that the sim ended the conversation
+                # and the state-check progress at this exact moment; if progress
+                # is below 1.0, this is a premature ending (the sim quit before
+                # the goals were verifiably done) and must be visible in the
+                # artifact rather than silently counted as a success.
                 completed = True
+                ended_by = "user_sim"
+                state_progress_at_end = self._state_progress(scenario, world)
+                premature_end = state_progress_at_end is not None and state_progress_at_end < 1.0
+                if premature_end:
+                    logger.warning(
+                        "Premature ending: user sim ended %s with state progress "
+                        "%.2f < 1.0 (sim satisfied, goals not verifiably met)",
+                        scenario.id,
+                        state_progress_at_end,
+                    )
                 break
             current_user_message = user_response
+
+        # If the loop exhausted the turn budget without the sim signaling done,
+        # ended_by stays "max_turns"; still record where the state check landed
+        # so a run that ran out of turns is comparable to one the sim ended.
+        if ended_by != "user_sim":
+            state_progress_at_end = self._state_progress(scenario, world)
 
         return SimulationResult(
             scenario_id=scenario.id,
@@ -495,6 +571,9 @@ class SimulationRunner:
             completed=completed,
             final_world=world,
             resolved_model=resolved_model,
+            ended_by=ended_by,
+            state_progress_at_end=state_progress_at_end,
+            premature_end=premature_end,
         )
 
     def _extract_tool_calls(self, response, content: str, turn: int) -> tuple[list[ToolCall], bool]:

@@ -495,6 +495,100 @@ class TestLegacyStatelessPath:
         assert tool_turn.content == '{"balance": 1234.56}'
 
 
+class TestCompletionDecoupling:
+    """User-sim completion is decoupled from goal-completion (#32, part 1).
+
+    The user sim only signals it is done talking; whether the goals are met is
+    the deterministic state check at the moment of ending. A sim that ends early
+    with unmet state assertions is flagged premature, NOT silently passed.
+    """
+
+    def test_sim_complete_with_unmet_assertions_is_premature(self, monkeypatch):
+        # Agent calls transfer once; the tool sim returns an EMPTY state_delta,
+        # so SAV.balance never moves and the increased_by assertion stays unmet.
+        # The user sim says COMPLETE anyway -> premature ending.
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("transfer", {"amount": 500}, "call_1"),
+                _ai_text("All set!"),
+            ]
+        )
+        no_op_delta = '{"response": {"status": "ok"}, "state_delta": {}}'
+        runner, _ = _make_runner([], tool_text=no_op_delta, user_text=CONVERSATION_COMPLETE)
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_stateful_scenario(), SPEC)
+
+        assert result.completed is True  # sim ended the conversation
+        assert result.ended_by == "user_sim"
+        # SAV.balance unchanged (0.0), so the increased_by 500 assertion fails:
+        # state progress is 0/1 = 0.0, below 1.0 -> premature.
+        assert result.state_progress_at_end == 0.0
+        assert result.premature_end is True
+
+    def test_sim_complete_with_all_assertions_met_is_clean(self, monkeypatch):
+        # Tool sim moves SAV.balance up by exactly 500, satisfying the assertion.
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("transfer", {"amount": 500}, "call_1"),
+                _ai_text("Done, $500 moved."),
+            ]
+        )
+        good_delta = (
+            '{"response": {"status": "ok"}, "state_delta": {"accounts.SAV.balance": 500.0}}'
+        )
+        runner, _ = _make_runner([], tool_text=good_delta, user_text=CONVERSATION_COMPLETE)
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_stateful_scenario(), SPEC)
+
+        assert result.completed is True
+        assert result.ended_by == "user_sim"
+        # 1/1 assertions pass -> full progress, not premature.
+        assert result.state_progress_at_end == 1.0
+        assert result.premature_end is False
+
+    def test_max_turns_exhaustion_is_distinct(self, monkeypatch):
+        # The user sim NEVER says COMPLETE (it keeps replying), so the loop runs
+        # out the turn budget. That is ended_by == "max_turns", not user_sim,
+        # and never premature regardless of state progress.
+        # Agent always produces a tool-free message so each user turn is one
+        # round; the user sim keeps the conversation going.
+        agent = ScriptedAgent(responses=[_ai_text("How else can I help?")])
+        no_op_delta = '{"response": {"status": "ok"}, "state_delta": {}}'
+        runner, _ = _make_runner([], tool_text=no_op_delta, user_text="I still need more help.")
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_stateful_scenario(), SPEC)
+
+        assert result.completed is False  # sim never declared done
+        assert result.ended_by == "max_turns"
+        assert result.premature_end is False
+        # State progress is still recorded for max-turns runs (0.0 here: SAV
+        # never moved), so a timed-out run is comparable to a sim-ended one.
+        assert result.state_progress_at_end == 0.0
+
+    def test_legacy_scenario_has_no_state_progress(self, monkeypatch):
+        # A scenario with no ground_truth has no deterministic check to gate on,
+        # so state_progress_at_end is None and premature_end is False even when
+        # the sim ends the conversation.
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("get_balance", {"account_id": "A1"}, "call_1"),
+                _ai_text("Your balance is $500."),
+            ]
+        )
+        runner, _ = _make_runner([], tool_text='{"balance": 500}', user_text=CONVERSATION_COMPLETE)
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_scenario(), SPEC)  # _scenario() has no ground_truth
+
+        assert result.completed is True
+        assert result.ended_by == "user_sim"
+        assert result.state_progress_at_end is None
+        assert result.premature_end is False
+
+
 class TestUserKnownFacts:
     """The user simulator must know its own identity facts (smoke-run finding:
     without them it invents verification values and every identity gate fails
