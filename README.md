@@ -72,7 +72,6 @@ against live provider sources 2026-06-10):
 | Model | Provider | Category |
 |-------|----------|----------|
 | GPT-5.5 | OpenAI | Frontier closed |
-| Claude Opus 4.8 | Anthropic | Frontier closed |
 | Gemini 3.1 Pro | Google | Frontier closed |
 | GPT-5.4-mini | OpenAI | Efficient closed |
 | Claude Sonnet 4.6 | Anthropic | Mid closed |
@@ -125,7 +124,7 @@ python -m scripts.generate_data --domain customer_success --scenarios-per-catego
 # Quick run — a subset of models on one domain (one frontier judge)
 python -m scripts.run_eval \
   --domains banking \
-  --models "GPT-5.5" "Claude Opus 4.8" \
+  --models "GPT-5.5" "Claude Sonnet 4.6" \
   --judges opus
 
 # Full evaluation — all models, all three judges (no GPU; open judges via OpenRouter)

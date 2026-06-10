@@ -96,7 +96,6 @@ JUDGES = {
 MODELS_UNDER_TEST = [
     # --- Frontier closed ---
     {"name": "GPT-5.5", "model_id": "gpt-5.5-2026-04-23", "provider": "openai"},
-    {"name": "Claude Opus 4.8", "model_id": "claude-opus-4-8", "provider": "anthropic"},
     {"name": "Gemini 3.1 Pro", "model_id": "gemini-3.1-pro-preview", "provider": "google"},
     # --- Efficient / mid closed ---
     {"name": "GPT-5.4-mini", "model_id": "gpt-5.4-mini-2026-03-17", "provider": "openai"},
@@ -132,7 +131,6 @@ TOKEN_COSTS = {
     # Frontier / efficient closed
     "gpt-5.5-2026-04-23": {"input": 5.00, "output": 30.00},
     "gpt-5.4-mini-2026-03-17": {"input": 0.75, "output": 4.50},
-    "claude-opus-4-8": {"input": 5.00, "output": 25.00},
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
     "claude-haiku-4-5-20251001": {"input": 1.00, "output": 5.00},
     "gemini-3.1-pro-preview": {"input": 2.00, "output": 12.00},

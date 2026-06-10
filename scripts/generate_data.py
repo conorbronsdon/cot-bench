@@ -41,8 +41,11 @@ GENERATION_MODEL = "claude-opus"
 # author == contestant is contamination.)
 AUTHOR_MODELS: dict[str, dict[str, str]] = {
     # Clean authors — none is a contestant (verified against MODELS_UNDER_TEST
-    # 2026-06-10). kimi/glm double as judges, which is allowed.
-    "claude-opus": {"model_id": "anthropic/claude-opus-4.6", "provider": "openrouter"},
+    # 2026-06-10). Opus 4.8 is deliberately kept OFF the contestant roster because
+    # it authored the v0.2 corpus; that makes it the canonical clean author here.
+    # kimi/glm double as judges, which is allowed (judge-authored scenarios are a
+    # disclosed mild conflict; prefer claude-opus for new authoring).
+    "claude-opus": {"model_id": "anthropic/claude-opus-4.8", "provider": "openrouter"},
     "kimi": {"model_id": "moonshotai/kimi-k2.6", "provider": "openrouter"},
     "glm": {"model_id": "z-ai/glm-4.6", "provider": "openrouter"},
 }
