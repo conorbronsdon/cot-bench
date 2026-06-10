@@ -1,6 +1,11 @@
 {
   "id": "cs_adaptive_tool_use_0001",
   "category": "adaptive_tool_use",
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "human-handwritten",
+    "human_reviewed_by": "Conor Bronsdon"
+  },
   "persona": {
     "name": "Priya Sharma",
     "age": 41,
@@ -126,5 +131,43 @@
     "get_subscription_details",
     "search_support_tickets",
     "escalate_ticket"
+  ],
+  "ground_truth": {
+    "account": {
+      "account_id": "ACCT-3391",
+      "company": "Northwind Analytics",
+      "contact_name": "Priya Sharma",
+      "plan": "Growth",
+      "next_tier": "Enterprise",
+      "health_score": 58,
+      "risk_level": "medium",
+      "renewal_date": "2026-09-30"
+    },
+    "users": [
+      {"user_id": "U-101", "name": "Priya Sharma", "status": "active", "last_active": "2026-06-09"},
+      {"user_id": "U-118", "name": "Marco Liu", "status": "inactive", "last_active": "2026-04-22"},
+      {"user_id": "U-127", "name": "Dana Reyes", "status": "inactive", "last_active": "2026-04-30"},
+      {"user_id": "U-134", "name": "Sam Patel", "status": "inactive", "last_active": "2026-05-02"},
+      {"user_id": "U-140", "name": "Olivia Brooks", "status": "active", "last_active": "2026-06-08"}
+    ],
+    "onboarding": {"total_invited": 10, "completed_onboarding": 4, "completion_rate": 0.40, "stuck_at_step": {"connect_data_source": 5}},
+    "usage_trend": {"period": "last_90d", "direction": "declining", "active_user_change_pct": -28},
+    "subscription": {
+      "current": {"tier": "Growth", "seats": 50, "features": ["dashboards", "exports", "email_support"]},
+      "upgrade": {"tier": "Enterprise", "seats": 200, "features": ["dashboards", "exports", "sso", "priority_support", "custom_reporting"]}
+    },
+    "tickets": [
+      {"ticket_id": "TCK-7742", "subject": "Export job fails on large datasets", "status": "open", "created": "2026-05-26", "escalation_level": null, "keyword": "bug"}
+    ],
+    "meetings": [],
+    "escalations": []
+  },
+  "expected_state_changes": [
+    {"assert": "meetings", "op": "contains",
+     "match": {"account_id": "ACCT-3391", "meeting_type": "training"},
+     "goal": "Get the CS team to schedule a training session for her team next week"},
+    {"assert": "escalations", "op": "contains",
+     "match": {"ticket_id": "TCK-7742", "escalation_level_contains": "engineering"},
+     "goal": "Escalate a bug her team reported 2 weeks ago that hasn't been resolved"}
   ]
 }
