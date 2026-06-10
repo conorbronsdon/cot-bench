@@ -30,10 +30,18 @@ from eval.pre_registration import (
     PRE_REGISTRATION_FILENAME,
     build_pre_registration,
     file_sha256,
+    holdout_set_hash,
+    scenario_set_hash,
     write_pre_registration,
 )
 from eval.providers.null_agent import NULL_AGENT_NAME
 from eval.providers.registry import ModelSpec
+from eval.resume import (
+    completed_tuples,
+    load_pre_registration,
+    rows_from_artifacts,
+    verify_corpus_unchanged,
+)
 from eval.scoring.judge import score_with_all_judges, score_with_all_judges_combined
 from eval.scoring.rubrics import (
     COMBINED_RUBRIC,
@@ -609,6 +617,35 @@ def _run_model_scenarios(
     return results
 
 
+def _recompute_reliability(rows: list[dict], reliability_runs: int) -> None:
+    """Recompute reliability columns across a MERGED row set, in place (issue #48).
+
+    On resume, a scenario's reliability runs can be split between the original
+    session (reconstructed from artifacts) and the resumed session. Per-session
+    reliability would then be computed over a partial set of runs. This regroups
+    ALL rows by (model, scenario_id) and recomputes the reliability columns over
+    every run of that scenario, so the merged parquet carries one honest
+    reliability figure per (model, scenario) rather than two partial ones.
+
+    Grouping is by (model, scenario_id) only — domain/category are scenario
+    properties, so they are constant within a scenario id.
+    """
+    from collections import defaultdict
+
+    groups: dict[tuple, list[dict]] = defaultdict(list)
+    for r in rows:
+        groups[(r["model"], r["scenario_id"])].append(r)
+
+    for group_rows in groups.values():
+        run_scores = [r["efficacy"] for r in group_rows]
+        reliability = compute_reliability(run_scores)
+        for r in group_rows:
+            r["reliability_pass_rate"] = reliability["pass_rate"]
+            r["reliability_consistency"] = reliability["consistency"]
+            for k, val in reliability["pass_hat_k"].items():
+                r[f"reliability_pass_hat_{k}"] = val
+
+
 def assert_results_nonempty(all_results: list, failed_models: list[str]) -> None:
     """Exit non-zero when an eval run produced zero results.
 
@@ -709,6 +746,22 @@ def main():
         ),
     )
     parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        metavar="RUN_ID",
+        help=(
+            "Resume an interrupted run by its run_id (the results parquet stem, "
+            "e.g. results_20260610_120000). Completed (model, scenario, run) "
+            "evaluations are read from that run's artifact dir and skipped — never "
+            "paid for twice — and their rows are merged with the new ones into the "
+            "final parquet. The run continues under the ORIGINAL pre_registration "
+            "(no new one is written); if the current scenario set no longer matches "
+            "the corpus hash recorded there, the resume ABORTS (governance §3). "
+            "Issue #48."
+        ),
+    )
+    parser.add_argument(
         "--max-cost",
         type=float,
         default=None,
@@ -740,16 +793,30 @@ def main():
     )
     args = parser.parse_args()
 
-    # Resolve the default per-run so the filename matches the results_*.parquet
-    # glob in aggregate_results.py; a static argparse default can't be timestamped.
-    if args.output is None:
+    # Resolve the output path / run_id. On --resume the run_id is FIXED to the
+    # original run so artifacts, pre_registration.json, and the final parquet line
+    # up with the run being continued; the default output path is then that run's
+    # parquet (overwritten with the merged old+new rows). Otherwise the default is
+    # a fresh timestamped name matching the results_*.parquet glob in
+    # aggregate_results.py (a static argparse default can't be timestamped).
+    if args.resume:
+        if args.no_artifacts:
+            raise SystemExit(
+                "--resume needs the original run's per-evaluation artifacts to know "
+                "what is already done, but --no-artifacts disables them. Re-run "
+                "without --no-artifacts."
+            )
+        if args.output is None:
+            args.output = f"data/results/{args.resume}.parquet"
+    elif args.output is None:
         timestamp = f"{datetime.now(timezone.utc):%Y%m%d_%H%M%S}"
         args.output = f"data/results/results_{timestamp}.parquet"
 
     # run_id groups a run's artifacts + traces; derive it from the output stem
-    # so they sit alongside the results parquet they explain.
+    # so they sit alongside the results parquet they explain. On resume it is the
+    # original run_id by construction.
     output_path = Path(args.output)
-    run_id = output_path.stem
+    run_id = args.resume if args.resume else output_path.stem
     results_dir = output_path.parent
     artifacts_root = None if args.no_artifacts else results_dir / ARTIFACTS_DIRNAME
 
@@ -852,24 +919,45 @@ def main():
     # and count ONLY — no IDs, no index — so the holdout is pinned (tamper-evident)
     # without revealing its content. ``holdout_by_domain`` is None when no holdout
     # was requested, which omits the holdout_set block entirely.
-    pre_registration = build_pre_registration(
-        run_id=run_id,
-        models=models,
-        scenarios_by_domain=public_by_domain,
-        holdout_by_domain=holdout_by_domain or None,
-        judges=JUDGES,
-        judge_keys=args.judges,
-        reliability_runs=args.reliability_runs,
-        bootstrap_seed=BOOTSTRAP_SEED,
-        agent_temperature=ModelSpec.temperature,
-        user_simulator_temperature=DEFAULT_SIMULATION.user_simulator_temperature,
-        tool_simulator_temperature=DEFAULT_SIMULATION.tool_simulator_temperature,
-        separate_judge_calls=args.separate_judge_calls,
-        artifacts_dir=(str(Path(artifacts_root) / run_id) if artifacts_root else None),
-        trace_dir=str(trace_dir),
-    )
-    pre_registration_path = write_pre_registration(results_dir, pre_registration)
-    logger.info("Pre-registration written to %s (before any model call)", pre_registration_path)
+    pre_registration_path = results_dir / PRE_REGISTRATION_FILENAME
+    if args.resume:
+        # RESUME (issue #48): do NOT write a new pre-registration — the run
+        # continues under the one written before the ORIGINAL run (governance §3).
+        # Verify the current scenario set still matches the corpus hash recorded
+        # there; abort on any drift so a resume cannot silently mix two run
+        # definitions.
+        pre_registration = load_pre_registration(results_dir, PRE_REGISTRATION_FILENAME)
+        current_public_hash, _ = scenario_set_hash(public_by_domain)
+        current_holdout_hash = holdout_set_hash(holdout_by_domain)[0] if holdout_by_domain else None
+        verify_corpus_unchanged(
+            pre_registration,
+            current_public_hash=current_public_hash,
+            current_holdout_hash=current_holdout_hash,
+        )
+        logger.info(
+            "RESUME %s: corpus hash matches the original pre-registration; "
+            "continuing under it (no new pre-registration written).",
+            run_id,
+        )
+    else:
+        pre_registration = build_pre_registration(
+            run_id=run_id,
+            models=models,
+            scenarios_by_domain=public_by_domain,
+            holdout_by_domain=holdout_by_domain or None,
+            judges=JUDGES,
+            judge_keys=args.judges,
+            reliability_runs=args.reliability_runs,
+            bootstrap_seed=BOOTSTRAP_SEED,
+            agent_temperature=ModelSpec.temperature,
+            user_simulator_temperature=DEFAULT_SIMULATION.user_simulator_temperature,
+            tool_simulator_temperature=DEFAULT_SIMULATION.tool_simulator_temperature,
+            separate_judge_calls=args.separate_judge_calls,
+            artifacts_dir=(str(Path(artifacts_root) / run_id) if artifacts_root else None),
+            trace_dir=str(trace_dir),
+        )
+        pre_registration_path = write_pre_registration(results_dir, pre_registration)
+        logger.info("Pre-registration written to %s (before any model call)", pre_registration_path)
 
     # Preflight cost ESTIMATE (issue #47): print the expected spend from the
     # resolved roster + per-eval token priors BEFORE the first call, so a run with
@@ -908,6 +996,21 @@ def main():
     # Shared, thread-safe actual-spend accumulator for the run (issue #47).
     cost_acc = CostAccumulator(max_cost=args.max_cost)
 
+    # Resume (issue #48): the set of (model, scenario_id, run_index) already
+    # completed in the original run, read from its artifact dir. Empty for a fresh
+    # run. These tuples are skipped (never re-paid) and their rows are merged back
+    # in after the loop.
+    completed_keys: set = set()
+    model_names = [m["name"] for m in models]
+    if args.resume:
+        completed_keys = completed_tuples(artifacts_root, run_id, model_names)
+        logger.info(
+            "RESUME %s: %d completed evaluation(s) found in artifacts; they will be "
+            "skipped and merged.",
+            run_id,
+            len(completed_keys),
+        )
+
     # Run models in parallel
     all_results = []
     failed_models: list[str] = []
@@ -925,6 +1028,7 @@ def main():
                 artifacts_root,
                 args.separate_judge_calls,
                 cost_acc=cost_acc,
+                completed_keys=completed_keys,
             ): model_cfg["name"]
             for model_cfg in models
         }
@@ -948,6 +1052,25 @@ def main():
             BUDGET_EXCEEDED_EXIT_CODE,
         )
 
+    # Resume merge (issue #48): reconstruct rows for the evaluations completed in
+    # the original run from their artifacts and combine with the freshly-run rows.
+    # Reliability is then recomputed across the MERGED set per (model, scenario),
+    # so a scenario whose runs span the original + resumed sessions gets one
+    # correct reliability figure instead of two partial ones.
+    n_resumed_rows = 0
+    if args.resume and completed_keys:
+        resumed_rows = rows_from_artifacts(artifacts_root, run_id, model_names)
+        n_resumed_rows = len(resumed_rows)
+        all_results.extend(resumed_rows)
+        _recompute_reliability(all_results, args.reliability_runs)
+        logger.info(
+            "RESUME %s: merged %d reconstructed row(s) from artifacts with %d new "
+            "row(s); reliability recomputed across the merged set.",
+            run_id,
+            n_resumed_rows,
+            len(all_results) - n_resumed_rows,
+        )
+
     assert_results_nonempty(all_results, failed_models)
 
     # Save results
@@ -968,6 +1091,14 @@ def main():
     manifest = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "run_id": run_id,
+        # Resume accounting (issue #48): True when this run continued an earlier
+        # one under its original pre-registration. ``resumed_at`` records when the
+        # resume happened (distinct from the original run's pre-registration
+        # timestamp), and ``resumed_rows`` is how many completed evaluations were
+        # merged back from artifacts rather than re-run.
+        "resumed": bool(args.resume),
+        "resumed_at": datetime.now(timezone.utc).isoformat() if args.resume else None,
+        "resumed_rows": n_resumed_rows,
         "artifacts_dir": (str(Path(artifacts_root) / run_id) if artifacts_root else None),
         "trace_dir": str(trace_dir),
         "models_requested": models_requested,
