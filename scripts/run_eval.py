@@ -77,6 +77,74 @@ def format_transcript(turns) -> str:
     return "\n".join(lines)
 
 
+def _round_or_none(value, ndigits):
+    """round() that tolerates None/NaN — returns None instead of crashing.
+
+    Agreement metrics are None when fewer than 2 valid judges scored a row;
+    they must survive into the results frame as null rather than raising.
+    """
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return round(value, ndigits)
+
+
+def build_result_row(scenario, agent_spec, sim_result, tc_result, ts_result, efficacy, cost_usd):
+    """Assemble the flat results row from simulation + consensus results.
+
+    Pure (no I/O) so it can be unit-tested with faked ConsensusResult objects,
+    including the None-agreement degraded paths. Parse-failed judges are kept
+    in ``judge_results`` for accounting but excluded from the per-judge score
+    columns (a parse failure is not a real 0.0 grade).
+    """
+    return {
+        "scenario_id": scenario.id,
+        "domain": scenario.domain.value,
+        "category": scenario.category,
+        "model": agent_spec.name,
+        "efficacy": round(efficacy, 4),
+        "task_completion": round(tc_result.consensus_score, 4),
+        "tool_selection": round(ts_result.consensus_score, 4),
+        "cost_usd": round(cost_usd, 6),
+        "latency_ms": round(sim_result.total_latency_ms, 1),
+        "total_turns": sim_result.total_turns,
+        "input_tokens": sim_result.total_input_tokens,
+        "output_tokens": sim_result.total_output_tokens,
+        "completed": sim_result.completed,
+        "tc_agreement": _round_or_none(tc_result.agreement_rate, 4),
+        "ts_agreement": _round_or_none(ts_result.agreement_rate, 4),
+        "tc_max_disagreement": _round_or_none(tc_result.max_disagreement, 4),
+        "ts_max_disagreement": _round_or_none(ts_result.max_disagreement, 4),
+        "high_disagreement": (
+            (tc_result.max_disagreement or 0.0) > 0.3 or (ts_result.max_disagreement or 0.0) > 0.3
+        ),
+        # Judge-panel accounting (per row, for transparency)
+        "tc_n_judges": tc_result.n_judges_valid,
+        "ts_n_judges": ts_result.n_judges_valid,
+        "tc_parse_failures": len(tc_result.parse_failures),
+        "ts_parse_failures": len(ts_result.parse_failures),
+        "tc_api_failures": len(tc_result.api_failures),
+        "ts_api_failures": len(ts_result.api_failures),
+        "tc_degraded": tc_result.degraded,
+        "ts_degraded": ts_result.degraded,
+        # Per-judge scores for transparency (valid judges only)
+        **{
+            f"tc_{jr.judge_name}": round(jr.overall_score, 4)
+            for jr in tc_result.judge_results
+            if not jr.parse_failed
+        },
+        **{
+            f"ts_{jr.judge_name}": round(jr.overall_score, 4)
+            for jr in ts_result.judge_results
+            if not jr.parse_failed
+        },
+    }
+
+
 def evaluate_scenario(runner, scenario, agent_spec, tracer, judge_keys):
     """Run simulation + multi-judge scoring for one scenario, one model."""
     sim_result = runner.run(scenario, agent_spec)
@@ -147,29 +215,9 @@ def evaluate_scenario(runner, scenario, agent_spec, tracer, judge_keys):
         + sim_result.total_output_tokens * costs["output"] / 1_000_000
     )
 
-    return {
-        "scenario_id": scenario.id,
-        "domain": scenario.domain.value,
-        "category": scenario.category,
-        "model": agent_spec.name,
-        "efficacy": round(efficacy, 4),
-        "task_completion": round(tc_result.consensus_score, 4),
-        "tool_selection": round(ts_result.consensus_score, 4),
-        "cost_usd": round(cost_usd, 6),
-        "latency_ms": round(sim_result.total_latency_ms, 1),
-        "total_turns": sim_result.total_turns,
-        "input_tokens": sim_result.total_input_tokens,
-        "output_tokens": sim_result.total_output_tokens,
-        "completed": sim_result.completed,
-        "tc_agreement": round(tc_result.agreement_rate, 4),
-        "ts_agreement": round(ts_result.agreement_rate, 4),
-        "tc_max_disagreement": round(tc_result.max_disagreement, 4),
-        "ts_max_disagreement": round(ts_result.max_disagreement, 4),
-        "high_disagreement": (tc_result.max_disagreement > 0.3 or ts_result.max_disagreement > 0.3),
-        # Per-judge scores for transparency
-        **{f"tc_{jr.judge_name}": round(jr.overall_score, 4) for jr in tc_result.judge_results},
-        **{f"ts_{jr.judge_name}": round(jr.overall_score, 4) for jr in ts_result.judge_results},
-    }
+    return build_result_row(
+        scenario, agent_spec, sim_result, tc_result, ts_result, efficacy, cost_usd
+    )
 
 
 def _run_model_scenarios(
