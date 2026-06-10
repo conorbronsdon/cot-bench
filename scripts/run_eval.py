@@ -19,8 +19,9 @@ from eval.config import (
     Domain,
 )
 from eval.providers.registry import ModelSpec
-from eval.scoring.judge import score_with_all_judges
+from eval.scoring.judge import score_with_all_judges, score_with_all_judges_combined
 from eval.scoring.rubrics import (
+    COMBINED_RUBRIC,
     JUDGE_SYSTEM_PROMPT,
     TASK_COMPLETION_RUBRIC,
     TOOL_SELECTION_RUBRIC,
@@ -213,6 +214,7 @@ def evaluate_scenario(
     run_id,
     run_index,
     artifacts_root=None,
+    separate_judge_calls=False,
 ):
     """Run simulation + multi-judge scoring for one scenario, one model.
 
@@ -221,6 +223,13 @@ def evaluate_scenario(
         run_index: Which reliability repeat this is (0-based).
         artifacts_root: Directory under which per-run artifact subtrees are
             written. ``None`` disables artifact persistence (``--no-artifacts``).
+        separate_judge_calls: When True, score task completion and tool
+            selection with TWO separate judge prompts (the legacy path, kept
+            for A/B validation). Default False uses the combined single-prompt
+            path — one judge call per judge instead of two, and the transcript
+            is sent once instead of twice. Both paths produce identically-shaped
+            ``tc_result`` / ``ts_result`` ConsensusResult objects, so everything
+            downstream is unaffected.
     """
     sim_result = runner.run(scenario, agent_spec)
     transcript = format_transcript(sim_result.turns)
@@ -231,35 +240,52 @@ def evaluate_scenario(
     tools_desc = json.dumps(
         [{"name": t.get("name"), "description": t.get("description")} for t in scenario.tools]
     )
+    user_goals = "\n".join(f"- {g}" for g in scenario.user_goals)
 
-    # Score: Task Completion
-    tc_prompt = TASK_COMPLETION_RUBRIC.format(
-        domain=scenario.domain.value,
-        user_goals="\n".join(f"- {g}" for g in scenario.user_goals),
-        available_tools=tools_desc,
-        transcript=transcript,
-    )
-    tc_result = score_with_all_judges(
-        JUDGE_SYSTEM_PROMPT,
-        tc_prompt,
-        "task_completion",
-        scenario.id,
-        judge_keys=judge_keys,
-    )
+    if separate_judge_calls:
+        # Legacy two-call path (A/B validation). Context + transcript are sent
+        # twice — once per dimension.
+        tc_prompt = TASK_COMPLETION_RUBRIC.format(
+            domain=scenario.domain.value,
+            user_goals=user_goals,
+            available_tools=tools_desc,
+            transcript=transcript,
+        )
+        tc_result = score_with_all_judges(
+            JUDGE_SYSTEM_PROMPT,
+            tc_prompt,
+            "task_completion",
+            scenario.id,
+            judge_keys=judge_keys,
+        )
 
-    # Score: Tool Selection
-    ts_prompt = TOOL_SELECTION_RUBRIC.format(
-        domain=scenario.domain.value,
-        available_tools=tools_desc,
-        transcript=transcript,
-    )
-    ts_result = score_with_all_judges(
-        JUDGE_SYSTEM_PROMPT,
-        ts_prompt,
-        "tool_selection",
-        scenario.id,
-        judge_keys=judge_keys,
-    )
+        ts_prompt = TOOL_SELECTION_RUBRIC.format(
+            domain=scenario.domain.value,
+            available_tools=tools_desc,
+            transcript=transcript,
+        )
+        ts_result = score_with_all_judges(
+            JUDGE_SYSTEM_PROMPT,
+            ts_prompt,
+            "tool_selection",
+            scenario.id,
+            judge_keys=judge_keys,
+        )
+    else:
+        # Combined path (default): one judge call scores both dimensions, with
+        # the context + transcript sent once. Returns the same (tc, ts) pair.
+        combined_prompt = COMBINED_RUBRIC.format(
+            domain=scenario.domain.value,
+            user_goals=user_goals,
+            available_tools=tools_desc,
+            transcript=transcript,
+        )
+        tc_result, ts_result = score_with_all_judges_combined(
+            JUDGE_SYSTEM_PROMPT,
+            combined_prompt,
+            scenario.id,
+            judge_keys=judge_keys,
+        )
 
     # Trace judge evaluations
     for result in [tc_result, ts_result]:
@@ -345,6 +371,7 @@ def _run_model_scenarios(
     tracer,
     run_id,
     artifacts_root=None,
+    separate_judge_calls=False,
 ):
     """Evaluate a single model across all domains/scenarios. Runs in a thread."""
     agent_spec = ModelSpec(
@@ -377,6 +404,7 @@ def _run_model_scenarios(
                     run_id=run_id,
                     run_index=run_idx,
                     artifacts_root=artifacts_root,
+                    separate_judge_calls=separate_judge_calls,
                 )
                 result["run_index"] = run_idx
                 result["evaluated_at"] = datetime.now(timezone.utc).isoformat()
@@ -473,6 +501,16 @@ def main():
             "outputs). Artifacts are written by default for auditability."
         ),
     )
+    parser.add_argument(
+        "--separate-judge-calls",
+        action="store_true",
+        help=(
+            "Use the legacy two-call judge path (one call for task completion, "
+            "one for tool selection) instead of the default combined single-call "
+            "path. Kept for A/B validation of the combined prompt; the combined "
+            "path halves judge calls and input tokens with no row-schema change."
+        ),
+    )
     args = parser.parse_args()
 
     # Resolve the default per-run so the filename matches the results_*.parquet
@@ -532,6 +570,7 @@ def main():
                 tracer,
                 run_id,
                 artifacts_root,
+                args.separate_judge_calls,
             ): model_cfg["name"]
             for model_cfg in models
         }
