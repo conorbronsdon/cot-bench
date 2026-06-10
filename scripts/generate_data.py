@@ -37,7 +37,7 @@ AUTHOR_MODELS: dict[str, dict[str, str]] = {
     "gpt-4.1": {"model_id": "gpt-4.1-2025-04-14", "provider": "openai"},
     # Clean authors on neither the under-test nor judge lists:
     "gpt-4.5": {"model_id": "gpt-4.5-preview", "provider": "openai"},
-    "claude-opus": {"model_id": "claude-opus-4-6", "provider": "openrouter"},
+    "claude-opus": {"model_id": "anthropic/claude-opus-4.6", "provider": "openrouter"},
     "kimi": {"model_id": "moonshotai/kimi-k2.6", "provider": "openrouter"},
     "glm": {"model_id": "z-ai/glm-4.6", "provider": "openrouter"},
 }

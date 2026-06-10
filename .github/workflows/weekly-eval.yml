@@ -22,6 +22,18 @@ on:
         description: 'Publish even if some models failed? (bypasses the completeness gate)'
         required: false
         default: 'false'
+      scenario_limit:
+        description: 'Limit scenarios per domain (blank = all; set 1 for a smoke run)'
+        required: false
+        default: ''
+      judges:
+        description: 'Judges to use, space-separated keys (blank = all; e.g. "opus" for a smoke run)'
+        required: false
+        default: ''
+      reliability_runs:
+        description: 'Repeated runs per scenario (blank = default 3; set 1 for a smoke run)'
+        required: false
+        default: ''
 
 jobs:
   evaluate:
@@ -77,12 +89,25 @@ jobs:
         run: |
           DOMAINS="${{ github.event.inputs.domains || 'banking customer_success' }}"
           MODELS="${{ github.event.inputs.models }}"
+          SCENARIO_LIMIT="${{ github.event.inputs.scenario_limit }}"
+          JUDGES="${{ github.event.inputs.judges }}"
+          RELIABILITY_RUNS="${{ github.event.inputs.reliability_runs }}"
 
-          # All three judges run on hosted APIs (no GPU). Pass --models via the
-          # workflow_dispatch 'models' input for a cheaper subset smoke run.
+          # All three judges run on hosted APIs (no GPU). For a cents-level
+          # smoke run dispatch with: models=<one model>, scenario_limit=1,
+          # judges=opus, reliability_runs=1, publish=false.
           ARGS="--domains $DOMAINS"
           if [ -n "$MODELS" ]; then
             ARGS="$ARGS --models $MODELS"
+          fi
+          if [ -n "$SCENARIO_LIMIT" ]; then
+            ARGS="$ARGS --scenario-limit $SCENARIO_LIMIT"
+          fi
+          if [ -n "$JUDGES" ]; then
+            ARGS="$ARGS --judges $JUDGES"
+          fi
+          if [ -n "$RELIABILITY_RUNS" ]; then
+            ARGS="$ARGS --reliability-runs $RELIABILITY_RUNS"
           fi
 
           python -m scripts.run_eval $ARGS \
