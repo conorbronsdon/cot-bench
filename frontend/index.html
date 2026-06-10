@@ -192,6 +192,21 @@
         .agreement-med { background: rgba(234, 179, 8, 0.15); color: var(--yellow); }
         .agreement-low { background: rgba(239, 68, 68, 0.15); color: var(--red); }
 
+        /* Holdout gap cell: positive gap (public > holdout) is the overfitting
+           tripwire, so a materially positive gap is tinted red; a near-zero or
+           negative gap (holds up on the unseen set) is neutral/green. */
+        .holdout-gap-pos { color: var(--red); }
+        .holdout-gap-neutral { color: var(--text-muted); }
+        .holdout-gap-neg { color: var(--green); }
+
+        /* Inline detail under the reliability number: pass^k + premature-end. */
+        .reliability-detail {
+            display: block;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 0.15rem;
+        }
+
         footer {
             margin-top: 3rem;
             padding-top: 1.5rem;
@@ -374,6 +389,11 @@
                     <th onclick="sortBy('reliability')">Reliability</th>
                     <th onclick="sortBy('avg_latency_ms')">Latency</th>
                     <th>Agreement</th>
+                    <!-- Public-vs-holdout efficacy gap (issue #31). Header is shown
+                         only when a holdout run is present; otherwise hidden so the
+                         table layout is unchanged on non-holdout runs. -->
+                    <th id="holdout-th" class="holdout-col" style="display:none;"
+                        title="Public efficacy minus private-holdout efficacy. A positive gap is an overfitting signal — stronger on the public corpus than on the never-published holdout. See docs/governance.md §4.">Holdout &Delta;</th>
                 </tr>
             </thead>
             <tbody id="leaderboard-body">
@@ -533,6 +553,16 @@
             // mark their rank with "=" and gray it out. rank_band is absent on
             // demo / pre-CI data; fall back to plain ranks then.
             const leaderBand = models[0]?.rank_band;
+
+            // Show the holdout column only when this run actually has a holdout
+            // (issue #31). The top-level header carries `present`; older / demo
+            // data omits it, in which case the column stays hidden and the table
+            // is exactly the pre-holdout layout. Toggle the <th> here and emit a
+            // matching <td> per row below so the column count always lines up.
+            const showHoldout = leaderboardData.holdout?.present === true;
+            const holdoutTh = document.getElementById('holdout-th');
+            if (holdoutTh) holdoutTh.style.display = showHoldout ? '' : 'none';
+
             const tbody = document.getElementById('leaderboard-body');
             tbody.innerHTML = models.map((m, i) => {
                 const rank = i + 1;
@@ -543,6 +573,7 @@
                 if (sharesLeaderBand && rank > 1) rankClass += ' rank-tied';
                 const avgAgreement = ((m.judge_agreement?.task_completion || 0) + (m.judge_agreement?.tool_selection || 0)) / 2;
                 const clearCell = renderClearCell(m);
+                const holdoutCell = showHoldout ? `<td class="holdout-col">${renderHoldoutGap(m)}</td>` : '';
 
                 return `<tr>
                     <td class="${rankClass}">${rankLabel}</td>
@@ -552,9 +583,10 @@
                     <td>${m.task_completion.toFixed(3)}</td>
                     <td>${m.tool_selection.toFixed(3)}</td>
                     <td>$${m.cost_per_task_usd.toFixed(4)}</td>
-                    <td>${m.reliability.toFixed(3)}<span class="score-bar ${scoreColor(m.reliability)}" style="width:${m.reliability * 40}px"></span></td>
+                    <td>${m.reliability.toFixed(3)}<span class="score-bar ${scoreColor(m.reliability)}" style="width:${m.reliability * 40}px"></span>${renderReliabilityDetail(m)}</td>
                     <td>${(m.avg_latency_ms / 1000).toFixed(1)}s</td>
                     <td><span class="agreement-badge ${agreementClass(avgAgreement)}">${(avgAgreement * 100).toFixed(0)}%</span></td>
+                    ${holdoutCell}
                 </tr>`;
             }).join('');
 
@@ -570,6 +602,54 @@
                 return `${m.clear_score.toFixed(3)} <span class="ci">&plusmn;${half.toFixed(3)}</span>`;
             }
             return m.clear_score.toFixed(3);
+        }
+
+        // Holdout gap cell (issue #31): public efficacy minus private-holdout
+        // efficacy. None when this model has no holdout rows (column is shown for
+        // the run but this model wasn't in the holdout) -> render "—". A
+        // materially positive gap (>0.05) is the overfitting tripwire and is
+        // tinted red; near-zero/negative gaps are neutral/green. The holdout
+        // SCORE itself is intentionally not shown — only the gap is published per
+        // model, never any per-scenario holdout detail.
+        function renderHoldoutGap(m) {
+            const gap = m.holdout_gap;
+            if (gap == null) return '<span class="holdout-gap-neutral">&mdash;</span>';
+            let cls = 'holdout-gap-neutral';
+            if (gap > 0.05) cls = 'holdout-gap-pos';
+            else if (gap < -0.005) cls = 'holdout-gap-neg';
+            const sign = gap > 0 ? '+' : '';
+            const title = m.holdout_score != null
+                ? `Public ${m.efficacy.toFixed(3)} vs holdout ${m.holdout_score.toFixed(3)}`
+                : 'Public-vs-holdout efficacy gap';
+            return `<span class="${cls}" title="${title}">${sign}${gap.toFixed(3)}</span>`;
+        }
+
+        // Detail line under the reliability score: pass^k (tau-bench, the
+        // all-k-trials-succeed probability) and the premature-end rate (#32, the
+        // share of runs the user-sim ended before the deterministic state check
+        // passed). Both are new fields and may be absent/empty on older data, in
+        // which case nothing extra renders. pass^3 is shown as the headline k
+        // (it pairs with the existing pass@3 reliability number); the full per-k
+        // block is surfaced in the cell tooltip.
+        function renderReliabilityDetail(m) {
+            const parts = [];
+            const phk = m.reliability_pass_hat_k;
+            if (phk && typeof phk === 'object') {
+                const ks = Object.keys(phk).filter(k => phk[k] != null);
+                if (ks.length) {
+                    const topK = ks.map(Number).filter(n => !isNaN(n)).sort((a, b) => b - a)[0];
+                    const val = phk[String(topK)];
+                    if (val != null) {
+                        const full = ks.sort((a, b) => Number(a) - Number(b))
+                            .map(k => `pass^${k}=${phk[k].toFixed(3)}`).join(', ');
+                        parts.push(`<span title="${full}">pass^${topK} ${val.toFixed(3)}</span>`);
+                    }
+                }
+            }
+            if (m.premature_end_rate != null) {
+                parts.push(`<span title="Share of runs the user simulator ended before the deterministic state check passed (#32)">early-end ${(m.premature_end_rate * 100).toFixed(0)}%</span>`);
+            }
+            return parts.length ? `<span class="reliability-detail">${parts.join(' · ')}</span>` : '';
         }
 
         function renderStatNote() {
