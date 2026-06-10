@@ -255,6 +255,7 @@ cot-bench/
 - **[Governance](docs/governance.md)** — no-retraction, judge pinning, pre-registration, contamination, and versioning policy
 - **[Contributing](docs/contributing.md)** — how to add models, domains, or improve the evaluation
 - **[Roadmap](docs/roadmap.md)** — planned improvements and feature priorities
+- **[Paper](paper/)** — arXiv-ready methods paper scaffold (LaTeX); methods sections drafted, results sections populate from the first eval run
 
 ## How It Works
 

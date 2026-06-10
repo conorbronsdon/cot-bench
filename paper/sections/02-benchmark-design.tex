@@ -1,0 +1,150 @@
+\section{Benchmark Design}
+\label{sec:design}
+
+\subsection{Domains and categories}
+
+COT Bench v1 covers two production domains. \textbf{Banking} (account management,
+transactions, fraud detection, compliance, loan processing) is structured,
+tool-heavy, and has strict correctness requirements, which makes it well suited to
+deterministic state verification. \textbf{Customer success} (CRM, ticketing, health
+scoring, escalation, onboarding) has ambiguous goals where empathy and scope
+judgment matter and multiple back-end systems must be coordinated, which is where
+the judge panel earns its place.
+
+Each domain has the same five scenario categories, chosen to probe distinct failure
+modes rather than to tile a capability space:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Category} & \textbf{What it tests} \\
+\midrule
+Adaptive tool use & User needs shift mid-conversation; the agent must adapt \\
+Scope management & User requests things outside the agent's capabilities \\
+Empathetic resolution & Emotionally charged situations needing tools \emph{and} empathy \\
+Extreme scenario recovery & Tool errors or unexpected data; the agent must recover \\
+Adversarial input mitigation & Misleading, ambiguous, or manipulative inputs \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Scenario schema}
+
+Scenarios are JSON files under \texttt{data/scenarios/\{domain\}/} following the
+v0.2 schema. Every scenario carries a synthetic \emph{persona} (traits, tone,
+detail level, background, ranging from cooperative to adversarial), a list of
+\emph{user goals} (3--10 interconnected goals, typically 5--8, designed so
+completing one reveals information needed for another), a subset of domain
+\emph{tools} with full JSON Schemas, and an in-character \emph{initial message} that
+does not leak goal text or canonical IDs.
+
+The v0.2 additions are what make a third of efficacy judge-independent. Each
+scenario carries a \texttt{ground\_truth} block: a canonical world (balances,
+records, customer state) the tool simulator must answer from and mutate. Keys are
+canonical IDs (for example \texttt{BUS-CHK-001}) while the user-facing text stays
+natural-language (``my business checking''), so resolving the friendly name to the
+canonical ID is itself part of what the agent is graded on. Each scenario also
+carries \texttt{expected\_state\_changes}, a list of deterministic assertions over
+the post-conversation world expressed in a tiny vocabulary: \texttt{equals},
+\texttt{increased\_by}, \texttt{decreased\_by}, and \texttt{contains} (a partial-dict
+match over a list, with optional substring matching). For judgment calls the
+benchmark grades the \emph{action}, not the \emph{outcome}: it asserts that a
+fee-waiver request was \emph{submitted}, not that the waiver was approved, because
+approval is the bank's decision and not the agent's. An empty assertion list is
+meaningful: it encodes a no-unauthorized-mutation contract (the run passes if and
+only if the world is unchanged), which is the right objective signal for the
+refusal-heavy scope-management and adversarial categories.
+
+\subsection{User and tool simulation}
+
+Each scenario runs for up to ten user turns. Within a turn the loop is:
+(1) a user simulator (GPT-4.1-mini, temperature 0.7) produces an in-character
+message pursuing unmet goals; (2) the agent under test (temperature 0.0) responds,
+with tools provided through native function calling (LangChain \texttt{bind\_tools})
+rather than a regex-parsed JSON-in-text convention, so the benchmark measures real
+tool-calling ability and does not penalize models tuned for function-calling APIs;
+(3) if the agent calls tools, a tool simulator (GPT-4.1-mini, temperature 0.0)
+returns schema-conforming responses and the agent is re-invoked on those results;
+(4) steps 2--3 repeat within the turn until the agent emits a user-facing message
+or an inner cap of five tool rounds is hit; (5) the user simulator decides whether
+it is done talking. A content-embedded fallback parser exists only for providers
+that return no native tool calls, and it logs a warning whenever it fires so its
+use is measurable.
+
+\paragraph{Stateful tool simulation.} For scenarios with a \texttt{ground\_truth},
+the world is seeded from a deep copy of that block at the start of each run (one
+world per run, reset between reliability repeats so mutations never leak across
+runs). On every tool call the simulator is shown the current world and instructed
+to answer only from it, returning a structured
+\texttt{\{"response": \ldots, "state\_delta": \ldots\}}; mutating calls return a
+dotted-path delta the runner applies deterministically, so a later ``check my
+balance'' reflects an earlier transfer. Only the \texttt{response} is fed back to
+the agent. This removes the simulator-incoherence failure mode in which asking a
+balance twice yields two different numbers and the judge then penalizes the
+\emph{agent} for the \emph{simulator's} drift.
+
+\paragraph{Decoupling completion from goal-completion.} The published literature is
+clear that simulated users are miscalibrated and over-cooperative, and that which
+model plays the user can swing agent success by up to roughly nine
+points~\cite{lostinsim2026,sim2real2026}. If the same simulator both plays the
+customer and decides the goals are met, its bias contaminates the stop condition.
+COT Bench therefore splits the two signals. The user simulator only declares that
+it is \emph{done talking} (recorded as \texttt{ended\_by}). Whether the goals were
+actually accomplished is the deterministic state check, evaluated against the
+mutated world at the moment the conversation ended
+(\texttt{state\_progress\_at\_end}). When the simulator ends a conversation while
+the state check is still below 1.0, the run is flagged \texttt{premature\_end}: the
+benchmark neither silently treats that ending as success nor extends the
+conversation (which would let an already-biased simulator keep driving turns).
+The discrepancy is made visible and aggregable, and the board reports a per-model
+premature-ending rate. A planned part-two sim-sensitivity check will re-run a
+subset under a second simulator and publish the score delta, directly quantifying
+the swing the literature warns about.
+
+\subsection{Authorship, contamination guards, and corpus statistics}
+
+Every v0.2 scenario records an \texttt{authorship} block (\texttt{author\_model},
+optional batch id and human reviewer). A hard guard refuses to generate any
+scenario whose \texttt{author\_model} matches a model under test, with a
+family-aware match so a different snapshot of a contestant still counts as that
+contestant; a model under test never authors its own exam. The pipeline supports
+multi-author generation across labs to avoid a single-author monoculture, runs a
+cross-scenario dedup gate within each domain (near-duplicate initial-message and
+goal-set overlap), and emits a distribution report over categories, difficulty,
+persona reuse, and tool coverage. Because scenarios are synthetic, there is no
+scraped public dataset that could have leaked into a model's training set; the
+residual exposure (the public corpus is on GitHub) is addressed by the private
+holdout described in Section~\ref{sec:governance}.
+
+\paragraph{Corpus statistics (public split).} The public corpus is
+\TODO{92} scenarios, all on schema v0.2 with ground-truth worlds:
+\TODO{49} banking and \TODO{43} customer success. The category and difficulty
+distribution is shown in Table~\ref{tab:corpus}. (These counts are computed from
+the committed corpus and should be regenerated with
+\texttt{scripts/validate\_scenarios.py} for the camera-ready version; they are
+flagged as placeholders here only to keep the no-uncited-number rule strict.)
+
+\begin{table}[h]
+\centering
+\caption{Public corpus distribution by category and difficulty. Values from the
+committed \texttt{data/scenarios/} tree at scaffold time; regenerate before
+submission.}
+\label{tab:corpus}
+\begin{tabular}{lrr|lrrr}
+\toprule
+\textbf{Category} & \textbf{Bank} & \textbf{CS} & \textbf{Difficulty} & \multicolumn{3}{c}{\textbf{Count}} \\
+\midrule
+Adaptive tool use            & \TODO{12} & \TODO{10} & Easy   & \multicolumn{3}{c}{\TODO{18}} \\
+Scope management             & \TODO{10} & \TODO{9}  & Medium & \multicolumn{3}{c}{\TODO{36}} \\
+Empathetic resolution        & \TODO{10} & \TODO{9}  & Hard   & \multicolumn{3}{c}{\TODO{38}} \\
+Extreme scenario recovery    & \TODO{8}  & \TODO{7}  &        & \multicolumn{3}{c}{} \\
+Adversarial input mitigation & \TODO{9}  & \TODO{8}  &        & \multicolumn{3}{c}{} \\
+\midrule
+\textbf{Total}               & \TODO{49} & \TODO{43} & \textbf{Total} & \multicolumn{3}{c}{\TODO{92}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A separate private holdout (count \TODO{$\approx$10}, authored to the same v0.2
+schema and quality bar, stored outside the repository) is run alongside the public
+set; only its aggregate gap is published (Section~\ref{sec:governance}).

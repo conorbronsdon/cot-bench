@@ -1,0 +1,98 @@
+\section{Governance and Reproducibility}
+\label{sec:governance}
+
+For a small, single-maintainer benchmark the two credibility risks that matter most
+are silent judge drift and run cherry-picking: re-running until the numbers look
+good, or quietly swapping a judge model out from under a published ranking. The
+governance policy exists to make both visible and to make corrections auditable.
+Each policy below is enforced in code where stated.
+
+\subsection{Pre-registration}
+
+Before the first agent, simulator, or judge call, the run writes a
+\texttt{pre\_registration.json} fixing the run's definition: the run identity and a
+UTC timestamp, the requested model roster (name, model id, provider), the scenario
+set (domains, per-domain scenario IDs, and a corpus-level SHA-256 over the
+canonical serialized scenario set, with a recomputable per-scenario index), the
+configured judge panel, the reliability-run count, the seeds and temperatures, and
+the judge-prompt mode. A test asserts the file exists on disk at the moment the
+first model is dispatched, so the ordering is enforced, not merely intended. Because
+the definition is fixed before any number is known, the maintainer cannot
+retroactively choose which run counts. The record states explicitly that the user
+and tool simulators run unseeded and the user simulator at temperature above zero,
+so runs are not bit-for-bit reproducible; the honest caveat is part of the artifact.
+
+\subsection{Judge pinning}
+
+Judge versions are pinned per run, and the model a provider \emph{actually served}
+is recorded, not just the model requested. Hosted model IDs (OpenRouter slugs in
+particular) can be silently re-pointed to a different snapshot or quantization
+without the calling code changing, so a pinned request ID alone would not catch the
+drift. Every judge call serializes a \texttt{resolved\_model} into the artifact,
+and the agent under test records its resolved model too. A judge version change is
+treated as a methodology change (Section~\ref{sec:versioning}).
+
+\subsection{No silent retraction or rerun}
+
+A published run is never deleted and never quietly re-run. Corrections are
+append-only: a problem with a published run is fixed by computing a new, dated run
+and recording the reason in a changelog, not by overwriting the original. The old
+numbers stay visible alongside the correction. This is the defense against the
+re-run-until-it-looks-right failure mode, because there is no clean slate to re-run
+toward.
+
+\subsection{Contamination and the private holdout}
+
+Scenario authors are never contestants, enforced by the family-aware guard of
+Section~\ref{sec:design}. Authorship records are never altered. Synthetic scenarios
+are a strong native contamination defense, but the public corpus is on GitHub, so a
+future model could in principle train on it. The committed defense is a private
+holdout: a fresh scenario subset, authored to the same v0.2 schema and quality bar,
+stored outside the repository and never published. It is pulled in at evaluation
+time via \texttt{--holdout-dir} and graded by the same simulator, judges, and state
+checks as the public corpus. When a holdout is run it gets its own
+pre-registration entry carrying the corpus SHA-256 \emph{and count only}, no
+scenario IDs and no per-scenario index, so the set is pinned and tamper-evident
+without revealing its content. Holdout rows are split out before aggregation, so the
+public efficacy and CLEAR rankings are computed over the public corpus only; the
+board publishes per model the public score, the holdout score, and the gap
+($\text{gap} = \text{public} - \text{holdout}$). A materially positive gap is the
+overfitting tripwire. No holdout scenario ID, text, ground truth, or per-scenario
+score reaches any published surface; the public CI refuses to start if a holdout
+directory is configured, because its artifact upload would make transcripts
+downloadable, so holdout runs are local-only by construction. This is the
+SWE-bench-Pro held-out-split blueprint~\cite{swebenchpro2025} in miniature.
+
+\subsection{Versioning}
+
+\label{sec:versioning}
+A benchmark version is the unit of comparability; scores are comparable only within
+a version. A version bump is required for any corpus change (adding, removing, or
+modifying scenarios; a published scenario is immutable, the MTEB
+lesson~\cite{mteb2025}), any judge change (a different judge is a different measuring
+instrument), or any rubric change (rubrics, dimension weights, or efficacy
+composition). Cross-version scores are not comparable, which is already structural
+in the field-relative CLEAR normalization.
+
+\subsection{What every run publishes}
+
+A published score is only trustworthy if the evidence behind it is inspectable. Each
+run persists: the pre-registration (above); per-evaluation artifacts for every
+(scenario, model, run index) containing the full transcript in true conversational
+order, every judge's output (name, rubric, score, reasoning, parse-failed flag, raw
+parsed response, resolved model), simulation metadata including the
+completion-decoupling fields, the deterministic state-check result, and the
+scenario's domain, category, and holdout flag; an OpenInference-attributed
+OpenTelemetry trace export written as JSONL, loadable into Arize Phoenix or any OTel
+reader; and a run manifest linking back to the pre-registration by path and hash, so
+the two are a verifiable pair. All four are uploaded as workflow artifacts on every
+weekly run.
+
+\subsection{Maintenance posture}
+
+The benchmark runs on automated weekly GitHub Actions, so the commit timestamps are
+the liveness signal rather than a manual quarterly re-run that depends on free time.
+Scope is deliberately narrow (two domains for a one-person-plus-community operation,
+not dozens of sub-industries), since scope creep is the primary cause of
+solo-project abandonment. The intended long-term model is publish-the-harness,
+others-run-it, submit-via-PR, with versioned releases as content events.

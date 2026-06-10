@@ -1,0 +1,31 @@
+Most agentic benchmarks score a single LLM judge against a transcript, which makes
+the resulting leaderboard only as trustworthy as that judge and as gameable as its
+preferences. COT Bench evaluates multi-turn, tool-calling agents on two production
+domains (banking and customer success) with a scoring design built to reduce that
+dependence. Efficacy is hybrid: two LLM-judge dimensions (task completion and tool
+selection) plus a deterministic, judge-independent state check that verifies
+whether the agent actually changed the world the way the task required, scored
+against a per-scenario ground-truth world with no model in the loop. The judge
+component is a three-model panel drawn from three different labs, none of which is
+under test, with consensus taken as the median and inter-judge reliability reported
+as Krippendorff's $\alpha$. Every individual judge score is published, including a
+per-judge-versus-consensus delta that turns any judge's favoritism (including the
+one same-lab pairing) into a measured number rather than a hidden risk. Beyond
+efficacy, the benchmark reports cost, reliability, and latency in a CLEAR-aligned
+composite; reliability is measured with $\text{pass}^k$ (all-$k$-succeed), the
+sharper tau-bench reliability construct. The board publishes a 95\% nonparametric
+bootstrap confidence interval on every headline number, clusters statistically
+indistinguishable models into rank bands, refuses to publish below a minimum
+scenario count, and fits a length-bias regression to test whether longer outputs
+earn higher judge scores. Governance is explicit: runs are pre-registered before
+the first model call, judge versions are pinned and the actually-served model is
+recorded, published runs are never silently retracted, and a hash-pinned private
+holdout measures the public-versus-holdout overfitting gap. A do-nothing agent is
+run as a standing anti-gaming probe. The public corpus is \TODO{92} scenarios
+(\TODO{49} banking, \TODO{43} customer success), all carrying ground-truth worlds.
+On the launch roster of \TODO{N} models, [headline finding pending first run --
+candidate framings: per-judge same-lab delta of \TODO{X}; cost-reliability Pareto
+showing a \TODO{X}$\times$ cheaper model at comparable reliability;
+$\text{pass}^1 \rightarrow \text{pass}^3$ decay of \TODO{X}; public-vs-holdout gap
+of \TODO{X}]. All code, scenarios, rubrics, and per-run artifacts are open
+(Apache~2.0).
