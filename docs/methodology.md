@@ -131,6 +131,50 @@ the objective signal for refusal-heavy scope-management and adversarial scenario
 This component is judge-independent and free to compute. See
 [`eval/scoring/state_check.py`](../eval/scoring/state_check.py).
 
+#### Combined judge prompt (default)
+
+Task completion and tool selection are scored in a **single judge call per
+judge**, not two. The combined prompt (`COMBINED_RUBRIC` in
+[`eval/scoring/rubrics.py`](../eval/scoring/rubrics.py)) presents the shared
+context — domain, user goals, available tools — and the transcript **once**,
+then asks for both dimensions in one JSON response nesting the two per-rubric
+shapes under `task_completion` and `tool_selection` keys. The per-dimension
+scoring criteria are the same published rubric text used by the two-prompt path,
+reorganized under one shared context rather than rewritten.
+
+**Why this is equivalent, and what it costs.** Each dimension is still scored
+against its own criteria, and the parsed object for each dimension is the same
+shape the separate prompts produced — so the consensus math, per-judge score
+columns, artifacts, aggregation, confidence intervals, and the same-lab check
+are all unchanged. The win is twofold: the judge **call count is halved** (one
+call per judge instead of two), and because the transcript is the bulk of the
+prompt and is no longer duplicated across two calls, judge **input tokens drop
+by roughly 45%**.
+
+**Failure coupling (the honest tradeoff).** Because both dimensions ride on a
+single API call and a single parsed JSON body, a failure now affects both
+dimensions for that judge:
+
+- An **API failure** drops the judge from both panels (there is no
+  per-dimension fallback within one call).
+- A **parse failure** — unrecoverable JSON after one retry, **or** a parsed body
+  in which *either* dimension is missing or has an invalid/absent
+  `overall_score` — flags the judge as parse-failed for **both** dimensions.
+  Treating a half-valid response as a whole-judge parse failure is the simplest
+  honest rule: a judge that could not produce one valid dimension gives us no
+  reason to trust the other from the same generation. (The retry semantics are
+  otherwise identical to the two-call path: one fresh API call on a parse
+  failure before giving up.)
+
+In exchange for that coupling, a single transient glitch now costs at most one
+judge across both dimensions rather than potentially failing them
+independently, and the per-row panel accounting (`tc_n_judges` / `ts_n_judges`,
+parse/api failure counts, `degraded`) reflects the coupling transparently.
+
+The legacy two-call path remains available behind `run_eval
+--separate-judge-calls` for A/B validation; it sends each dimension's prompt
+separately (context + transcript twice) and is otherwise identical.
+
 #### Multi-Judge Consensus
 
 All three judges score independently. We report:

@@ -10,6 +10,7 @@ from eval.scoring.judge import (
     JudgeResult,
     _parse_judge_response,
     score_with_all_judges,
+    score_with_all_judges_combined,
 )
 
 
@@ -272,6 +273,203 @@ class TestConsensus:
         assert seen == {"Kimi", "GLM", "Opus"}
 
 
+# --- Combined judge (one call scores both rubrics) tests --------------------
+#
+# These monkeypatch score_with_judge_combined (for orchestration tests) or
+# _call_judge_api (for the single-judge retry/parse tests) so no real API
+# calls are made.
+
+
+def _combined_pair(judge_name, tc_score, ts_score):
+    """A (task_completion, tool_selection) JudgeResult pair from one judge."""
+    return (
+        JudgeResult(
+            judge_name=judge_name,
+            rubric_type="task_completion",
+            overall_score=tc_score,
+            reasoning="ok-tc",
+            raw_response={"overall_score": tc_score, "overall_reasoning": "ok-tc"},
+            latency_ms=1.0,
+        ),
+        JudgeResult(
+            judge_name=judge_name,
+            rubric_type="tool_selection",
+            overall_score=ts_score,
+            reasoning="ok-ts",
+            raw_response={"overall_score": ts_score, "overall_reasoning": "ok-ts"},
+            latency_ms=1.0,
+        ),
+    )
+
+
+def _combined_failed_pair(judge_name):
+    """A both-dimensions parse-failed pair (the coupling rule)."""
+    return tuple(
+        JudgeResult(
+            judge_name=judge_name,
+            rubric_type=rt,
+            overall_score=0.0,
+            reasoning="Failed to parse combined judge response",
+            raw_response={},
+            latency_ms=1.0,
+            parse_failed=True,
+        )
+        for rt in ("task_completion", "tool_selection")
+    )
+
+
+def _install_fake_combined_scorer(monkeypatch, behavior):
+    """Patch score_with_judge_combined with a per-judge behavior map.
+
+    ``behavior`` maps judge config name -> either a (tc, ts) JudgeResult pair,
+    or an Exception instance to raise (simulating a combined API failure).
+    """
+
+    def fake(judge, system_prompt, combined_prompt):
+        outcome = behavior[judge.name]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(judge_mod, "score_with_judge_combined", fake)
+
+
+@dataclass(frozen=True)
+class _CombinedCfg:
+    name: str = "Solo"
+    provider: str = "anthropic"
+    model_id: str = "x"
+    temperature: float = 0.0
+    max_tokens: int = 4096
+    endpoint: str | None = None
+
+
+class TestCombinedConsensus:
+    def test_happy_path_two_consensus_results(self, monkeypatch, three_judges):
+        # One combined call per judge produces a (tc, ts) consensus pair with
+        # the SAME shape as two separate score_with_all_judges calls.
+        _install_fake_combined_scorer(
+            monkeypatch,
+            {
+                "Kimi": _combined_pair("Kimi", 0.8, 0.6),
+                "GLM": _combined_pair("GLM", 0.9, 0.7),
+                "Opus": _combined_pair("Opus", 0.7, 0.5),
+            },
+        )
+        tc, ts = score_with_all_judges_combined("sys", "combined", "s1")
+
+        # Task completion consensus matches the separate-path happy path exactly.
+        assert tc.rubric_type == "task_completion"
+        assert tc.n_judges_requested == 3
+        assert tc.n_judges_valid == 3
+        assert tc.consensus_score == pytest.approx((0.8 + 0.9 + 0.7) / 3)
+        assert tc.parse_failures == []
+        assert tc.api_failures == []
+        assert tc.degraded is False
+        assert tc.agreement_rate == pytest.approx(2 / 3)
+        assert tc.max_disagreement == pytest.approx(0.2)
+
+        # Tool selection consensus is its own panel.
+        assert ts.rubric_type == "tool_selection"
+        assert ts.n_judges_valid == 3
+        assert ts.consensus_score == pytest.approx((0.6 + 0.7 + 0.5) / 3)
+        assert ts.degraded is False
+
+    def test_one_dimension_missing_fails_both(self, monkeypatch):
+        # The combined response parses but tool_selection has no overall_score.
+        # The whole judge must be parse-failed for BOTH dimensions.
+        def fake_api(judge, system_prompt, rubric_prompt):
+            body = (
+                '{"task_completion": {"overall_score": 0.9, "overall_reasoning": "ok"}, '
+                '"tool_selection": {"overall_reasoning": "no score field"}}'
+            )
+            return body, "fake-model-v1"
+
+        monkeypatch.setattr(judge_mod, "_call_judge_api", fake_api)
+        tc_jr, ts_jr = judge_mod.score_with_judge_combined(_CombinedCfg(), "sys", "combined")
+        assert tc_jr.parse_failed is True
+        assert ts_jr.parse_failed is True
+        assert tc_jr.overall_score == 0.0
+        assert ts_jr.overall_score == 0.0
+
+    def test_retry_then_success_included(self, monkeypatch):
+        # First call: tool_selection missing its score -> rejected. Second call:
+        # both dimensions valid -> included. One retry, like the two-call path.
+        calls = {"n": 0}
+
+        def fake_api(judge, system_prompt, rubric_prompt):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return '{"task_completion": {"overall_score": 0.9}}', "m1"
+            return (
+                '{"task_completion": {"overall_score": 0.9, "overall_reasoning": "a"}, '
+                '"tool_selection": {"overall_score": 0.6, "overall_reasoning": "b"}}'
+            ), "m1"
+
+        monkeypatch.setattr(judge_mod, "_call_judge_api", fake_api)
+        tc_jr, ts_jr = judge_mod.score_with_judge_combined(_CombinedCfg(), "sys", "combined")
+        assert calls["n"] == 2  # retried once
+        assert tc_jr.parse_failed is False
+        assert ts_jr.parse_failed is False
+        assert tc_jr.overall_score == pytest.approx(0.9)
+        assert ts_jr.overall_score == pytest.approx(0.6)
+
+    def test_parse_failure_twice_flags_both(self, monkeypatch):
+        calls = {"n": 0}
+
+        def fake_api(judge, system_prompt, rubric_prompt):
+            calls["n"] += 1
+            return "still not json", "m1"
+
+        monkeypatch.setattr(judge_mod, "_call_judge_api", fake_api)
+        tc_jr, ts_jr = judge_mod.score_with_judge_combined(_CombinedCfg(), "sys", "combined")
+        assert calls["n"] == 2  # initial + one retry, then gives up
+        assert tc_jr.parse_failed is True
+        assert ts_jr.parse_failed is True
+
+    def test_api_failure_recorded_on_both(self, monkeypatch, three_judges):
+        # A raised exception in the combined call drops the judge from BOTH
+        # panels — it is one call, so it fails for both dimensions identically.
+        _install_fake_combined_scorer(
+            monkeypatch,
+            {
+                "Kimi": _combined_pair("Kimi", 0.8, 0.6),
+                "GLM": _combined_pair("GLM", 0.6, 0.4),
+                "Opus": RuntimeError("503 from provider"),
+            },
+        )
+        tc, ts = score_with_all_judges_combined("sys", "combined", "s1")
+        assert tc.api_failures == ["Opus"]
+        assert ts.api_failures == ["Opus"]
+        assert tc.n_judges_valid == 2
+        assert ts.n_judges_valid == 2
+        assert tc.consensus_score == pytest.approx((0.8 + 0.6) / 2)
+        assert ts.consensus_score == pytest.approx((0.6 + 0.4) / 2)
+        assert tc.degraded is False
+        assert ts.degraded is False
+
+    def test_combined_parse_failure_excluded_from_both(self, monkeypatch, three_judges):
+        # A both-dimension parse-failed judge is excluded from both consensuses
+        # and recorded in parse_failures for both.
+        _install_fake_combined_scorer(
+            monkeypatch,
+            {
+                "Kimi": _combined_pair("Kimi", 0.8, 0.6),
+                "GLM": _combined_pair("GLM", 0.9, 0.7),
+                "Opus": _combined_failed_pair("Opus"),
+            },
+        )
+        tc, ts = score_with_all_judges_combined("sys", "combined", "s1")
+        assert tc.parse_failures == ["Opus"]
+        assert ts.parse_failures == ["Opus"]
+        assert tc.n_judges_valid == 2
+        assert ts.n_judges_valid == 2
+        assert tc.consensus_score == pytest.approx((0.8 + 0.9) / 2)
+        # parse-failed judge kept in judge_results for transparency, both panels
+        assert len(tc.judge_results) == 3
+        assert len(ts.judge_results) == 3
+
+
 # --- Row building tests -----------------------------------------------------
 #
 # build_result_row is pure; we feed it faked ConsensusResult/sim objects and
@@ -399,6 +597,42 @@ class TestBuildResultRow:
         assert row["state_score"] is None
         assert row["state_checks_passed"] is None
         assert row["state_checks_total"] is None
+
+    def test_combined_and_separate_rows_identical(self, monkeypatch, three_judges):
+        # Regression: build_result_row must produce byte-identical column output
+        # whether the (tc, ts) consensus pair came from the combined one-call
+        # path or the separate two-call path, given equivalent judge scores.
+        from scripts.run_eval import build_result_row
+
+        scores = {"Kimi": (0.8, 0.6), "GLM": (0.9, 0.7), "Opus": (0.7, 0.5)}
+
+        # Combined path: one call per judge yields the (tc, ts) pair.
+        _install_fake_combined_scorer(
+            monkeypatch,
+            {name: _combined_pair(name, tc, ts) for name, (tc, ts) in scores.items()},
+        )
+        c_tc, c_ts = score_with_all_judges_combined("sys", "combined", "s1")
+
+        # Separate path: two independent calls, same per-judge scores.
+        _install_fake_scorer(
+            monkeypatch,
+            {name: _valid(name, tc) for name, (tc, _ts) in scores.items()},
+        )
+        s_tc = score_with_all_judges("sys", "tc_prompt", "task_completion", "s1")
+        _install_fake_scorer(
+            monkeypatch,
+            {name: _valid(name, ts, "tool_selection") for name, (_tc, ts) in scores.items()},
+        )
+        s_ts = score_with_all_judges("sys", "ts_prompt", "tool_selection", "s1")
+
+        combined_row = build_result_row(
+            _FakeScenario(), _FakeSpec(), _FakeSim(), c_tc, c_ts, efficacy=0.5, cost_usd=0.001
+        )
+        separate_row = build_result_row(
+            _FakeScenario(), _FakeSpec(), _FakeSim(), s_tc, s_ts, efficacy=0.5, cost_usd=0.001
+        )
+        assert combined_row.keys() == separate_row.keys()
+        assert combined_row == separate_row
 
     def test_state_columns_present_with_state_result(self):
         from scripts.run_eval import build_result_row

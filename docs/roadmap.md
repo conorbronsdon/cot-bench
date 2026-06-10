@@ -16,7 +16,7 @@ Prioritized improvements informed by analysis of leading leaderboards (HuggingFa
 
 **Goal:** Match the quality bar of BFCL and PinchBench.
 
-- [ ] **Combined judge prompt**: score task completion + tool selection in a single judge call instead of two (50% reduction in judge API calls — currently 6 calls per scenario, could be 3)
+- [x] **Combined judge prompt**: score task completion + tool selection in a single judge call instead of two (50% reduction in judge API calls — currently 6 calls per scenario, could be 3). Default since `feat/combined-judge-prompt`; legacy two-call path kept behind `run_eval --separate-judge-calls`. Also cuts judge input tokens ~45% (transcript sent once).
 - [ ] **Confidence intervals**: bootstrap over repeated runs to show uncertainty on scores (inspired by Chatbot Arena's Bradley-Terry model). Never show bare numbers without uncertainty.
 - [ ] **Hallucination/refusal detection**: dedicated metric for when models call tools they shouldn't or refuse valid tool use (from BFCL)
 - [ ] **Hybrid grading**: add deterministic checks alongside LLM judge — verify tool call JSON is valid, parameters match schema, required fields present (from PinchBench's atomic verifiable criteria)
