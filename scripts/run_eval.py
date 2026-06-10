@@ -150,6 +150,8 @@ def build_result_row(
         "input_tokens": sim_result.total_input_tokens,
         "output_tokens": sim_result.total_output_tokens,
         "completed": sim_result.completed,
+        # Provider-reported model actually served (vs the pinned request id)
+        "resolved_model": getattr(sim_result, "resolved_model", None),
         "tc_agreement": _round_or_none(tc_result.agreement_rate, 4),
         "ts_agreement": _round_or_none(ts_result.agreement_rate, 4),
         "tc_max_disagreement": _round_or_none(tc_result.max_disagreement, 4),

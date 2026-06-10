@@ -34,7 +34,7 @@ GENERATION_MODEL = "gpt-4.1"
 # DISJOINT from MODELS_UNDER_TEST (a contestant must never author its own exam);
 # this is enforced as a hard guard at generation time, not just by convention.
 AUTHOR_MODELS: dict[str, dict[str, str]] = {
-    "gpt-4.1": {"model_id": "gpt-4.1", "provider": "openai"},
+    "gpt-4.1": {"model_id": "gpt-4.1-2025-04-14", "provider": "openai"},
     # Clean authors on neither the under-test nor judge lists:
     "gpt-4.5": {"model_id": "gpt-4.5-preview", "provider": "openai"},
     "claude-opus": {"model_id": "claude-opus-4-6", "provider": "openrouter"},
@@ -60,13 +60,21 @@ def assert_author_allowed(model_id: str) -> None:
 
     A contestant must never write its own exam. Raises RuntimeError with a
     clear message; importable/testable without making any API call.
+
+    Matching is FAMILY-AWARE, not exact-string: contestants are pinned to dated
+    snapshots (e.g. "gpt-4.1-2025-04-14"), and an author id like "gpt-4.1" is
+    the same model family — a different snapshot of a contestant is still a
+    contestant. Block when either id is a prefix of the other.
     """
-    if model_id.lower() in _models_under_test_blocklist():
-        raise RuntimeError(
-            f"Author model '{model_id}' is in MODELS_UNDER_TEST. A model under "
-            "test must never author scenarios (contamination). Choose an author "
-            "disjoint from the contestant list (see AUTHOR_MODELS)."
-        )
+    candidate = model_id.lower()
+    for blocked in _models_under_test_blocklist():
+        if candidate == blocked or candidate.startswith(blocked) or blocked.startswith(candidate):
+            raise RuntimeError(
+                f"Author model '{model_id}' matches MODELS_UNDER_TEST entry '{blocked}'. "
+                "A model under test (any snapshot of it) must never author "
+                "scenarios (contamination). Choose an author disjoint from the "
+                "contestant list (see AUTHOR_MODELS)."
+            )
 
 
 def resolve_author(name: str) -> dict[str, str]:

@@ -87,6 +87,11 @@ class SimulationResult:
     # Final mutable world state at end of run. None for legacy (stateless)
     # scenarios that carry no ground_truth.
     final_world: dict | None = None
+    # Provider-reported model id from the agent's responses (first one seen).
+    # The configured model_id pins what we ASKED for; this records what the
+    # provider says it SERVED — they can differ on alias/routed providers
+    # (OpenRouter does not pin the upstream provider or quantization).
+    resolved_model: str | None = None
 
 
 @dataclass
@@ -306,6 +311,7 @@ class SimulationRunner:
         total_output_tokens = 0
         total_latency_ms = 0.0
         completed = False
+        resolved_model: str | None = None
 
         # Stateful world for this run. Deep-copy so each reliability run starts
         # from a pristine ground_truth and mutations never leak across runs.
@@ -361,9 +367,16 @@ class SimulationRunner:
                         completed=False,
                         error=str(e),
                         final_world=world,
+                        resolved_model=resolved_model,
                     )
                 agent_latency = (time.perf_counter() - start) * 1000
                 total_latency_ms += agent_latency
+
+                # Record the provider-reported model on first sight (LangChain
+                # puts it in response_metadata as "model_name" or "model").
+                if resolved_model is None:
+                    meta = getattr(agent_response, "response_metadata", None) or {}
+                    resolved_model = meta.get("model_name") or meta.get("model") or None
 
                 agent_content = (
                     agent_response.content
@@ -481,6 +494,7 @@ class SimulationRunner:
             total_output_tokens=total_output_tokens,
             completed=completed,
             final_world=world,
+            resolved_model=resolved_model,
         )
 
     def _extract_tool_calls(self, response, content: str, turn: int) -> tuple[list[ToolCall], bool]:

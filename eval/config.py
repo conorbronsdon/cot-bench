@@ -34,8 +34,8 @@ class SimulationConfig:
     """Settings for the multi-turn simulation loop."""
 
     max_turns: int = 10
-    user_simulator_model: str = "gpt-4.1-mini"
-    tool_simulator_model: str = "gpt-4.1-mini"
+    user_simulator_model: str = "gpt-4.1-mini-2025-04-14"
+    tool_simulator_model: str = "gpt-4.1-mini-2025-04-14"
     user_simulator_temperature: float = 0.7
     tool_simulator_temperature: float = 0.0
 
@@ -70,10 +70,21 @@ JUDGES = {
 
 # --- Models Under Test ---
 # V1 target: 8-10 top models
+#
+# Pinning policy (reproducibility): pin to a dated snapshot wherever the
+# provider publishes one. Where no dated snapshot exists, the listed ID is the
+# provider's canonical (most-pinned-available) identifier:
+#   - OpenAI: dated snapshots exist and are pinned below.
+#   - Anthropic: claude-sonnet-4-6 has no dated snapshot — the alias IS the
+#     canonical ID (appending a date 404s). Haiku has one and is pinned.
+#   - Google: gemini-2.5-pro / -flash are the stable (non-preview) IDs.
+#   - OpenRouter: slugs pin the model but NOT the serving provider or
+#     quantization (routing varies per call). The resolved upstream model is
+#     recorded per run in results/artifacts for audit.
 
 MODELS_UNDER_TEST = [
-    {"name": "GPT-4.1", "model_id": "gpt-4.1", "provider": "openai"},
-    {"name": "GPT-4.1-mini", "model_id": "gpt-4.1-mini", "provider": "openai"},
+    {"name": "GPT-4.1", "model_id": "gpt-4.1-2025-04-14", "provider": "openai"},
+    {"name": "GPT-4.1-mini", "model_id": "gpt-4.1-mini-2025-04-14", "provider": "openai"},
     {"name": "Claude Sonnet 4.6", "model_id": "claude-sonnet-4-6", "provider": "anthropic"},
     {"name": "Claude Haiku 4.5", "model_id": "claude-haiku-4-5-20251001", "provider": "anthropic"},
     {"name": "Gemini 2.5 Pro", "model_id": "gemini-2.5-pro", "provider": "google"},
@@ -96,8 +107,8 @@ MODELS_UNDER_TEST = [
 # Updated March 2026. Used for CLEAR Cost dimension.
 
 TOKEN_COSTS = {
-    "gpt-4.1": {"input": 2.00, "output": 8.00},
-    "gpt-4.1-mini": {"input": 0.40, "output": 1.60},
+    "gpt-4.1-2025-04-14": {"input": 2.00, "output": 8.00},
+    "gpt-4.1-mini-2025-04-14": {"input": 0.40, "output": 1.60},
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
     "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.00},
     "gemini-2.5-pro": {"input": 1.25, "output": 10.00},

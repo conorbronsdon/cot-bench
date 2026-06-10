@@ -173,8 +173,8 @@ class TestConsensus:
         def fake_api(judge, system_prompt, rubric_prompt):
             calls["n"] += 1
             if calls["n"] == 1:
-                return "not json"
-            return '{"overall_score": 0.75, "overall_reasoning": "second try"}'
+                return "not json", "fake-model-v1"
+            return '{"overall_score": 0.75, "overall_reasoning": "second try"}', "fake-model-v1"
 
         monkeypatch.setattr(judge_mod, "_call_judge_api", fake_api)
         result = judge_mod.score_with_judge(_Cfg(), "sys", "rub", "task_completion")
@@ -196,7 +196,7 @@ class TestConsensus:
 
         def fake_api(judge, system_prompt, rubric_prompt):
             calls["n"] += 1
-            return "still not json"
+            return "still not json", "fake-model-v1"
 
         monkeypatch.setattr(judge_mod, "_call_judge_api", fake_api)
         result = judge_mod.score_with_judge(_Cfg(), "sys", "rub", "task_completion")

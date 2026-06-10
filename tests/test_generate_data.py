@@ -37,3 +37,21 @@ class TestAuthorGuard:
         # Default friendly author gpt-4.1 maps to a contestant -> guarded.
         with pytest.raises(RuntimeError, match="MODELS_UNDER_TEST"):
             resolve_author("gpt-4.1")
+
+
+class TestAuthorGuardFamilyMatching:
+    """Pinned snapshots and bare family ids must both be blocked (prefix match)."""
+
+    def test_bare_family_id_blocked_when_contestant_is_pinned(self):
+        # Contestants are pinned to dated snapshots (gpt-4.1-2025-04-14);
+        # the bare family id is still the same model and must be rejected.
+        with pytest.raises(RuntimeError, match="MODELS_UNDER_TEST"):
+            assert_author_allowed("gpt-4.1")
+
+    def test_dated_snapshot_of_contestant_blocked(self):
+        with pytest.raises(RuntimeError, match="MODELS_UNDER_TEST"):
+            assert_author_allowed("gpt-4.1-2025-04-14")
+
+    def test_unrelated_family_allowed(self):
+        # gpt-4.5-preview shares no prefix relation with any contestant id.
+        assert_author_allowed("gpt-4.5-preview")

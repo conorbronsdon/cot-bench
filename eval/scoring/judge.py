@@ -37,6 +37,9 @@ class JudgeResult:
     raw_response: dict
     latency_ms: float
     parse_failed: bool = False
+    # Provider-reported model id for the call (for OpenRouter judges, the
+    # upstream model actually served). Recorded for reproducibility audits.
+    resolved_model: str = ""
 
 
 @dataclass
@@ -127,11 +130,14 @@ def _call_judge_api(
     judge: JudgeConfig,
     system_prompt: str,
     rubric_prompt: str,
-) -> str:
-    """Make a single judge API call and return the raw text content.
+) -> tuple[str, str]:
+    """Make a single judge API call; return (raw text content, resolved model).
 
     Separated from :func:`score_with_judge` so the orchestration layer can
     retry it (a fresh API call) without re-implementing provider dispatch.
+    The resolved model is the provider-reported model id for the call — for
+    OpenRouter judges this is the upstream model actually served, which the
+    request slug does not pin.
     """
     if judge.provider == "anthropic":
         client = _get_anthropic_client()
@@ -142,7 +148,7 @@ def _call_judge_api(
             temperature=judge.temperature,
             max_tokens=judge.max_tokens,
         )
-        return response.content[0].text
+        return response.content[0].text, getattr(response, "model", "") or ""
     elif judge.provider == "openrouter":
         # Open-weight judges via OpenRouter (OpenAI-compatible). Needs a real
         # key, unlike a self-hosted local endpoint.
@@ -157,7 +163,7 @@ def _call_judge_api(
             temperature=judge.temperature,
             max_tokens=judge.max_tokens,
         )
-        return response.choices[0].message.content
+        return response.choices[0].message.content, getattr(response, "model", "") or ""
     else:
         raise ValueError(
             f"Unknown judge provider {judge.provider!r} for {judge.name}. "
@@ -191,9 +197,10 @@ def score_with_judge(
     start = time.perf_counter()
 
     parsed = None
+    resolved_model = ""
     attempts = 2  # initial call + one retry on parse failure
     for attempt in range(attempts):
-        content = _call_judge_api(judge, system_prompt, rubric_prompt)
+        content, resolved_model = _call_judge_api(judge, system_prompt, rubric_prompt)
         parsed = _parse_judge_response(content)
         if parsed is not None:
             break
@@ -217,6 +224,7 @@ def score_with_judge(
             raw_response={},
             latency_ms=latency_ms,
             parse_failed=True,
+            resolved_model=resolved_model,
         )
 
     return JudgeResult(
@@ -226,6 +234,7 @@ def score_with_judge(
         reasoning=parsed.get("overall_reasoning", ""),
         raw_response=parsed,
         latency_ms=latency_ms,
+        resolved_model=resolved_model,
     )
 
 
