@@ -28,7 +28,7 @@ From the [Chain of Thought](https://chainofthought.show/) podcast. Open-weight j
 | Scoring criteria are a black box | **Rubrics are code** — read them in [`eval/scoring/rubrics.py`](eval/scoring/rubrics.py) |
 | Results go stale within weeks | **Automated weekly runs** via GitHub Actions |
 | OpenAI judges OpenAI models | **Vendor-neutral**: open-weight judges, none also under test (no self-grading) |
-| No way to reproduce results | **OpenInference traces** for every run, compatible with [Arize Phoenix](https://github.com/Arize-ai/phoenix) |
+| No way to audit a published score | **Full artifacts per run** — every evaluation's transcript and raw judge outputs are saved to disk, plus OpenInference-attributed spans exported to JSONL ([loadable into Arize Phoenix](https://github.com/Arize-ai/phoenix)) |
 
 ## Latest Results
 
@@ -184,6 +184,8 @@ cot-bench/
 │   ├── domains/                   # Domain tool + persona definitions
 │   ├── scenarios/                 # Test scenarios (generated JSON)
 │   └── results/                   # Evaluation outputs (parquet + csv + json)
+│       ├── artifacts/             # Per-run transcripts + raw judge outputs (audit trail)
+│       └── traces/                # OpenInference spans as JSONL (Phoenix-loadable)
 ├── scripts/
 │   ├── run_eval.py               # Main evaluation CLI
 │   ├── generate_data.py          # Synthetic scenario generation
@@ -212,6 +214,16 @@ cot-bench/
 4. **Reliability**: Each scenario runs 3 times to measure consistency. A model that scores 0.9 once but 0.3 the next time is less useful than one that consistently scores 0.7.
 
 5. **Aggregation**: All four CLEAR dimensions are normalized and weighted into a composite score, broken down by domain, category, and individual judge.
+
+## Reproducibility & Audit
+
+Every run publishes the evidence behind its scores, not just the numbers:
+
+- **Per-evaluation artifacts** — for each `(scenario, model, run)`, a JSON file under `data/results/artifacts/{run_id}/{model-slug}/{scenario_id}_run{n}.json` contains the full conversation transcript (every turn, tool call, tool result, and call id) plus each judge's raw output for both rubrics (score, reasoning, `parse_failed` flag, and the raw parsed response). This lets anyone see *why* a published score is what it is. On by default; disable with `--no-artifacts`.
+- **Trace export** — agent turns and judge evaluations are emitted as [OpenInference](https://github.com/Arize-ai/openinference)-attributed OpenTelemetry spans and written to `data/results/traces/{run_id}/spans.jsonl` (one span per line). The JSONL is loadable into [Arize Phoenix](https://github.com/Arize-ai/phoenix) or any OTel/OpenInference reader. Set `COT_BENCH_TRACE_DIR` to override the output location.
+- **Run manifest** — `data/results/run_manifest.json` records the run id, which models were requested/completed/failed, domains, scenario counts, and the artifact/trace directories.
+
+All of the above are uploaded as workflow artifacts on every weekly run.
 
 ## Acknowledgments
 

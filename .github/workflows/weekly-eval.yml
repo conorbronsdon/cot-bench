@@ -100,6 +100,8 @@ jobs:
             data/results/*.csv
             data/results/leaderboard.json
             data/results/run_manifest.json
+            data/results/artifacts/
+            data/results/traces/
 
       - name: Verify run completeness
         # Only matters when we're about to publish. Blocks a scheduled (or

@@ -210,3 +210,43 @@ Results may vary slightly due to:
 - Judge model updates over time
 
 We recommend comparing models within the same evaluation run rather than across runs.
+
+### What every run publishes (for audit)
+
+A published score is only trustworthy if you can inspect the evidence behind it.
+Each run persists exactly three things, and nothing is claimed that isn't on disk:
+
+1. **Per-evaluation artifacts.** For every `(scenario, model, run_index)` the run
+   writes a JSON file to
+   `data/results/artifacts/{run_id}/{model-slug}/{scenario_id}_run{run_index}.json`.
+   Each file contains:
+   - `transcript` — the full conversation: every `ConversationTurn` with its role,
+     content, turn number, tool calls (name + arguments), tool results, and tool
+     call ids, in true conversational order.
+   - `judges` — for both `task_completion` and `tool_selection`, every judge's
+     output: `judge_name`, `rubric_type`, `overall_score`, `reasoning`,
+     `parse_failed`, and the raw parsed `raw_response`. Parse-failed judges are
+     retained here for transparency (they are still excluded from consensus math).
+   - `sim_meta` — `completed`, `total_turns`, token counts, `latency_ms`, and any
+     simulation `error`.
+
+   `run_id` is the stem of the results parquet, so a run's artifacts sit alongside
+   the results they explain. Artifact persistence is **on by default**; pass
+   `--no-artifacts` to disable it.
+
+2. **Trace export (OpenInference → JSONL).** Agent turns and judge evaluations are
+   emitted as OpenTelemetry spans carrying
+   [OpenInference](https://github.com/Arize-ai/openinference) semantic-convention
+   attributes (e.g. span kind `AGENT`/`EVALUATOR`, model name, scores). These are
+   written to `data/results/traces/{run_id}/spans.jsonl` — one span per line — by a
+   dependency-free file exporter built on the OpenTelemetry SDK. The JSONL can be
+   loaded into [Arize Phoenix](https://github.com/Arize-ai/phoenix) (via its
+   OTLP/file import) or any OTel/OpenInference reader. Set `COT_BENCH_TRACE_DIR` to
+   write spans elsewhere. (Spans are exported to a file on disk; they are not held
+   only in memory.)
+
+3. **Run manifest.** `data/results/run_manifest.json` records the `run_id`, the
+   models requested/completed/failed, domains, per-domain scenario counts, the
+   reliability-run count, and the artifact/trace directories for the run.
+
+All three are uploaded as workflow artifacts on every weekly evaluation run.
