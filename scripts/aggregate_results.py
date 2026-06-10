@@ -140,8 +140,14 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
 def main():
     df = load_all_results()
     if df.empty:
-        logger.warning("No results to aggregate")
-        return
+        # Exit non-zero: in CI this runs right after run_eval, so an empty
+        # results dir means the eval silently produced nothing. Returning 0
+        # here used to let the workflow continue until `git add` died on the
+        # missing leaderboard.json with no hint of the real cause.
+        raise SystemExit(
+            "No results to aggregate — data/results/ has no parquet output. "
+            "Did the eval run produce anything?"
+        )
 
     leaderboard = compute_leaderboard(df)
 

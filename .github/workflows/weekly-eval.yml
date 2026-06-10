@@ -32,6 +32,21 @@ jobs:
       QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
 
     steps:
+      # Fail fast with a one-line diagnosis when the run can't possibly work.
+      # The GHA path runs `--judges opus`, so the hard requirements are
+      # OPENAI_API_KEY (user/tool simulators) and ANTHROPIC_API_KEY (judge).
+      # Without this gate, a key-less run used to burn the whole job and die
+      # at the final `git add` with a pathspec error that said nothing.
+      - name: Check required secrets
+        run: |
+          missing=""
+          [ -z "$OPENAI_API_KEY" ] && missing="$missing OPENAI_API_KEY"
+          [ -z "$ANTHROPIC_API_KEY" ] && missing="$missing ANTHROPIC_API_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required repo secrets:$missing — the weekly eval cannot run. Add them under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       - name: Set up Python
@@ -41,6 +56,9 @@ jobs:
 
       - name: Install dependencies
         run: pip install -e .
+
+      - name: Pre-flight check
+        run: python -m scripts.preflight
 
       # TODO: Install and start MAX for open-source judges
       # For now, run with frontier judge only on GitHub Actions
@@ -81,6 +99,9 @@ jobs:
 
       - name: Commit updated results
         run: |
+          # Upstream steps now fail loud on empty results; this assert is
+          # belt-and-braces so a future regression diagnoses itself.
+          test -f data/results/leaderboard.json || { echo "::error::leaderboard.json was not generated despite eval+aggregate exiting 0 — investigate scripts/aggregate_results.py"; exit 1; }
           git config user.name "COT Bench Bot"
           git config user.email "bot@cot-bench.dev"
           git add data/results/leaderboard.json data/results/latest.csv

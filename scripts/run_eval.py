@@ -206,6 +206,30 @@ def _run_model_scenarios(
     return results
 
 
+def assert_results_nonempty(all_results: list, failed_models: list[str]) -> None:
+    """Exit non-zero when an eval run produced zero results.
+
+    Per-model failures are logged and swallowed so one bad provider can't
+    sink a whole run — but when EVERY model fails (the classic cause:
+    missing API keys), the old behavior wrote an empty parquet and exited
+    0, and the failure only surfaced steps later as a confusing
+    `git add: pathspec did not match` in CI. Fail here, loudly, instead.
+    """
+    if all_results:
+        if failed_models:
+            logger.warning(
+                "Partial run: %d model(s) failed and are missing from results: %s",
+                len(failed_models),
+                ", ".join(sorted(failed_models)),
+            )
+        return
+    raise SystemExit(
+        "All model evaluations failed — no results produced. "
+        f"Failed models: {', '.join(sorted(failed_models)) or 'none attempted'}. "
+        "Check API keys (python -m scripts.preflight) before re-running."
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description="COT Bench — Agent Evaluation")
     parser.add_argument(
@@ -282,6 +306,7 @@ def main():
 
     # Run models in parallel
     all_results = []
+    failed_models: list[str] = []
     with ThreadPoolExecutor(max_workers=args.parallel_models) as executor:
         futures = {
             executor.submit(
@@ -303,6 +328,9 @@ def main():
                 logger.info("Completed %s: %d results", model_name, len(results))
             except Exception:
                 logger.exception("Failed evaluating %s", model_name)
+                failed_models.append(model_name)
+
+    assert_results_nonempty(all_results, failed_models)
 
     # Save results
     output_path = Path(args.output)
