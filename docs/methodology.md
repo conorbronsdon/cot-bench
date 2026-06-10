@@ -367,3 +367,5 @@ Each run persists exactly three things, and nothing is claimed that isn't on dis
    reliability-run count, and the artifact/trace directories for the run.
 
 All three are uploaded as workflow artifacts on every weekly evaluation run.
+
+The policies governing how these runs are published, corrected, and versioned — no silent retraction or rerun, judge pinning, run pre-registration, contamination handling, and what triggers a benchmark version bump — are documented in [governance.md](governance.md).
