@@ -347,6 +347,62 @@ SAME_LAB_JUDGE_MARKER = "opus"  # matches the judge's display name in tc_/ts_ co
 SAME_LAB_CONTESTANT_MARKER = "claude"  # matches contestant display names
 
 
+def _judge_name_from_column(col: str) -> str:
+    """Strip the ``tc_``/``ts_`` rubric prefix to recover the judge display name."""
+    return col[3:] if col.startswith(("tc_", "ts_")) else col
+
+
+def compute_judge_deltas(df: pd.DataFrame, judge_columns: list[str]) -> dict:
+    """Per-judge-vs-consensus delta stats for EVERY judge, keyed by model name.
+
+    This generalizes the same-lab check (which only instrumented the Opus/Claude
+    pairing) to all judges: for each contestant and each judge on the panel, we
+    report that judge's mean task-completion / tool-selection for the model and
+    its delta against the published full-panel consensus (``full - judge``).
+
+    Sign convention matches ``compute_same_lab_check``: ``delta = consensus_mean -
+    judge_mean``, so a **positive** delta means the panel consensus is higher than
+    this judge (the judge rates the model *lower* than its peers), and a
+    **negative** delta means the judge is more generous to this model than the
+    panel. This is the raw material for the "does any judge systematically favor
+    a model" launch finding — including, but not limited to, the same-lab case.
+
+    Returns ``{model: {"task_completion": {judge: {"mean": .., "delta": ..}, ...},
+    "tool_selection": {...}}}``. Like the same-lab check this is a diagnostic over
+    the published per-judge columns (which already exclude parse failures), so
+    small differences from row-level panel composition are expected.
+    """
+    tc_cols = [c for c in judge_columns if c.startswith("tc_")]
+    ts_cols = [c for c in judge_columns if c.startswith("ts_")]
+    if not tc_cols and not ts_cols:
+        return {}
+
+    deltas: dict[str, dict] = {}
+    for model in df["model"].unique():
+        mdf = df[df["model"] == model]
+        entry: dict = {}
+        for key, cols, full_col in (
+            ("task_completion", tc_cols, "task_completion"),
+            ("tool_selection", ts_cols, "tool_selection"),
+        ):
+            if not cols or full_col not in mdf.columns:
+                continue
+            full = float(mdf[full_col].mean())
+            per_judge: dict[str, dict] = {}
+            for col in cols:
+                judge_mean = mdf[col].mean()
+                per_judge[_judge_name_from_column(col)] = {
+                    "mean": _round_or_none(judge_mean, 4),
+                    "delta": _round_or_none(
+                        None if pd.isna(judge_mean) else full - float(judge_mean),
+                        4,
+                    ),
+                }
+            entry[key] = per_judge
+        deltas[str(model)] = entry
+    return deltas
+
+
 def compute_same_lab_check(df: pd.DataFrame, judge_columns: list[str]) -> dict:
     """Per-model same-lab robustness stats keyed by model name.
 
@@ -501,6 +557,9 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
 
     same_lab_checks = compute_same_lab_check(df, judge_columns)
 
+    # Per-judge-vs-consensus deltas for EVERY judge (generalizes same_lab_check).
+    judge_deltas = compute_judge_deltas(df, judge_columns)
+
     # Inter-judge reliability: Krippendorff's alpha (interval), the primary
     # chance-corrected metric. Per-model within-0.2 agreement stays as a
     # secondary readout in each model entry's judge_agreement block.
@@ -552,9 +611,12 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
                 "tool_selection": _round_or_none(row["judge_agreement_ts"], 4),
             },
             "judge_alpha": judge_alpha["per_model"].get(row["model"]),
+            # Per-judge-vs-consensus deltas for every judge on the panel, per
+            # dimension — the generalized form of the same-lab check.
+            "judge_deltas": judge_deltas.get(row["model"]),
             # Same-lab robustness: judge-mean scores with the same-lab judge
             # excluded, plus the delta vs the full panel. None for models with
-            # no same-lab judge on the panel.
+            # no same-lab judge on the panel. Kept working alongside judge_deltas.
             "same_lab_check": same_lab_checks.get(row["model"]),
         }
         leaderboard["models"].append(model_entry)
