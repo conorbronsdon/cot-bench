@@ -14,6 +14,10 @@ on:
         description: 'Models to evaluate (comma-separated, blank for all)'
         required: false
         default: ''
+      publish:
+        description: 'Commit results to the live leaderboard? (false = smoke/dry run)'
+        required: false
+        default: 'false'
 
 jobs:
   evaluate:
@@ -85,6 +89,11 @@ jobs:
             data/results/leaderboard.json
 
       - name: Commit updated results
+        # The scheduled run always publishes. A manual dispatch only publishes
+        # when explicitly asked (publish=true) — so a subset smoke run can
+        # validate the pipeline + upload its artifact without pushing a
+        # misleading partial leaderboard to the live site.
+        if: github.event_name == 'schedule' || github.event.inputs.publish == 'true'
         run: |
           # Upstream steps now fail loud on empty results; this assert is
           # belt-and-braces so a future regression diagnoses itself.
