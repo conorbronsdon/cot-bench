@@ -145,7 +145,24 @@
         .rank-2 { color: var(--text); }
         .rank-3 { color: #cd7f32; }
 
+        /* Tied with the leader's CI band — ordering not distinguishable. */
+        .rank-tied { color: var(--text-muted); opacity: 0.6; }
+
         .model-name { font-weight: 600; }
+
+        /* CI half-width shown next to the CLEAR score. */
+        .clear-score .ci {
+            font-weight: 400;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .stat-note {
+            margin-top: 1rem;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
 
         .score-bar {
             display: inline-block;
@@ -364,6 +381,8 @@
             </tbody>
         </table>
 
+        <p id="stat-note" class="stat-note" style="display:none;"></p>
+
         <!-- Efficiency Frontier: Efficacy vs Cost -->
         <div class="scatter-container">
             <h2>Efficiency Frontier: Efficacy vs. Cost per Task</h2>
@@ -509,16 +528,26 @@
                 return sortAsc ? av - bv : bv - av;
             });
 
+            // Models whose rank_band matches the leader's band share the top
+            // band — their ordering is not statistically distinguishable, so we
+            // mark their rank with "=" and gray it out. rank_band is absent on
+            // demo / pre-CI data; fall back to plain ranks then.
+            const leaderBand = models[0]?.rank_band;
             const tbody = document.getElementById('leaderboard-body');
             tbody.innerHTML = models.map((m, i) => {
                 const rank = i + 1;
-                const rankClass = rank <= 3 ? `rank rank-${rank}` : 'rank';
+                const sharesLeaderBand = m.rank_band != null && m.rank_band === leaderBand;
+                // Within the leader's band, ranks are tied: show "1=" and dim them.
+                const rankLabel = sharesLeaderBand ? `${rank}=` : `${rank}`;
+                let rankClass = rank <= 3 ? `rank rank-${rank}` : 'rank';
+                if (sharesLeaderBand && rank > 1) rankClass += ' rank-tied';
                 const avgAgreement = ((m.judge_agreement?.task_completion || 0) + (m.judge_agreement?.tool_selection || 0)) / 2;
+                const clearCell = renderClearCell(m);
 
                 return `<tr>
-                    <td class="${rankClass}">${rank}</td>
+                    <td class="${rankClass}">${rankLabel}</td>
                     <td class="model-name">${m.name}</td>
-                    <td class="clear-score">${m.clear_score.toFixed(3)}<span class="score-bar ${scoreColor(m.clear_score)}" style="width:${m.clear_score * 60}px"></span></td>
+                    <td class="clear-score">${clearCell}<span class="score-bar ${scoreColor(m.clear_score)}" style="width:${m.clear_score * 60}px"></span></td>
                     <td>${m.efficacy.toFixed(3)}</td>
                     <td>${m.task_completion.toFixed(3)}</td>
                     <td>${m.tool_selection.toFixed(3)}</td>
@@ -528,6 +557,31 @@
                     <td><span class="agreement-badge ${agreementClass(avgAgreement)}">${(avgAgreement * 100).toFixed(0)}%</span></td>
                 </tr>`;
             }).join('');
+
+            renderStatNote();
+        }
+
+        // CLEAR cell: show "0.847 ±0.031" using the CI half-width when a
+        // clear_score_ci is present. Demo / pre-CI data omits it -> bare score.
+        function renderClearCell(m) {
+            const ci = m.clear_score_ci;
+            if (Array.isArray(ci) && ci[0] != null && ci[1] != null) {
+                const half = (ci[1] - ci[0]) / 2;
+                return `${m.clear_score.toFixed(3)} <span class="ci">&plusmn;${half.toFixed(3)}</span>`;
+            }
+            return m.clear_score.toFixed(3);
+        }
+
+        function renderStatNote() {
+            const el = document.getElementById('stat-note');
+            if (!el) return;
+            const note = leaderboardData && leaderboardData.statistical_note;
+            if (note) {
+                el.textContent = note;
+                el.style.display = '';
+            } else {
+                el.style.display = 'none';
+            }
         }
 
         function renderScatter() {

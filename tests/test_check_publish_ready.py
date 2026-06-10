@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from eval.config import MIN_SCENARIOS_FOR_PUBLISH
 from scripts.check_publish_ready import check_publish_ready
 
 
@@ -24,7 +25,10 @@ def _write_manifest(tmp_path: Path, **overrides) -> Path:
         "models_completed": ["GPT-4.1", "Gemini 2.5 Pro", "Gemini 2.5 Flash"],
         "models_failed": [],
         "domains": ["banking"],
-        "scenario_counts": {"banking": 5},
+        # Default to a count that clears the publish minimum so failed-model
+        # tests exercise the failed-model path in isolation; scenario-count
+        # tests override this explicitly.
+        "scenario_counts": {"banking": MIN_SCENARIOS_FOR_PUBLISH},
         "reliability_runs": 3,
     }
     manifest.update(overrides)
@@ -73,6 +77,69 @@ class TestCheckPublishReady:
         # we can't know what (if anything) ran.
         path = tmp_path / "does_not_exist.json"
         assert check_publish_ready(path, allow_partial=True) != 0
+
+
+class TestScenarioMinimum:
+    def test_below_minimum_scenarios_blocks(self, tmp_path, capsys):
+        path = _write_manifest(
+            tmp_path,
+            scenario_counts={"banking": MIN_SCENARIOS_FOR_PUBLISH - 1},
+        )
+        assert check_publish_ready(path) != 0
+        err = capsys.readouterr().err
+        assert "::error::" in err
+        assert str(MIN_SCENARIOS_FOR_PUBLISH) in err
+        assert "banking" in err
+
+    def test_exactly_minimum_scenarios_passes(self, tmp_path):
+        path = _write_manifest(
+            tmp_path,
+            scenario_counts={"banking": MIN_SCENARIOS_FOR_PUBLISH},
+        )
+        assert check_publish_ready(path) == 0
+
+    def test_one_domain_below_minimum_blocks_even_if_other_ok(self, tmp_path, capsys):
+        path = _write_manifest(
+            tmp_path,
+            domains=["banking", "customer_success"],
+            scenario_counts={
+                "banking": MIN_SCENARIOS_FOR_PUBLISH + 10,
+                "customer_success": 4,
+            },
+        )
+        assert check_publish_ready(path) != 0
+        err = capsys.readouterr().err
+        assert "customer_success" in err
+        # The above-minimum domain should not be named as a blocker.
+        assert "customer_success=4" in err
+
+    def test_allow_partial_rescues_below_minimum(self, tmp_path, capsys):
+        path = _write_manifest(
+            tmp_path,
+            scenario_counts={"banking": 4},
+        )
+        assert check_publish_ready(path, allow_partial=True) == 0
+        err = capsys.readouterr().err
+        assert "::warning::" in err
+        assert "banking" in err
+
+    def test_failed_models_and_low_scenarios_both_reported(self, tmp_path, capsys):
+        path = _write_manifest(
+            tmp_path,
+            models_completed=["GPT-4.1"],
+            models_failed=["Gemini 2.5 Pro"],
+            scenario_counts={"banking": 4},
+        )
+        assert check_publish_ready(path) != 0
+        err = capsys.readouterr().err
+        assert "Gemini 2.5 Pro" in err  # failed-model blocker
+        assert str(MIN_SCENARIOS_FOR_PUBLISH) in err  # scenario blocker
+
+    def test_missing_scenario_counts_does_not_crash(self, tmp_path):
+        # Older manifests may lack scenario_counts; treat absent as "no domains
+        # to check" rather than crashing (the failed-model gate still applies).
+        path = _write_manifest(tmp_path, scenario_counts={})
+        assert check_publish_ready(path) == 0
 
 
 class TestMainExitCode:

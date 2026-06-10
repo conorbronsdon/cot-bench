@@ -176,3 +176,14 @@ RELIABILITY_RUNS = 3
 
 # Number of scenarios per domain/category combination
 SCENARIOS_PER_CATEGORY = 20
+
+# Minimum number of scenarios per evaluated domain before a leaderboard may be
+# published. Below this, model orderings are dominated by sampling noise rather
+# than real capability differences: with only a handful of scenarios the
+# bootstrap confidence intervals on every dimension overlap almost completely,
+# so any ranking is indistinguishable from chance. The methodological review
+# set this bar so the published board stays honest while the scenario set scales
+# toward its ~80-scenario target. The publish gate (scripts/check_publish_ready.py)
+# refuses to publish any run whose per-domain scenario count falls below this,
+# unless --allow-partial is passed for a deliberate preview.
+MIN_SCENARIOS_FOR_PUBLISH = 30
