@@ -17,7 +17,7 @@
 
 Most agent benchmarks measure one thing — accuracy — and publish results once. COT Bench measures what actually matters for production agents, stays fresh with automated weekly runs, and publishes every score from every judge so you can verify our work.
 
-From the [Chain of Thought](https://www.linkedin.com/in/conorbronsdon/) podcast. Open-source judge models served on [Modular MAX](https://www.modular.com/max).
+From the [Chain of Thought](https://chainofthought.show/) podcast. Open-source judge models served on [Modular MAX](https://www.modular.com/max).
 
 ## Why COT Bench?
 
@@ -242,4 +242,4 @@ cot-bench/
 
 ---
 
-Built by [Conor Bronsdon](https://github.com/conorbronsdon) · [Chain of Thought](https://www.linkedin.com/in/conorbronsdon/)
+Built by [Conor Bronsdon](https://github.com/conorbronsdon) · [Chain of Thought](https://chainofthought.show/)
