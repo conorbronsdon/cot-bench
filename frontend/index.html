@@ -535,7 +535,7 @@
             <div class="metrics-legend">
                 <span class="metric-tag"><b>CLEAR</b> = composite: Efficacy 35% + Reliability 25% + Cost 20% + Latency 20%</span>
                 <span class="metric-tag"><b>Efficacy</b> = task completion + tool selection</span>
-                <span class="metric-tag"><b>Reliability</b> = pass@3 consistency</span>
+                <span class="metric-tag"><b>Reliability</b> = pass rate over 3 runs (pass^k below)</span>
                 <span class="metric-tag"><b>Value</b> = efficacy per dollar</span>
                 <span class="metric-tag"><b>Band</b> = statistically tied (overlapping CLEAR CIs)</span>
             </div>
@@ -790,7 +790,9 @@
             const ci = m.clear_score_ci;
             let ciTxt = '';
             if (Array.isArray(ci) && ci[0] != null && ci[1] != null) {
-                ciTxt = ` <span class="clear-ci">&plusmn;${((ci[1] - ci[0]) / 2).toFixed(3)}</span>`;
+                // Percentile CIs are asymmetric; show the actual bounds, not a
+                // symmetric ±half-width that misstates them.
+                ciTxt = ` <span class="clear-ci">[${ci[0].toFixed(3)}, ${ci[1].toFixed(3)}]</span>`;
             }
             const pct = Math.max(0, Math.min(1, m.clear_score)) * 100;
             return `<span class="clear-val">${m.clear_score.toFixed(3)}</span>${ciTxt}
@@ -910,7 +912,7 @@
                 const vTxt = v == null ? '—' : (v >= 100 ? Math.round(v) : v.toFixed(1)) + ' eff/$';
                 const agree = avgAgreement(m);
                 const ci = m.clear_score_ci;
-                const ciTxt = (Array.isArray(ci) && ci[0] != null) ? ` ±${((ci[1]-ci[0])/2).toFixed(3)}` : '';
+                const ciTxt = (Array.isArray(ci) && ci[0] != null) ? ` [${ci[0].toFixed(3)}, ${ci[1].toFixed(3)}]` : '';
                 const holdoutLine = (sh && m.holdout_gap != null)
                     ? `<div><span class="k">Holdout Δ</span><div class="v">${m.holdout_gap > 0 ? '+' : ''}${m.holdout_gap.toFixed(3)}</div></div>` : '';
                 return `<div class="card ${bandParity[m._band] ? 'band-even' : ''}">
