@@ -18,6 +18,10 @@ on:
         description: 'Commit results to the live leaderboard? (false = smoke/dry run)'
         required: false
         default: 'false'
+      allow_partial:
+        description: 'Publish even if some models failed? (bypasses the completeness gate)'
+        required: false
+        default: 'false'
 
 jobs:
   evaluate:
@@ -46,6 +50,14 @@ jobs:
           if [ -n "$missing" ]; then
             echo "::error::Missing required repo secrets:$missing — the weekly eval cannot run. Add them under Settings → Secrets and variables → Actions."
             exit 1
+          fi
+          # GOOGLE_API_KEY is not hard-required (a Gemini-free subset run is
+          # valid), but it IS needed by the two Gemini models in the default
+          # MODELS_UNDER_TEST. Unset = those two fail, and the publish gate
+          # (Verify run completeness) will block the scheduled commit. Warn
+          # loudly so this is obvious before the gate trips.
+          if [ -z "$GOOGLE_API_KEY" ]; then
+            echo "::warning::GOOGLE_API_KEY is unset — Gemini 2.5 Pro and Gemini 2.5 Flash will fail. With the default model list, the publish-completeness gate will block the scheduled leaderboard commit. Add the secret, run a Gemini-free subset, or pass allow_partial=true."
           fi
 
       - uses: actions/checkout@v6
@@ -87,6 +99,20 @@ jobs:
             data/results/*.parquet
             data/results/*.csv
             data/results/leaderboard.json
+            data/results/run_manifest.json
+
+      - name: Verify run completeness
+        # Only matters when we're about to publish. Blocks a scheduled (or
+        # explicit publish=true) commit when run_manifest.json shows any model
+        # failed — that's the silent partial-leaderboard bug this gate exists
+        # to stop. Pass --allow-partial for a deliberate partial publish.
+        if: github.event_name == 'schedule' || github.event.inputs.publish == 'true'
+        run: |
+          ARGS=""
+          if [ "${{ github.event.inputs.allow_partial }}" = "true" ]; then
+            ARGS="--allow-partial"
+          fi
+          python -m scripts.check_publish_ready $ARGS
 
       - name: Commit updated results
         # The scheduled run always publishes. A manual dispatch only publishes
