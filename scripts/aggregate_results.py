@@ -14,6 +14,7 @@ import pandas as pd
 
 from eval.config import MIN_SCENARIOS_FOR_PUBLISH
 from eval.providers.null_agent import NULL_AGENT_NAME
+from eval.scoring.agreement import krippendorff_alpha
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -243,6 +244,165 @@ def _round_or_none(value, ndigits):
     return round(value, ndigits)
 
 
+def _alpha_from_columns(df: pd.DataFrame, judge_cols: list[str]) -> float | None:
+    """Krippendorff's alpha (interval) over the per-judge score columns.
+
+    Each result row is a *unit* and each per-judge column (e.g. ``tc_Kimi K2.6``)
+    is a *rater*. Missing cells (a judge that parse-failed on a row, so its score
+    column is NaN there) are treated as missing values — alpha is defined for
+    incomplete data. Returns ``None`` when alpha is undefined (fewer than two
+    judge columns, or no usable variation), matching ``krippendorff_alpha``.
+    """
+    if len(judge_cols) < 2:
+        return None
+    sub = df[judge_cols]
+    # units x raters: list-of-rows, NaN -> None so the metric skips it.
+    reliability_data = [[None if pd.isna(v) else float(v) for v in row] for row in sub.to_numpy()]
+    return krippendorff_alpha(reliability_data)
+
+
+def compute_judge_alpha(df: pd.DataFrame, judge_columns: list[str]) -> dict:
+    """Inter-judge Krippendorff alpha per rubric dimension (and per model).
+
+    Returns ``{"task_completion": alpha|None, "tool_selection": alpha|None,
+    "per_model": {model: {"task_completion": ..., "tool_selection": ...}}}``.
+
+    Alpha is the primary, chance-corrected inter-judge reliability metric (the
+    within-0.2 agreement rate is kept as a secondary human-readable readout in
+    each model's ``judge_agreement`` block). It is computed over the published
+    per-judge score columns so anyone can reproduce it from the released results.
+    """
+    tc_cols = [c for c in judge_columns if c.startswith("tc_")]
+    ts_cols = [c for c in judge_columns if c.startswith("ts_")]
+
+    per_model: dict[str, dict] = {}
+    for model in df["model"].unique():
+        mdf = df[df["model"] == model]
+        per_model[str(model)] = {
+            "task_completion": _round_or_none(_alpha_from_columns(mdf, tc_cols), 4),
+            "tool_selection": _round_or_none(_alpha_from_columns(mdf, ts_cols), 4),
+        }
+
+    return {
+        "task_completion": _round_or_none(_alpha_from_columns(df, tc_cols), 4),
+        "tool_selection": _round_or_none(_alpha_from_columns(df, ts_cols), 4),
+        "per_model": per_model,
+    }
+
+
+def _ols_slope(x: np.ndarray, y: np.ndarray) -> dict | None:
+    """Simple OLS of y on x (plain math, no deps). Returns slope diagnostics.
+
+    Fits ``y = intercept + slope * x`` by least squares and returns the slope,
+    intercept, R², the slope's standard error, its t-statistic, and a simple
+    significance flag (``|t| > 1.96``, the ~5% two-sided normal threshold). All
+    computed from closed-form formulas:
+
+        slope = Cov(x, y) / Var(x)
+        SE(slope) = sqrt( (RSS / (n - 2)) / Sxx )
+        t = slope / SE(slope)
+
+    Returns ``None`` when the fit is undefined: fewer than 3 points (no residual
+    degrees of freedom for an SE), or x has zero variance (slope undefined).
+    """
+    n = x.size
+    if n < 3:
+        return None
+    x_mean = float(x.mean())
+    y_mean = float(y.mean())
+    sxx = float(((x - x_mean) ** 2).sum())
+    if sxx <= 0:
+        return None
+    sxy = float(((x - x_mean) * (y - y_mean)).sum())
+    slope = sxy / sxx
+    intercept = y_mean - slope * x_mean
+    pred = intercept + slope * x
+    residuals = y - pred
+    rss = float((residuals**2).sum())
+    syy = float(((y - y_mean) ** 2).sum())
+    r_squared = 0.0 if syy <= 0 else 1.0 - rss / syy
+    # Residual variance with n-2 degrees of freedom (two estimated params);
+    # the SE of the slope follows from it and the spread of x (Sxx).
+    resid_var = rss / (n - 2)
+    se_slope = (resid_var / sxx) ** 0.5
+    if se_slope == 0:
+        # Perfect fit (or degenerate): slope is exact, t is infinite. Treat as
+        # significant only if the slope is actually non-zero.
+        t_stat = float("inf") if slope != 0 else 0.0
+    else:
+        t_stat = slope / se_slope
+    return {
+        "slope": round(slope, 8),
+        "intercept": round(intercept, 6),
+        "r_squared": round(r_squared, 4),
+        "se_slope": round(se_slope, 8),
+        "t_stat": round(t_stat, 4) if t_stat not in (float("inf"), float("-inf")) else None,
+        "n": int(n),
+        "significant": bool(abs(t_stat) > 1.96),
+    }
+
+
+def compute_length_bias(df: pd.DataFrame) -> dict:
+    """OLS regression of judge scores on agent output length (length-bias check).
+
+    Judges may favor verbose agents (the AlpacaEval length-bias lesson). The
+    per-row agent ``output_tokens`` already exists, so we regress each judge-
+    derived score on it and publish the slope so the bias is *measured*, not
+    denied. A materially positive, significant slope means longer agent outputs
+    get higher judge scores independent of correctness.
+
+    We regress the two judge dimensions — ``task_completion`` and
+    ``tool_selection`` consensus — on ``output_tokens`` across all rows (the bias
+    is a property of the judge panel, not of any one model). The deterministic
+    ``state_score`` is judge-independent so it is not a length-bias surface and is
+    excluded.
+
+    Returns ``{dimension: {slope, intercept, r_squared, se_slope, t_stat, n,
+    significant}}`` for each dimension fit. A dimension is omitted when its fit is
+    undefined (missing column, too few rows, or no length variation).
+    """
+    if "output_tokens" not in df.columns:
+        return {}
+    out: dict[str, dict] = {}
+    for dim in ("task_completion", "tool_selection"):
+        if dim not in df.columns:
+            continue
+        sub = df[["output_tokens", dim]].dropna()
+        if sub.empty:
+            continue
+        x = sub["output_tokens"].to_numpy(dtype=float)
+        y = sub[dim].to_numpy(dtype=float)
+        fit = _ols_slope(x, y)
+        if fit is not None:
+            out[dim] = fit
+    return out
+
+
+def compute_pass_hat_k_by_model(df: pd.DataFrame) -> dict:
+    """Per-model pass^k (tau-bench) means, keyed by model name.
+
+    Each row carries the per-scenario pass^k estimates in ``reliability_pass_hat_k``
+    columns (one per k, written by run_eval). We mean those across rows per model;
+    since every run-row of a scenario carries that scenario's pass^k, the row-mean
+    is the mean over scenarios of the per-scenario pass^k — the model-level
+    estimate. Returns ``{model: {"k": value, ...}}``; an empty per-model dict when
+    no pass^k columns exist (legacy parquets).
+    """
+    k_cols = sorted(
+        (c for c in df.columns if c.startswith("reliability_pass_hat_")),
+        key=lambda c: int(c.rsplit("_", 1)[1]),
+    )
+    out: dict[str, dict] = {}
+    for model in df["model"].unique():
+        mdf = df[df["model"] == model]
+        block: dict[str, float] = {}
+        for c in k_cols:
+            k = c.rsplit("_", 1)[1]
+            block[k] = _round_or_none(mdf[c].mean(), 4)
+        out[str(model)] = block
+    return out
+
+
 def load_all_results() -> pd.DataFrame:
     """Load the most recent parquet result file.
 
@@ -273,6 +433,62 @@ def load_all_results() -> pd.DataFrame:
 # same-lab judge rates its siblings higher than the open judges do.
 SAME_LAB_JUDGE_MARKER = "opus"  # matches the judge's display name in tc_/ts_ columns
 SAME_LAB_CONTESTANT_MARKER = "claude"  # matches contestant display names
+
+
+def _judge_name_from_column(col: str) -> str:
+    """Strip the ``tc_``/``ts_`` rubric prefix to recover the judge display name."""
+    return col[3:] if col.startswith(("tc_", "ts_")) else col
+
+
+def compute_judge_deltas(df: pd.DataFrame, judge_columns: list[str]) -> dict:
+    """Per-judge-vs-consensus delta stats for EVERY judge, keyed by model name.
+
+    This generalizes the same-lab check (which only instrumented the Opus/Claude
+    pairing) to all judges: for each contestant and each judge on the panel, we
+    report that judge's mean task-completion / tool-selection for the model and
+    its delta against the published full-panel consensus (``full - judge``).
+
+    Sign convention matches ``compute_same_lab_check``: ``delta = consensus_mean -
+    judge_mean``, so a **positive** delta means the panel consensus is higher than
+    this judge (the judge rates the model *lower* than its peers), and a
+    **negative** delta means the judge is more generous to this model than the
+    panel. This is the raw material for the "does any judge systematically favor
+    a model" launch finding — including, but not limited to, the same-lab case.
+
+    Returns ``{model: {"task_completion": {judge: {"mean": .., "delta": ..}, ...},
+    "tool_selection": {...}}}``. Like the same-lab check this is a diagnostic over
+    the published per-judge columns (which already exclude parse failures), so
+    small differences from row-level panel composition are expected.
+    """
+    tc_cols = [c for c in judge_columns if c.startswith("tc_")]
+    ts_cols = [c for c in judge_columns if c.startswith("ts_")]
+    if not tc_cols and not ts_cols:
+        return {}
+
+    deltas: dict[str, dict] = {}
+    for model in df["model"].unique():
+        mdf = df[df["model"] == model]
+        entry: dict = {}
+        for key, cols, full_col in (
+            ("task_completion", tc_cols, "task_completion"),
+            ("tool_selection", ts_cols, "tool_selection"),
+        ):
+            if not cols or full_col not in mdf.columns:
+                continue
+            full = float(mdf[full_col].mean())
+            per_judge: dict[str, dict] = {}
+            for col in cols:
+                judge_mean = mdf[col].mean()
+                per_judge[_judge_name_from_column(col)] = {
+                    "mean": _round_or_none(judge_mean, 4),
+                    "delta": _round_or_none(
+                        None if pd.isna(judge_mean) else full - float(judge_mean),
+                        4,
+                    ),
+                }
+            entry[key] = per_judge
+        deltas[str(model)] = entry
+    return deltas
 
 
 def compute_same_lab_check(df: pd.DataFrame, judge_columns: list[str]) -> dict:
@@ -429,6 +645,22 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
 
     same_lab_checks = compute_same_lab_check(df, judge_columns)
 
+    # Per-judge-vs-consensus deltas for EVERY judge (generalizes same_lab_check).
+    judge_deltas = compute_judge_deltas(df, judge_columns)
+
+    # Inter-judge reliability: Krippendorff's alpha (interval), the primary
+    # chance-corrected metric. Per-model within-0.2 agreement stays as a
+    # secondary readout in each model entry's judge_agreement block.
+    judge_alpha = compute_judge_alpha(df, judge_columns)
+
+    # pass^k (tau-bench): per-model mean of the per-scenario pass^k estimates,
+    # one entry per k. Published alongside pass@3 (reliability) and consistency.
+    pass_hat_k = compute_pass_hat_k_by_model(df)
+
+    # Length-bias check: OLS of judge scores on agent output length, so verbosity
+    # bias is a measured slope rather than an assumption.
+    length_bias = compute_length_bias(df)
+
     # Build leaderboard JSON
     leaderboard = {
         "updated": pd.Timestamp.now().isoformat(),
@@ -438,6 +670,8 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
         "domains": list(df["domain"].unique()),
         "domain_scores": domain_scores,
         "judge_scores": judge_scores,
+        "judge_alpha": judge_alpha,
+        "length_bias": length_bias,
     }
 
     for _, row in overall.iterrows():
@@ -455,17 +689,27 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
             "avg_latency_ms": round(row["avg_latency_ms"], 1),
             "reliability": round(row["reliability"], 4),
             "reliability_consistency": _round_or_none(row["reliability_consistency"], 4),
+            # pass^k (tau-bench): all-k-trials-succeed probability per k, published
+            # alongside pass@3 (``reliability``) and consistency, not replacing them.
+            "reliability_pass_hat_k": pass_hat_k.get(row["model"], {}),
             "avg_turns": round(row["avg_turns"], 1),
             "scenarios_evaluated": int(row["total_scenarios"]),
             "n_scenarios": int(row["total_scenarios"]),
             "n_rows": int(row["total_rows"]),
+            # Inter-judge agreement: alpha is the primary chance-corrected metric;
+            # within_0_2 is the secondary human-readable readout (kept for
+            # continuity). Both are reported per dimension.
             "judge_agreement": {
                 "task_completion": _round_or_none(row["judge_agreement_tc"], 4),
                 "tool_selection": _round_or_none(row["judge_agreement_ts"], 4),
             },
+            "judge_alpha": judge_alpha["per_model"].get(row["model"]),
+            # Per-judge-vs-consensus deltas for every judge on the panel, per
+            # dimension — the generalized form of the same-lab check.
+            "judge_deltas": judge_deltas.get(row["model"]),
             # Same-lab robustness: judge-mean scores with the same-lab judge
             # excluded, plus the delta vs the full panel. None for models with
-            # no same-lab judge on the panel.
+            # no same-lab judge on the panel. Kept working alongside judge_deltas.
             "same_lab_check": same_lab_checks.get(row["model"]),
         }
         leaderboard["models"].append(model_entry)

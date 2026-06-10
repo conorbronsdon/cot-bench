@@ -179,11 +179,15 @@ separately (context + transcript twice) and is otherwise identical.
 
 All three judges score independently. We report:
 
-- **Consensus score**: Mean of all *valid* judge scores
-- **Agreement rate**: Fraction of valid judge pairs within 0.2 of each other
+- **Consensus score**: **Median** of all *valid* judge scores
+- **Inter-judge reliability**: **Krippendorff's alpha** (ordinal/interval level), the primary chance-corrected agreement metric, with the within-0.2 pairwise rate kept as a secondary readout
 - **Individual scores**: Every judge's score is published for transparency
 
 When judges disagree significantly (>0.3 spread), this often indicates genuine ambiguity in the scenario — these cases are flagged in the results.
+
+**Why median, not mean.** For an n=3 panel the median is the middle judge's score, so a single rogue or leniency-drifted judge cannot drag the consensus the way a mean would; for n=2 the median equals the mean of the two. (Bradley-Terry was rejected: it models pairwise preference data, but cot-bench produces absolute pointwise rubric scores, so it does not fit the data.) Every individual judge score is still published, so a mean (or any other aggregation) can be recomputed by anyone.
+
+**Why Krippendorff's alpha for agreement.** A raw "within-0.2 rate" is not chance-corrected, not comparable across score distributions, and its 0.2 threshold is arbitrary. Krippendorff's alpha is the field-standard chance-corrected metric for 3+ raters on ordinal/interval labels (Cohen's kappa is only for 2 raters and assumes nominal categories). We compute alpha at the interval level (squared-difference distance, appropriate for the continuous 0-1 rubric scores) over the published per-judge score columns: each result row is a *unit*, each judge a *rater*, and a judge that parse-failed on a row is simply a missing value (alpha is defined for incomplete data and uses only units with 2+ present scores). Alpha is published per dimension both overall (`judge_alpha` in `leaderboard.json`) and per model (`judge_alpha` in each model entry). We implement alpha in-repo (a small, test-validated function checked against worked examples from Krippendorff's reference material) rather than adding a dependency. Alpha is `null` when undefined — fewer than two pairable scores, or no usable variation.
 
 ##### Judge-failure handling
 
@@ -200,6 +204,10 @@ Because failures shrink the panel, every row publishes explicit accounting so co
 - `tc_degraded` / `ts_degraded` — true when fewer than 2 valid judges remained despite 2+ being requested (the consensus is still computed from what's valid, but flagged as low-confidence)
 
 **Agreement is undefined with fewer than 2 valid judges.** Agreement rate and max-disagreement are reported as **null** in that case — a single grader is not "perfect agreement." Downstream aggregation skips these nulls (a model whose rows are all single-judge will show a null judge-agreement rather than a misleading 1.0).
+
+##### Length-bias check
+
+LLM judges can favor verbose outputs (the AlpacaEval length-bias lesson). Rather than assert we are immune, we measure it: the per-row agent `output_tokens` already exists, so at aggregation we fit a simple ordinary-least-squares regression of each judge dimension (`task_completion` and `tool_selection` consensus) on `output_tokens` across all rows — the bias is a property of the judge panel, not of any one model, so the regression pools all rows. The deterministic `state_score` is judge-independent and therefore excluded. The regression is plain math (no new dependency): for each dimension we publish the slope, intercept, R², the slope's standard error, its t-statistic, the sample size, and a simple significance flag (`|t| > 1.96`, the ~5% two-sided threshold) under the top-level `length_bias` key in `leaderboard.json`. A materially positive, significant slope is direct evidence that longer agent outputs earn higher judge scores independent of correctness; publishing it makes the confound measurable rather than deniable, and is the trigger for adding an explicit length-neutrality line to the rubrics.
 
 ### 4. CLEAR Dimensions
 
@@ -231,8 +239,11 @@ Each scenario runs 3 times (pass@3). We measure:
 - **Pass rate**: Fraction of runs scoring above 0.7 threshold
 - **Consistency**: 1.0 minus the spread between highest and lowest scores
 - **Variance**: Statistical variance across runs
+- **pass^k**: The probability that *all* k trials succeed (tau-bench style)
 
 A model that scores 0.9, 0.85, 0.88 is more reliable than one that scores 0.95, 0.4, 0.8 — even though the latter has a higher peak.
+
+**pass^k (all-k-succeed).** Borrowed from tau-bench, `pass^k` is the probability that *every one* of k independent trials of a task succeeds — the opposite of `pass@k` (at least one succeeds). For i.i.d. trials it decays as p^k, so a model that passes 2 of 3 runs has `pass^1 = 0.67` but `pass^3 = 0.0`: a single failure across the repeats sinks it. This is a sharper, harder-to-game reliability construct than a pass-rate-above-threshold and directly measures the *autonomy horizon* — can you trust the agent to do the same task right every time, not just once. We estimate it empirically per scenario as the average over all C(n, k) size-k subsets of the n collected trials of the all-pass indicator, which has the closed form `C(c, k) / C(n, k)` for c passing runs out of n (`compute_pass_hat_k` in [`eval/scoring/rubrics.py`](../eval/scoring/rubrics.py)). `pass^1` equals the ordinary pass rate. Each model's leaderboard entry publishes `reliability_pass_hat_k` (one value per k, the mean of the per-scenario estimates) **alongside** — not replacing — `reliability` (pass@3) and `reliability_consistency`. With the current 3 reliability runs, k ranges over 1, 2, 3; running more repeats extends the horizon.
 
 #### Cost (weight: 20%)
 ```
@@ -295,6 +306,8 @@ A single judge introduces systematic bias. Using three judges from different lab
 Two principles. First, **no judge is also a model under test** — if a model graded itself the conflict of interest would be structural, so judges are drawn only from models that aren't on the leaderboard (an earlier panel violated this with Qwen3-235B and DeepSeek-V3 judging while also competing). Second, **lab diversity**: two open-weight judges from different labs plus one frontier reference means a disagreement signals genuine ambiguity rather than a shared blind spot. Open judges run through OpenRouter (OpenAI-compatible), so the full panel needs no GPU or self-hosted inference.
 
 One same-lab pairing remains: the Claude Opus 4.6 judge shares a lab (Anthropic) with the Claude Sonnet 4.6 and Haiku 4.5 contestants. We don't claim this is eliminated. The mitigation is that the other two of three judges are from unrelated labs (Moonshot and Zhipu), so no Anthropic model can dominate consensus, and every per-judge score is published — anyone who wants a fully arm's-length view can recompute consensus with the same-lab judge excluded. The leaderboard does this recomputation itself: each Anthropic contestant's entry carries a `same_lab_check` block with task-completion and tool-selection means over the open judges only, plus the delta vs the full panel — so any same-lab inflation is a published number, not a hypothetical.
+
+**Per-judge-vs-consensus deltas (every judge).** The same-lab check is a special case of a more general diagnostic: for *every* contestant and *every* judge on the panel, the leaderboard publishes that judge's mean task-completion / tool-selection for the model and its delta against the full-panel consensus (`judge_deltas` in each model entry; `delta = consensus_mean - judge_mean`, so a positive delta means the judge rates the model *lower* than its peers and a negative delta means the judge is more generous than the panel). This makes any judge's systematic favoritism toward a model — not only the same-lab pairing — a published number anyone can inspect.
 
 ### Why CLEAR weights of 35/25/20/20?
 

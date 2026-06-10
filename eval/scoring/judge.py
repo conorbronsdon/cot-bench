@@ -7,6 +7,7 @@ then computes consensus scores and inter-judge agreement.
 import json
 import logging
 import os
+import statistics
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -48,8 +49,10 @@ class ConsensusResult:
 
     Consensus math (``consensus_score``, ``agreement_rate``,
     ``max_disagreement``) is computed ONLY from valid judges — those that both
-    returned successfully and parsed. The accounting fields make the size and
-    health of the panel explicit per row:
+    returned successfully and parsed. ``consensus_score`` is the **median** of
+    the valid judge scores (robust to a single outlier judge for n=3; see
+    docs/methodology.md §3). The accounting fields make the size and health of
+    the panel explicit per row:
 
     - ``n_judges_requested``: how many judges we asked.
     - ``n_judges_valid``: how many produced a usable (scored AND parsed) score.
@@ -456,7 +459,11 @@ def _build_consensus(
         )
 
     scores = [r.overall_score for r in valid]
-    consensus = sum(scores) / len(scores)
+    # Median, not mean: for an n=3 panel the median is the middle judge, so a
+    # single rogue or leniency-drifted judge cannot drag the consensus the way a
+    # mean would. For n=2 the median equals the mean of the two; for n=1 it is
+    # that single score (agreement is still None below). See methodology §3.
+    consensus = statistics.median(scores)
 
     # Agreement is undefined with a single grader — don't report a lone judge
     # as "perfect agreement" (the old pairs==0 -> 1.0 degeneracy).

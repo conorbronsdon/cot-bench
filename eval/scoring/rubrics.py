@@ -291,6 +291,37 @@ Rules:
 # Not judge-based — computed from repeated runs.
 
 
+def compute_pass_hat_k(n_passes: int, n_runs: int) -> dict:
+    """tau-bench style pass^k estimator from a count of passing runs.
+
+    pass^k is the probability that ALL k independent trials of a task succeed
+    (contrast pass@k = at least one succeeds); for i.i.d. trials it decays as
+    p^k, so it is a far sharper reliability construct than a pass-rate-above-
+    threshold. Following tau-bench, we estimate pass^k empirically as the average
+    over all C(n, k) size-k subsets of the n collected trials of the indicator
+    that every trial in the subset passed. With ``c`` passing runs out of ``n``,
+    that average has the closed form::
+
+        pass^k = C(c, k) / C(n, k)
+
+    (the fraction of size-k subsets drawn entirely from the passing runs), which
+    is the unbiased estimator of p^k. pass^1 equals the ordinary pass rate.
+
+    Args:
+        n_passes: Number of runs that passed (efficacy >= threshold).
+        n_runs: Total number of runs.
+
+    Returns:
+        ``{k: pass_hat_k for k in 1..n_runs}`` keyed by int k. Empty when there
+        are no runs.
+    """
+    from math import comb
+
+    if n_runs <= 0:
+        return {}
+    return {k: comb(n_passes, k) / comb(n_runs, k) for k in range(1, n_runs + 1)}
+
+
 def compute_reliability(run_scores: list[float], threshold: float = 0.7) -> dict:
     """Compute reliability metrics from repeated evaluation runs.
 
@@ -299,10 +330,17 @@ def compute_reliability(run_scores: list[float], threshold: float = 0.7) -> dict
         threshold: Minimum efficacy score to count as a "pass".
 
     Returns:
-        Dict with pass_rate, consistency, and score_variance.
+        Dict with pass_rate, consistency, score_variance, and ``pass_hat_k`` (the
+        tau-bench pass^k estimator for each k in 1..n, published alongside — not
+        replacing — pass_rate and consistency).
     """
     if not run_scores:
-        return {"pass_rate": 0.0, "consistency": 0.0, "score_variance": 0.0}
+        return {
+            "pass_rate": 0.0,
+            "consistency": 0.0,
+            "score_variance": 0.0,
+            "pass_hat_k": {},
+        }
 
     passes = sum(1 for s in run_scores if s >= threshold)
     mean = sum(run_scores) / len(run_scores)
@@ -314,4 +352,5 @@ def compute_reliability(run_scores: list[float], threshold: float = 0.7) -> dict
         "pass_rate": passes / len(run_scores),
         "consistency": consistency,
         "score_variance": variance,
+        "pass_hat_k": compute_pass_hat_k(passes, len(run_scores)),
     }
