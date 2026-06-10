@@ -23,8 +23,8 @@ class JudgeConfig:
 
     name: str
     model_id: str
-    provider: str  # "max" for local MAX serving, "anthropic" for API
-    endpoint: str | None = None  # Override for MAX-served models
+    provider: str  # "openrouter" (open judges) or "anthropic" (frontier)
+    endpoint: str | None = None  # Optional base_url override (else provider default)
     temperature: float = 0.0
     max_tokens: int = 4096
 
@@ -41,20 +41,24 @@ class SimulationConfig:
 
 
 # --- Judge Panel ---
-# Multi-judge setup: 2 open-source on MAX + 1 frontier reference
+# Multi-judge setup: 2 open-weight + 1 frontier reference.
+#
+# Judges are deliberately chosen from models that are NOT under test, so no
+# model grades itself — the self-judging bias the multi-judge design exists to
+# avoid. (An earlier panel used Qwen3-235B and DeepSeek-V3 as judges while both
+# were also contestants.) Open judges are served through OpenRouter
+# (OpenAI-compatible); no GPU or self-hosted inference required.
 
 JUDGES = {
-    "qwen3": JudgeConfig(
-        name="Qwen3-235B",
-        model_id="Qwen/Qwen3-235B",
-        provider="max",
-        endpoint="http://localhost:8010/v1",
+    "kimi": JudgeConfig(
+        name="Kimi K2.6",
+        model_id="moonshotai/kimi-k2.6",
+        provider="openrouter",
     ),
-    "deepseek": JudgeConfig(
-        name="DeepSeek-V3",
-        model_id="deepseek-ai/DeepSeek-V3-0324",
-        provider="max",
-        endpoint="http://localhost:8011/v1",
+    "glm": JudgeConfig(
+        name="GLM-4.6",
+        model_id="z-ai/glm-4.6",
+        provider="openrouter",
     ),
     "opus": JudgeConfig(
         name="Claude Opus 4.6",
@@ -74,14 +78,17 @@ MODELS_UNDER_TEST = [
     {"name": "Claude Haiku 4.5", "model_id": "claude-haiku-4-5-20251001", "provider": "anthropic"},
     {"name": "Gemini 2.5 Pro", "model_id": "gemini-2.5-pro", "provider": "google"},
     {"name": "Gemini 2.5 Flash", "model_id": "gemini-2.5-flash", "provider": "google"},
-    {"name": "DeepSeek-V3", "model_id": "deepseek-chat", "provider": "deepseek"},
-    {"name": "Qwen3-235B", "model_id": "qwen3-235b", "provider": "qwen"},
+    # Open-weight models routed through OpenRouter so one OPENROUTER_API_KEY
+    # covers them all (was four separate provider keys: deepseek/qwen/
+    # together/mistral). GPT/Claude/Gemini stay on their native APIs.
+    {"name": "DeepSeek-V3", "model_id": "deepseek/deepseek-chat-v3-0324", "provider": "openrouter"},
+    {"name": "Qwen3-235B", "model_id": "qwen/qwen3-235b-a22b", "provider": "openrouter"},
     {
         "name": "Llama 4 Maverick",
-        "model_id": "meta-llama/Llama-4-Maverick-17B-128E",
-        "provider": "together",
+        "model_id": "meta-llama/llama-4-maverick",
+        "provider": "openrouter",
     },
-    {"name": "Mistral Large", "model_id": "mistral-large-latest", "provider": "mistral"},
+    {"name": "Mistral Large", "model_id": "mistralai/mistral-large", "provider": "openrouter"},
 ]
 
 
@@ -95,10 +102,11 @@ TOKEN_COSTS = {
     "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.00},
     "gemini-2.5-pro": {"input": 1.25, "output": 10.00},
     "gemini-2.5-flash": {"input": 0.15, "output": 0.60},
-    "deepseek-chat": {"input": 0.27, "output": 1.10},
-    "qwen3-235b": {"input": 0.50, "output": 2.00},
-    "meta-llama/Llama-4-Maverick-17B-128E": {"input": 0.27, "output": 0.85},
-    "mistral-large-latest": {"input": 2.00, "output": 6.00},
+    # OpenRouter slugs + pricing (per million tokens, OpenRouter list rates).
+    "deepseek/deepseek-chat-v3-0324": {"input": 0.27, "output": 1.10},
+    "qwen/qwen3-235b-a22b": {"input": 0.50, "output": 2.00},
+    "meta-llama/llama-4-maverick": {"input": 0.27, "output": 0.85},
+    "mistralai/mistral-large": {"input": 2.00, "output": 6.00},
 }
 
 

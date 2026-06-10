@@ -48,10 +48,18 @@ class TestConfig:
 
     def test_judges_configured(self):
         assert len(JUDGES) >= 3, "Need at least 3 judges"
-        # Must have both MAX-served and API judges
+        # Must have both open-weight (OpenRouter) and frontier (API) judges
         providers = {j.provider for j in JUDGES.values()}
-        assert "max" in providers, "Need at least one MAX-served judge"
+        assert "openrouter" in providers, "Need at least one open-weight judge"
         assert "anthropic" in providers, "Need frontier reference judge"
+
+    def test_judges_are_not_contestants(self):
+        # No model may grade itself — judges must not appear in MODELS_UNDER_TEST.
+        contestant_ids = {m["model_id"] for m in MODELS_UNDER_TEST}
+        for judge in JUDGES.values():
+            assert judge.model_id not in contestant_ids, (
+                f"Judge {judge.name} ({judge.model_id}) is also under test — self-judging bias"
+            )
 
     def test_models_have_costs(self):
         for model in MODELS_UNDER_TEST:

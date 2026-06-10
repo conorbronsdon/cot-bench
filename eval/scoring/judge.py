@@ -120,10 +120,11 @@ def score_with_judge(
             max_tokens=judge.max_tokens,
         )
         content = response.content[0].text
-    else:
-        # MAX and any other OpenAI-compatible providers
-        base_url = judge.endpoint or "http://localhost:8000/v1"
-        client = _get_openai_client(base_url, "not-needed")
+    elif judge.provider == "openrouter":
+        # Open-weight judges via OpenRouter (OpenAI-compatible). Needs a real
+        # key, unlike a self-hosted local endpoint.
+        base_url = judge.endpoint or "https://openrouter.ai/api/v1"
+        client = _get_openai_client(base_url, os.environ.get("OPENROUTER_API_KEY", ""))
         response = client.chat.completions.create(
             model=judge.model_id,
             messages=[
@@ -134,6 +135,11 @@ def score_with_judge(
             max_tokens=judge.max_tokens,
         )
         content = response.choices[0].message.content
+    else:
+        raise ValueError(
+            f"Unknown judge provider {judge.provider!r} for {judge.name}. "
+            "Expected 'anthropic' or 'openrouter'."
+        )
 
     latency_ms = (time.perf_counter() - start) * 1000
     parsed = _parse_judge_response(content)

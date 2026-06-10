@@ -17,7 +17,7 @@
 
 Most agent benchmarks measure one thing — accuracy — and publish results once. COT Bench measures what actually matters for production agents, stays fresh with automated weekly runs, and publishes every score from every judge so you can verify our work.
 
-From the [Chain of Thought](https://chainofthought.show/) podcast. Open-source judge models served on [Modular MAX](https://www.modular.com/max).
+From the [Chain of Thought](https://chainofthought.show/) podcast. Open-weight judge models served via [OpenRouter](https://openrouter.ai/).
 
 ## Why COT Bench?
 
@@ -27,7 +27,7 @@ From the [Chain of Thought](https://chainofthought.show/) podcast. Open-source j
 | Single judge = single point of bias | **3 independent judges** (2 open-source + 1 frontier), all scores published |
 | Scoring criteria are a black box | **Rubrics are code** — read them in [`eval/scoring/rubrics.py`](eval/scoring/rubrics.py) |
 | Results go stale within weeks | **Automated weekly runs** via GitHub Actions |
-| OpenAI judges OpenAI models | **Vendor-neutral**: open-source judges on [Modular MAX](https://www.modular.com/max) |
+| OpenAI judges OpenAI models | **Vendor-neutral**: open-weight judges, none also under test (no self-grading) |
 | No way to reproduce results | **OpenInference traces** for every run, compatible with [Arize Phoenix](https://github.com/Arize-ai/phoenix) |
 
 ## Latest Results
@@ -57,11 +57,11 @@ Every scenario is scored independently by three judges. We publish all individua
 
 | Judge | Type | Served via | Purpose |
 |-------|------|------------|---------|
-| **Qwen3-235B** | Open-source | [Modular MAX](https://www.modular.com/max) | Primary open judge |
-| **DeepSeek-V3** | Open-source | [Modular MAX](https://www.modular.com/max) | Second open judge (different training paradigm) |
+| **Kimi K2.6** | Open-weight | OpenRouter | Primary open judge |
+| **GLM-4.6** | Open-weight | OpenRouter | Second open judge (different training paradigm) |
 | **Claude Opus 4.6** | Frontier | Anthropic API | Reference judge for calibration |
 
-Using two open-source judges from different training paradigms (Qwen from Alibaba, DeepSeek from DeepSeek AI) means disagreements surface genuine ambiguity rather than shared biases.
+Two open-weight judges from different labs (Kimi from Moonshot AI, GLM from Zhipu AI) mean disagreements surface genuine ambiguity rather than shared biases. **No judge is also a model under test** — judges never grade themselves. Open judges run through OpenRouter (OpenAI-compatible), so the full three-judge consensus needs no GPU or self-hosted inference.
 
 ## Models Evaluated
 
@@ -75,10 +75,10 @@ V1 targets 10 models across 2 domains:
 | Claude Haiku 4.5 | Anthropic | Efficient |
 | Gemini 2.5 Pro | Google | Frontier |
 | Gemini 2.5 Flash | Google | Efficient |
-| DeepSeek-V3 | DeepSeek | Open-source |
-| Qwen3-235B | Alibaba | Open-source |
-| Llama 4 Maverick | Meta (via Together) | Open-source |
-| Mistral Large | Mistral | Open-source |
+| DeepSeek-V3 | DeepSeek (via OpenRouter) | Open-weight |
+| Qwen3-235B | Alibaba (via OpenRouter) | Open-weight |
+| Llama 4 Maverick | Meta (via OpenRouter) | Open-weight |
+| Mistral Large | Mistral (via OpenRouter) | Open-weight |
 
 ## Domains
 
@@ -118,33 +118,26 @@ python -m scripts.generate_data --domain customer_success --scenarios-per-catego
 ### Run evaluation
 
 ```bash
-# Evaluate specific models on one domain (frontier judge only — no GPU needed)
+# Quick run — a subset of models on one domain (one frontier judge)
 python -m scripts.run_eval \
   --domains banking \
   --models "GPT-4.1" "Claude Sonnet 4.6" \
   --judges opus
 
-# Full evaluation with all judges (requires MAX + GPU for open-source judges)
+# Full evaluation — all models, all three judges (no GPU; open judges via OpenRouter)
 python -m scripts.run_eval
 
 # Evaluate models in parallel (2 at a time)
 python -m scripts.run_eval --parallel-models 2
 ```
 
+All three judges run over hosted APIs — Kimi K2.6 and GLM-4.6 through OpenRouter, Opus through Anthropic — so the full consensus needs only API keys, no GPU.
+
 ### Generate leaderboard
 
 ```bash
 python -m scripts.aggregate_results
 # Outputs: data/results/leaderboard.json + data/results/latest.csv
-```
-
-### Start MAX judge servers (for open-source judges)
-
-```bash
-# Requires GPU — see docs/max-setup.md for hardware requirements
-pip install modular
-max serve --model Qwen/Qwen3-235B --port 8010 &
-max serve --model deepseek-ai/DeepSeek-V3-0324 --port 8011 &
 ```
 
 ## Architecture
@@ -164,8 +157,8 @@ max serve --model deepseek-ai/DeepSeek-V3-0324 --port 8011 &
 │ Scoring (concurrent, per scenario)                               │
 │                                                                  │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │  Qwen3-235B  │  │ DeepSeek-V3  │  │ Claude Opus  │          │
-│  │   (MAX)      │  │   (MAX)      │  │   (API)      │          │
+│  │  Kimi K2.6   │  │   GLM-4.6    │  │ Claude Opus  │          │
+│  │ (OpenRouter) │  │ (OpenRouter) │  │   (API)      │          │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘          │
 │         └──────────────────┼──────────────────┘                  │
 │                    consensus score                                │
@@ -195,8 +188,6 @@ cot-bench/
 │   ├── run_eval.py               # Main evaluation CLI
 │   ├── generate_data.py          # Synthetic scenario generation
 │   └── aggregate_results.py      # Leaderboard computation
-├── infra/
-│   └── max_serve.py              # MAX judge server lifecycle management
 ├── frontend/
 │   └── index.html                # Leaderboard UI (GitHub Pages)
 ├── tests/                         # 30 tests covering scoring, parsing, config
@@ -208,7 +199,6 @@ cot-bench/
 
 - **[Methodology](docs/methodology.md)** — detailed explanation of evaluation approach, scoring rubrics, and statistical methods
 - **[Contributing](docs/contributing.md)** — how to add models, domains, or improve the evaluation
-- **[MAX Setup](docs/max-setup.md)** — hardware requirements and setup for running open-source judge models
 - **[Roadmap](docs/roadmap.md)** — planned improvements and feature priorities
 
 ## How It Works
@@ -227,7 +217,7 @@ cot-bench/
 
 - Evaluation methodology inspired by [Galileo's agent-leaderboard](https://github.com/rungalileo/agent-leaderboard) (Apache 2.0)
 - Metrics framework aligned with the [CLEAR paper](https://arxiv.org/abs/2511.14136) (Simmering et al., 2025)
-- Open-source judge inference powered by [Modular MAX](https://www.modular.com/max)
+- Open-weight judge inference served via [OpenRouter](https://openrouter.ai/)
 - Trace format follows [OpenInference](https://github.com/Arize-ai/openinference) semantic conventions
 
 ---

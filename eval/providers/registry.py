@@ -56,16 +56,18 @@ def _create_google(spec: ModelSpec) -> BaseChatModel:
     )
 
 
-def _create_max(spec: ModelSpec) -> BaseChatModel:
-    """Models served locally via Modular MAX — OpenAI-compatible API."""
+def _create_openrouter(spec: ModelSpec) -> BaseChatModel:
+    """Open-weight models via OpenRouter — one OpenAI-compatible endpoint and
+    one key for every open model (judges + open contestants). Routes across
+    OpenRouter's neutral provider pool; we don't pin a single provider."""
     from langchain_openai import ChatOpenAI
 
     return ChatOpenAI(
         model=spec.model_id,
         temperature=spec.temperature,
         max_tokens=spec.max_tokens,
-        base_url=spec.endpoint or "http://localhost:8000/v1",
-        api_key="not-needed",
+        base_url=spec.endpoint or "https://openrouter.ai/api/v1",
+        api_key=os.environ.get("OPENROUTER_API_KEY", ""),
     )
 
 
@@ -122,7 +124,7 @@ _REGISTRY: dict[str, Any] = {
     "openai": _create_openai,
     "anthropic": _create_anthropic,
     "google": _create_google,
-    "max": _create_max,
+    "openrouter": _create_openrouter,
     "deepseek": _create_deepseek,
     "qwen": _create_qwen,
     "together": _create_together,
