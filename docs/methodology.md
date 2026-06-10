@@ -179,11 +179,15 @@ separately (context + transcript twice) and is otherwise identical.
 
 All three judges score independently. We report:
 
-- **Consensus score**: Mean of all *valid* judge scores
-- **Agreement rate**: Fraction of valid judge pairs within 0.2 of each other
+- **Consensus score**: **Median** of all *valid* judge scores
+- **Inter-judge reliability**: **Krippendorff's alpha** (ordinal/interval level), the primary chance-corrected agreement metric, with the within-0.2 pairwise rate kept as a secondary readout
 - **Individual scores**: Every judge's score is published for transparency
 
 When judges disagree significantly (>0.3 spread), this often indicates genuine ambiguity in the scenario — these cases are flagged in the results.
+
+**Why median, not mean.** For an n=3 panel the median is the middle judge's score, so a single rogue or leniency-drifted judge cannot drag the consensus the way a mean would; for n=2 the median equals the mean of the two. (Bradley-Terry was rejected: it models pairwise preference data, but cot-bench produces absolute pointwise rubric scores, so it does not fit the data.) Every individual judge score is still published, so a mean (or any other aggregation) can be recomputed by anyone.
+
+**Why Krippendorff's alpha for agreement.** A raw "within-0.2 rate" is not chance-corrected, not comparable across score distributions, and its 0.2 threshold is arbitrary. Krippendorff's alpha is the field-standard chance-corrected metric for 3+ raters on ordinal/interval labels (Cohen's kappa is only for 2 raters and assumes nominal categories). We compute alpha at the interval level (squared-difference distance, appropriate for the continuous 0-1 rubric scores) over the published per-judge score columns: each result row is a *unit*, each judge a *rater*, and a judge that parse-failed on a row is simply a missing value (alpha is defined for incomplete data and uses only units with 2+ present scores). Alpha is published per dimension both overall (`judge_alpha` in `leaderboard.json`) and per model (`judge_alpha` in each model entry). We implement alpha in-repo (a small, test-validated function checked against worked examples from Krippendorff's reference material) rather than adding a dependency. Alpha is `null` when undefined — fewer than two pairable scores, or no usable variation.
 
 ##### Judge-failure handling
 

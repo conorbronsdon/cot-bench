@@ -14,6 +14,7 @@ import pandas as pd
 
 from eval.config import MIN_SCENARIOS_FOR_PUBLISH
 from eval.providers.null_agent import NULL_AGENT_NAME
+from eval.scoring.agreement import krippendorff_alpha
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -243,6 +244,52 @@ def _round_or_none(value, ndigits):
     return round(value, ndigits)
 
 
+def _alpha_from_columns(df: pd.DataFrame, judge_cols: list[str]) -> float | None:
+    """Krippendorff's alpha (interval) over the per-judge score columns.
+
+    Each result row is a *unit* and each per-judge column (e.g. ``tc_Kimi K2.6``)
+    is a *rater*. Missing cells (a judge that parse-failed on a row, so its score
+    column is NaN there) are treated as missing values — alpha is defined for
+    incomplete data. Returns ``None`` when alpha is undefined (fewer than two
+    judge columns, or no usable variation), matching ``krippendorff_alpha``.
+    """
+    if len(judge_cols) < 2:
+        return None
+    sub = df[judge_cols]
+    # units x raters: list-of-rows, NaN -> None so the metric skips it.
+    reliability_data = [[None if pd.isna(v) else float(v) for v in row] for row in sub.to_numpy()]
+    return krippendorff_alpha(reliability_data)
+
+
+def compute_judge_alpha(df: pd.DataFrame, judge_columns: list[str]) -> dict:
+    """Inter-judge Krippendorff alpha per rubric dimension (and per model).
+
+    Returns ``{"task_completion": alpha|None, "tool_selection": alpha|None,
+    "per_model": {model: {"task_completion": ..., "tool_selection": ...}}}``.
+
+    Alpha is the primary, chance-corrected inter-judge reliability metric (the
+    within-0.2 agreement rate is kept as a secondary human-readable readout in
+    each model's ``judge_agreement`` block). It is computed over the published
+    per-judge score columns so anyone can reproduce it from the released results.
+    """
+    tc_cols = [c for c in judge_columns if c.startswith("tc_")]
+    ts_cols = [c for c in judge_columns if c.startswith("ts_")]
+
+    per_model: dict[str, dict] = {}
+    for model in df["model"].unique():
+        mdf = df[df["model"] == model]
+        per_model[str(model)] = {
+            "task_completion": _round_or_none(_alpha_from_columns(mdf, tc_cols), 4),
+            "tool_selection": _round_or_none(_alpha_from_columns(mdf, ts_cols), 4),
+        }
+
+    return {
+        "task_completion": _round_or_none(_alpha_from_columns(df, tc_cols), 4),
+        "tool_selection": _round_or_none(_alpha_from_columns(df, ts_cols), 4),
+        "per_model": per_model,
+    }
+
+
 def load_all_results() -> pd.DataFrame:
     """Load the most recent parquet result file.
 
@@ -429,6 +476,11 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
 
     same_lab_checks = compute_same_lab_check(df, judge_columns)
 
+    # Inter-judge reliability: Krippendorff's alpha (interval), the primary
+    # chance-corrected metric. Per-model within-0.2 agreement stays as a
+    # secondary readout in each model entry's judge_agreement block.
+    judge_alpha = compute_judge_alpha(df, judge_columns)
+
     # Build leaderboard JSON
     leaderboard = {
         "updated": pd.Timestamp.now().isoformat(),
@@ -438,6 +490,7 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
         "domains": list(df["domain"].unique()),
         "domain_scores": domain_scores,
         "judge_scores": judge_scores,
+        "judge_alpha": judge_alpha,
     }
 
     for _, row in overall.iterrows():
@@ -459,10 +512,14 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
             "scenarios_evaluated": int(row["total_scenarios"]),
             "n_scenarios": int(row["total_scenarios"]),
             "n_rows": int(row["total_rows"]),
+            # Inter-judge agreement: alpha is the primary chance-corrected metric;
+            # within_0_2 is the secondary human-readable readout (kept for
+            # continuity). Both are reported per dimension.
             "judge_agreement": {
                 "task_completion": _round_or_none(row["judge_agreement_tc"], 4),
                 "tool_selection": _round_or_none(row["judge_agreement_ts"], 4),
             },
+            "judge_alpha": judge_alpha["per_model"].get(row["model"]),
             # Same-lab robustness: judge-mean scores with the same-lab judge
             # excluded, plus the delta vs the full panel. None for models with
             # no same-lab judge on the panel.

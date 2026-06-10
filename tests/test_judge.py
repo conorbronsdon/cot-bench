@@ -128,7 +128,8 @@ class TestConsensus:
         res = score_with_all_judges("sys", "rub", "task_completion", "s1")
         assert res.n_judges_requested == 3
         assert res.n_judges_valid == 3
-        assert res.consensus_score == pytest.approx((0.8 + 0.9 + 0.7) / 3)
+        # Consensus is the MEDIAN of valid judge scores: median(0.8,0.9,0.7)=0.8.
+        assert res.consensus_score == pytest.approx(0.8)
         assert res.parse_failures == []
         assert res.api_failures == []
         assert res.degraded is False
@@ -137,6 +138,36 @@ class TestConsensus:
         # 2 of 3 pairs agree (preserving the existing agreement logic).
         assert res.agreement_rate == pytest.approx(2 / 3)
         assert res.max_disagreement == pytest.approx(0.2)
+
+    def test_consensus_median_robust_to_outlier(self, monkeypatch, three_judges):
+        # One rogue judge (0.1) cannot drag the consensus: median(0.8,0.9,0.1)=0.8,
+        # whereas a mean would be 0.6. This is the whole point of the median switch.
+        _install_fake_scorer(
+            monkeypatch,
+            {
+                "Kimi": _valid("Kimi", 0.8),
+                "GLM": _valid("GLM", 0.9),
+                "Opus": _valid("Opus", 0.1),
+            },
+        )
+        res = score_with_all_judges("sys", "rub", "task_completion", "s1")
+        assert res.consensus_score == pytest.approx(0.8)
+        # max_disagreement still reflects the full spread for transparency.
+        assert res.max_disagreement == pytest.approx(0.8)
+
+    def test_consensus_median_two_judges_is_midpoint(self, monkeypatch, three_judges):
+        # With two valid judges the median equals their mean (midpoint).
+        _install_fake_scorer(
+            monkeypatch,
+            {
+                "Kimi": _valid("Kimi", 0.4),
+                "GLM": _valid("GLM", 0.8),
+                "Opus": _parse_failed("Opus"),
+            },
+        )
+        res = score_with_all_judges("sys", "rub", "task_completion", "s1")
+        assert res.n_judges_valid == 2
+        assert res.consensus_score == pytest.approx(0.6)
 
     def test_parse_failure_excluded_from_consensus(self, monkeypatch, three_judges):
         # (a) one judge parse-fails twice -> excluded, consensus = mean of 2.
@@ -362,7 +393,8 @@ class TestCombinedConsensus:
         assert tc.rubric_type == "task_completion"
         assert tc.n_judges_requested == 3
         assert tc.n_judges_valid == 3
-        assert tc.consensus_score == pytest.approx((0.8 + 0.9 + 0.7) / 3)
+        # Median consensus: median(0.8,0.9,0.7)=0.8.
+        assert tc.consensus_score == pytest.approx(0.8)
         assert tc.parse_failures == []
         assert tc.api_failures == []
         assert tc.degraded is False
@@ -372,7 +404,8 @@ class TestCombinedConsensus:
         # Tool selection consensus is its own panel.
         assert ts.rubric_type == "tool_selection"
         assert ts.n_judges_valid == 3
-        assert ts.consensus_score == pytest.approx((0.6 + 0.7 + 0.5) / 3)
+        # Median consensus: median(0.6,0.7,0.5)=0.6.
+        assert ts.consensus_score == pytest.approx(0.6)
         assert ts.degraded is False
 
     def test_one_dimension_missing_fails_both(self, monkeypatch):
