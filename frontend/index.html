@@ -4,619 +4,811 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>COT Bench — Agent Leaderboard</title>
+    <meta name="description" content="COT Bench: an open, vendor-neutral leaderboard for AI agents on multi-turn tool-calling tasks. Multi-judge scoring, private holdout, full transcripts published per run.">
     <style>
         :root {
-            --bg: #0a0a0a;
-            --surface: #141414;
-            --border: #262626;
-            --text: #e5e5e5;
-            --text-muted: #737373;
-            --accent: #3b82f6;
-            --accent-dim: #1e3a5f;
-            --green: #22c55e;
-            --yellow: #eab308;
-            --red: #ef4444;
+            --bg: #0a0b0d;
+            --bg-grad-top: #101218;
+            --surface: #14161b;
+            --surface-2: #1a1d24;
+            --border: #262a32;
+            --border-soft: #1f232a;
+            --text: #e9ecf1;
+            --text-dim: #aeb4bf;
+            --text-muted: #6b7280;
+            --accent: #5b9dff;
+            --accent-strong: #3b82f6;
+            --accent-dim: #16243d;
+            --green: #34d399;
+            --green-dim: rgba(52, 211, 153, 0.14);
+            --yellow: #fbbf24;
+            --yellow-dim: rgba(251, 191, 36, 0.14);
+            --red: #f87171;
+            --red-dim: rgba(248, 113, 113, 0.14);
+            --mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+            --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.25);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
+        html { -webkit-text-size-adjust: 100%; }
+
         body {
-            font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-            background: var(--bg);
+            font-family: var(--sans);
+            background:
+                radial-gradient(1200px 500px at 50% -200px, var(--bg-grad-top), transparent 70%),
+                var(--bg);
             color: var(--text);
-            line-height: 1.6;
+            line-height: 1.55;
+            font-size: 15px;
+            -webkit-font-smoothing: antialiased;
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1240px;
             margin: 0 auto;
-            padding: 2rem;
+            padding: 2.5rem 1.5rem 4rem;
         }
 
-        header {
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 2rem;
-            margin-bottom: 2rem;
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { color: var(--accent-strong); text-decoration: underline; }
+
+        /* ---------- Header ---------- */
+        header { margin-bottom: 2rem; }
+
+        .brand {
+            display: flex;
+            align-items: baseline;
+            gap: 0.75rem;
+            flex-wrap: wrap;
         }
 
         h1 {
-            font-size: 2rem;
+            font-size: 2.1rem;
             font-weight: 700;
-            letter-spacing: -0.02em;
+            letter-spacing: -0.03em;
+            line-height: 1.1;
+        }
+        h1 .mark {
+            color: var(--accent);
+            font-family: var(--mono);
+            font-weight: 700;
         }
 
-        h1 span { color: var(--accent); }
+        .version-pill {
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            letter-spacing: 0.02em;
+            color: var(--accent);
+            background: var(--accent-dim);
+            border: 1px solid var(--border);
+            padding: 0.15rem 0.5rem;
+            border-radius: 999px;
+            transform: translateY(-2px);
+        }
 
         .subtitle {
-            color: var(--text-muted);
-            margin-top: 0.5rem;
-            font-size: 0.9rem;
+            color: var(--text-dim);
+            margin-top: 0.6rem;
+            font-size: 0.98rem;
+            max-width: 60ch;
         }
 
         .meta {
             display: flex;
-            gap: 2rem;
+            gap: 0.5rem 1.5rem;
             margin-top: 1rem;
-            font-size: 0.8rem;
+            font-size: 0.82rem;
             color: var(--text-muted);
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .meta .sep { color: var(--border); }
+        #last-updated { font-family: var(--mono); }
+
+        .judge-panel {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            flex-wrap: wrap;
+        }
+        .judge-chip {
+            font-family: var(--mono);
+            padding: 0.2rem 0.55rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            color: var(--text-dim);
         }
 
-        .meta a { color: var(--accent); text-decoration: none; }
-        .meta a:hover { text-decoration: underline; }
+        .trust-line {
+            margin-top: 1rem;
+            font-size: 0.82rem;
+            color: var(--text-dim);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .trust-line .dot { color: var(--green); }
 
+        /* ---------- Legend ---------- */
         .metrics-legend {
             display: flex;
-            gap: 1.5rem;
-            margin-bottom: 1.5rem;
-            font-size: 0.8rem;
-            color: var(--text-muted);
+            gap: 0.6rem;
+            margin: 1.75rem 0 1.25rem;
+            font-size: 0.78rem;
+            color: var(--text-dim);
             flex-wrap: wrap;
         }
-
-        .metrics-legend .metric-tag {
-            padding: 0.25rem 0.5rem;
+        .metric-tag {
+            padding: 0.3rem 0.6rem;
             background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 4px;
+            border: 1px solid var(--border-soft);
+            border-radius: 6px;
         }
+        .metric-tag b { color: var(--text); font-weight: 600; }
 
-        .filters {
+        /* ---------- Controls ---------- */
+        .controls {
             display: flex;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
+            gap: 0.75rem;
+            margin-bottom: 1.25rem;
             flex-wrap: wrap;
+            align-items: center;
         }
-
-        .filters select, .filters button {
+        .controls select, .sort-btn {
             background: var(--surface);
             border: 1px solid var(--border);
-            color: var(--text);
-            padding: 0.5rem 1rem;
-            border-radius: 4px;
-            font-family: inherit;
-            font-size: 0.85rem;
+            color: var(--text-dim);
+            padding: 0.45rem 0.85rem;
+            border-radius: 6px;
+            font-family: var(--sans);
+            font-size: 0.83rem;
             cursor: pointer;
+            transition: border-color 0.15s, color 0.15s, background 0.15s;
         }
-
-        .filters button.active {
+        .controls select:hover, .sort-btn:hover { border-color: var(--accent); color: var(--text); }
+        .sort-btn.active {
             background: var(--accent-dim);
             border-color: var(--accent);
+            color: var(--text);
         }
+        .controls .label { font-size: 0.78rem; color: var(--text-muted); }
+        .controls .spacer { flex: 1; }
+
+        /* ---------- Table ---------- */
+        .table-wrap {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            background: var(--surface);
+            box-shadow: var(--shadow);
+        }
+        .table-scroll { overflow-x: auto; }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 0.85rem;
+            font-size: 0.86rem;
         }
 
         thead th {
-            text-align: left;
-            padding: 0.75rem 1rem;
-            border-bottom: 2px solid var(--border);
+            text-align: right;
+            padding: 0.8rem 0.9rem;
+            background: var(--surface-2);
+            border-bottom: 1px solid var(--border);
             color: var(--text-muted);
             font-weight: 600;
-            cursor: pointer;
+            font-size: 0.74rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
             white-space: nowrap;
             user-select: none;
+            position: sticky;
+            top: 0;
+            z-index: 2;
         }
-
-        thead th:hover { color: var(--text); }
+        thead th.sortable { cursor: pointer; }
+        thead th.sortable:hover { color: var(--text); }
         thead th.sorted { color: var(--accent); }
-
-        tbody tr {
-            border-bottom: 1px solid var(--border);
-            transition: background 0.15s;
-        }
-
-        tbody tr:hover { background: var(--surface); }
+        thead th.sorted .arrow::after { content: ' \25BE'; font-size: 0.7em; }
+        thead th.sorted.asc .arrow::after { content: ' \25B4'; }
+        th.col-left, td.col-left { text-align: left; }
+        th.col-rank, td.col-rank { text-align: center; }
 
         tbody td {
-            padding: 0.75rem 1rem;
+            padding: 0.7rem 0.9rem;
             white-space: nowrap;
+            text-align: right;
+            border-bottom: 1px solid var(--border-soft);
+            font-variant-numeric: tabular-nums;
+            font-family: var(--mono);
         }
+        tbody tr:last-child td { border-bottom: none; }
+        tbody tr { transition: background 0.12s; }
+        tbody tr:hover { background: var(--surface-2); }
 
-        .rank {
-            font-weight: 700;
+        /* Sticky model name column on horizontal scroll */
+        th.col-model, td.col-model {
+            position: sticky;
+            left: 0;
+            background: var(--surface);
+            z-index: 1;
+            text-align: left;
+            font-family: var(--sans);
+        }
+        thead th.col-model { background: var(--surface-2); z-index: 3; }
+        tbody tr:hover td.col-model { background: var(--surface-2); }
+
+        /* Rank-band visual grouping: a bracket marker + alternating tint. Two
+           cues so it never relies on color alone (a11y): the band number is
+           printed and bracket glyphs mark the band's extent. */
+        td.col-rank { font-family: var(--mono); }
+        .rank-num { font-weight: 700; }
+        .rank-1 .rank-num { color: var(--yellow); }
+        .rank-2 .rank-num { color: var(--text); }
+        .rank-3 .rank-num { color: #d8954e; }
+
+        td.col-band {
+            text-align: center;
+            font-family: var(--mono);
             color: var(--text-muted);
-            width: 3rem;
+            width: 2.6rem;
         }
-
-        .rank-1 { color: var(--yellow); }
-        .rank-2 { color: var(--text); }
-        .rank-3 { color: #cd7f32; }
-
-        /* Tied with the leader's CI band — ordering not distinguishable. */
-        .rank-tied { color: var(--text-muted); opacity: 0.6; }
-
-        .model-name { font-weight: 600; }
-
-        /* CI half-width shown next to the CLEAR score. */
-        .clear-score .ci {
-            font-weight: 400;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-
-        .stat-note {
-            margin-top: 1rem;
-            font-size: 0.78rem;
-            color: var(--text-muted);
-            line-height: 1.5;
-        }
-
-        .score-bar {
+        /* Band tint: alternating subtle background per band so tied groups read
+           as one block even where brackets are subtle. */
+        tr.band-even td:not(.col-model) { background-color: var(--surface-2); }
+        tr.band-even:hover td:not(.col-model) { background-color: var(--surface-2); }
+        .band-bracket {
             display: inline-block;
-            height: 6px;
-            border-radius: 3px;
-            margin-left: 0.5rem;
+            width: 0.9rem;
+            color: var(--accent);
+            font-weight: 700;
+        }
+        .band-label {
+            font-size: 0.66rem;
+            color: var(--text-muted);
+            letter-spacing: 0.03em;
+        }
+        .tied-flag {
+            font-size: 0.62rem;
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0 0.3rem;
+            margin-left: 0.3rem;
+            font-family: var(--mono);
             vertical-align: middle;
         }
 
-        .score-high { background: var(--green); }
-        .score-mid { background: var(--yellow); }
-        .score-low { background: var(--red); }
+        .model-name { font-weight: 600; color: var(--text); font-size: 0.92rem; }
 
-        .clear-score {
-            font-weight: 700;
-            font-size: 1rem;
-        }
-
-        .agreement-badge {
-            display: inline-block;
-            padding: 0.1rem 0.4rem;
-            border-radius: 3px;
-            font-size: 0.75rem;
-        }
-
-        .agreement-high { background: rgba(34, 197, 94, 0.15); color: var(--green); }
-        .agreement-med { background: rgba(234, 179, 8, 0.15); color: var(--yellow); }
-        .agreement-low { background: rgba(239, 68, 68, 0.15); color: var(--red); }
-
-        /* Holdout gap cell: positive gap (public > holdout) is the overfitting
-           tripwire, so a materially positive gap is tinted red; a near-zero or
-           negative gap (holds up on the unseen set) is neutral/green. */
-        .holdout-gap-pos { color: var(--red); }
-        .holdout-gap-neutral { color: var(--text-muted); }
-        .holdout-gap-neg { color: var(--green); }
-
-        /* Inline detail under the reliability number: pass^k + premature-end. */
-        .reliability-detail {
+        /* CLEAR composite — the headline number */
+        .clear-val { font-weight: 700; font-size: 1.02rem; color: var(--text); }
+        .clear-ci { font-weight: 400; font-size: 0.72rem; color: var(--text-muted); }
+        .clear-bar-track {
             display: block;
-            font-size: 0.7rem;
-            color: var(--text-muted);
-            margin-top: 0.15rem;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--border);
+            margin-top: 0.35rem;
+            overflow: hidden;
         }
+        .clear-bar-fill { display: block; height: 100%; border-radius: 2px; }
+        .fill-high { background: var(--green); }
+        .fill-mid { background: var(--yellow); }
+        .fill-low { background: var(--red); }
+
+        /* Efficacy with inline CI whisker (SVG) */
+        td.col-efficacy { white-space: nowrap; }
+        .eff-row { display: inline-flex; align-items: center; gap: 0.4rem; }
+        .eff-val { color: var(--text); }
+        .ci-whisker { display: inline-block; vertical-align: middle; }
+
+        .value-badge { font-family: var(--mono); font-weight: 600; color: var(--text); }
+        .value-sub { display: block; font-size: 0.64rem; color: var(--text-muted); }
+
+        .agree-badge {
+            display: inline-block;
+            padding: 0.12rem 0.45rem;
+            border-radius: 5px;
+            font-size: 0.74rem;
+            font-weight: 600;
+        }
+        .agree-high { background: var(--green-dim); color: var(--green); }
+        .agree-med { background: var(--yellow-dim); color: var(--yellow); }
+        .agree-low { background: var(--red-dim); color: var(--red); }
+        .agree-na { color: var(--text-muted); }
+
+        /* Holdout gap: positive = overfitting tripwire (red), neutral/neg = holds up */
+        .gap-pos { color: var(--red); font-weight: 600; }
+        .gap-neutral { color: var(--text-muted); }
+        .gap-neg { color: var(--green); }
+
+        .rel-detail { display: block; font-size: 0.66rem; color: var(--text-muted); margin-top: 0.2rem; }
+
+        .na { color: var(--text-muted); }
+
+        .stat-note {
+            margin-top: 1rem;
+            font-size: 0.79rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+            padding: 0 0.2rem;
+        }
+
+        /* ---------- Empty / pre-launch state ---------- */
+        .empty-state {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: linear-gradient(180deg, var(--surface-2), var(--surface));
+            padding: 3rem 2rem;
+            text-align: center;
+            box-shadow: var(--shadow);
+        }
+        .empty-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: var(--mono);
+            font-size: 0.74rem;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--yellow);
+            background: var(--yellow-dim);
+            border: 1px solid rgba(251,191,36,0.3);
+            padding: 0.3rem 0.75rem;
+            border-radius: 999px;
+        }
+        .empty-badge .pulse {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: var(--yellow);
+            box-shadow: 0 0 0 0 rgba(251,191,36,0.5);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(251,191,36,0.45); }
+            70% { box-shadow: 0 0 0 8px rgba(251,191,36,0); }
+            100% { box-shadow: 0 0 0 0 rgba(251,191,36,0); }
+        }
+        @media (prefers-reduced-motion: reduce) { .empty-badge .pulse { animation: none; } }
+        .empty-state h2 { font-size: 1.4rem; margin: 1.1rem 0 0.6rem; letter-spacing: -0.02em; }
+        .empty-state p { color: var(--text-dim); max-width: 56ch; margin: 0 auto 0.6rem; font-size: 0.92rem; }
+        .empty-links {
+            display: flex; gap: 1.25rem; justify-content: center; flex-wrap: wrap;
+            margin-top: 1.5rem; font-size: 0.86rem;
+        }
+        .empty-checklist {
+            display: inline-grid; gap: 0.4rem; text-align: left;
+            margin-top: 1.5rem; font-size: 0.84rem; color: var(--text-dim);
+        }
+        .empty-checklist li { list-style: none; }
+        .empty-checklist .ok { color: var(--green); }
+        .empty-checklist .pending { color: var(--yellow); }
+
+        /* ---------- Panels / scatter ---------- */
+        .panel {
+            margin-top: 2.25rem;
+            padding: 1.5rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+        }
+        .panel h2 { font-size: 1.05rem; margin-bottom: 0.35rem; letter-spacing: -0.01em; }
+        .panel .panel-desc { font-size: 0.84rem; color: var(--text-muted); margin-bottom: 1rem; max-width: 70ch; }
+
+        #scatter-svg { width: 100%; height: auto; display: block; }
+        .sc-axis { stroke: var(--border); stroke-width: 1; }
+        .sc-grid { stroke: var(--border-soft); stroke-width: 1; stroke-dasharray: 3 4; }
+        .sc-tick-label { fill: var(--text-muted); font-size: 10px; font-family: var(--mono); }
+        .sc-axis-title { fill: var(--text-dim); font-size: 11px; font-family: var(--sans); }
+        .sc-frontier { fill: none; stroke: var(--green); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: 0.8; }
+        .sc-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 1.5; cursor: pointer; transition: r 0.12s; }
+        .sc-dot.frontier { fill: var(--green); }
+        .sc-dot:hover { r: 7; }
+        .sc-label { fill: var(--text-dim); font-size: 10px; font-family: var(--mono); pointer-events: none; }
+        .sc-legend { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.75rem; display: flex; gap: 1.25rem; flex-wrap: wrap; }
+        .sc-legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.35rem; vertical-align: middle; }
+        .sc-tooltip {
+            position: fixed; pointer-events: none; z-index: 50;
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 7px; padding: 0.5rem 0.7rem; font-size: 0.76rem;
+            font-family: var(--mono); color: var(--text); box-shadow: var(--shadow);
+            opacity: 0; transition: opacity 0.1s; max-width: 240px;
+        }
+        .sc-tooltip b { color: var(--accent); }
+
+        /* ---------- Mobile card view ---------- */
+        .cards { display: none; }
+        .card {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--surface);
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            box-shadow: var(--shadow);
+        }
+        .card.band-even { border-left: 3px solid var(--accent); }
+        .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+        .card-rank { font-family: var(--mono); font-weight: 700; color: var(--text-muted); }
+        .card-name { font-weight: 600; font-size: 1rem; flex: 1; }
+        .card-clear { font-family: var(--mono); font-weight: 700; font-size: 1.1rem; }
+        .card-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 1rem;
+            margin-top: 0.75rem; font-size: 0.82rem; font-family: var(--mono);
+        }
+        .card-grid .k { color: var(--text-muted); font-family: var(--sans); font-size: 0.76rem; }
+        .card-grid .v { color: var(--text); }
+
+        /* ---------- Changelog / footer ---------- */
+        .changelog { margin-top: 2.25rem; }
+        .changelog h2 { font-size: 1.05rem; margin-bottom: 1rem; }
+        .changelog-entry {
+            padding: 0.75rem 0; border-bottom: 1px solid var(--border-soft); font-size: 0.85rem; color: var(--text-dim);
+            display: flex; gap: 1rem;
+        }
+        .changelog-entry .date { color: var(--text-muted); font-family: var(--mono); font-size: 0.78rem; white-space: nowrap; }
 
         footer {
             margin-top: 3rem;
             padding-top: 1.5rem;
             border-top: 1px solid var(--border);
             color: var(--text-muted);
-            font-size: 0.8rem;
+            font-size: 0.82rem;
         }
+        footer .footer-links { display: flex; gap: 0.5rem 1.25rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        footer p { max-width: 78ch; margin-bottom: 0.6rem; line-height: 1.55; }
+        .disclaimer { font-style: italic; opacity: 0.7; }
 
-        footer a { color: var(--accent); text-decoration: none; }
-
-        .judge-panel {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 0.5rem;
-            font-size: 0.75rem;
-        }
-
-        .judge-chip {
-            padding: 0.15rem 0.5rem;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 3px;
-        }
-
-        .loading { text-align: center; padding: 4rem; color: var(--text-muted); }
-
-        /* Efficiency frontier scatter plot */
-        .scatter-container {
-            margin: 2rem 0;
-            padding: 1.5rem;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-        }
-
-        .scatter-container h2 {
-            font-size: 1rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .scatter-container p {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            margin-bottom: 1rem;
-        }
-
-        .scatter-plot {
-            position: relative;
-            width: 100%;
-            height: 300px;
-            border-left: 1px solid var(--border);
-            border-bottom: 1px solid var(--border);
-        }
-
-        .scatter-dot {
-            position: absolute;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: var(--accent);
-            transform: translate(-50%, 50%);
-            cursor: pointer;
-            transition: all 0.15s;
-        }
-
-        .scatter-dot:hover {
-            width: 14px;
-            height: 14px;
-            box-shadow: 0 0 8px var(--accent);
-        }
-
-        .scatter-dot.frontier { background: var(--green); }
-
-        .scatter-label {
-            position: absolute;
-            font-size: 0.65rem;
-            color: var(--text-muted);
-            transform: translate(-50%, -100%);
-            white-space: nowrap;
-            pointer-events: none;
-            padding-bottom: 4px;
-        }
-
-        .axis-label {
-            position: absolute;
-            font-size: 0.7rem;
-            color: var(--text-muted);
-        }
-
-        .axis-label.x {
-            bottom: -25px;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-
-        .axis-label.y {
-            left: -40px;
-            top: 50%;
-            transform: rotate(-90deg) translateX(50%);
-            transform-origin: left center;
-        }
-
-        /* Changelog section */
-        .changelog {
-            margin-top: 2rem;
-            padding-top: 1.5rem;
-            border-top: 1px solid var(--border);
-        }
-
-        .changelog h2 {
-            font-size: 1rem;
-            margin-bottom: 1rem;
-        }
-
-        .changelog-entry {
-            padding: 0.5rem 0;
-            border-bottom: 1px solid var(--border);
-            font-size: 0.8rem;
-        }
-
-        .changelog-entry .date {
-            color: var(--text-muted);
-            margin-right: 1rem;
-        }
-
-        @media (max-width: 768px) {
-            .container { padding: 1rem; }
-            table { font-size: 0.75rem; }
-            tbody td, thead th { padding: 0.5rem; }
+        @media (max-width: 820px) {
+            .container { padding: 1.5rem 1rem 3rem; }
+            h1 { font-size: 1.7rem; }
+            .table-wrap { display: none; }
+            .stat-note.desktop-only { display: none; }
+            .cards { display: block; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1><span>COT</span> Bench</h1>
-            <p class="subtitle">Open agent evaluation leaderboard — multi-judge, multi-dimensional, always fresh</p>
+            <div class="brand">
+                <h1><span class="mark">COT</span> Bench</h1>
+                <span class="version-pill" id="version-pill">v0.1</span>
+            </div>
+            <p class="subtitle">An open, vendor-neutral leaderboard for AI agents on multi-turn,
+            tool-calling tasks. Multi-judge scoring, a private holdout, and every transcript published per run.</p>
             <div class="meta">
                 <span>By <a href="https://github.com/conorbronsdon">Conor Bronsdon</a></span>
+                <span class="sep">·</span>
                 <span>From <a href="https://chainofthought.show/">Chain of Thought</a></span>
+                <span class="sep">·</span>
                 <span>Open judges via <a href="https://openrouter.ai/">OpenRouter</a></span>
-                <span id="last-updated"></span>
+                <span class="sep">·</span>
+                <span id="last-updated">—</span>
             </div>
             <div class="judge-panel">
                 <span>Judges:</span>
                 <span class="judge-chip">Kimi K2.6</span>
                 <span class="judge-chip">GLM-4.6</span>
                 <span class="judge-chip">Claude Opus</span>
+                <span style="color:var(--text-muted)">— none also under test</span>
+            </div>
+            <div class="trust-line">
+                <span class="dot">&#9679;</span>
+                <span>Every score is traceable: full transcripts and per-judge outputs are published for each run.</span>
             </div>
         </header>
 
-        <div class="metrics-legend">
-            <span class="metric-tag">CLEAR = Composite (Efficacy 35% + Reliability 25% + Cost 20% + Latency 20%)</span>
-            <span class="metric-tag">Efficacy = Task Completion + Tool Selection</span>
-            <span class="metric-tag">Reliability = Pass@3 consistency</span>
-        </div>
-
-        <div class="filters">
-            <select id="domain-filter">
-                <option value="all">All Domains</option>
-                <option value="banking">Banking</option>
-                <option value="customer_success">Customer Success</option>
-            </select>
-            <button id="sort-clear" class="active" onclick="sortBy('clear_score')">Sort: CLEAR</button>
-            <button id="sort-efficacy" onclick="sortBy('efficacy')">Sort: Efficacy</button>
-            <button id="sort-cost" onclick="sortBy('cost_per_task_usd')">Sort: Cost</button>
-            <button id="sort-reliability" onclick="sortBy('reliability')">Sort: Reliability</button>
-        </div>
-
-        <table>
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Model</th>
-                    <th onclick="sortBy('clear_score')" class="sorted">CLEAR</th>
-                    <th onclick="sortBy('efficacy')">Efficacy</th>
-                    <th onclick="sortBy('task_completion')">Task Comp.</th>
-                    <th onclick="sortBy('tool_selection')">Tool Sel.</th>
-                    <th onclick="sortBy('cost_per_task_usd')">$/Task</th>
-                    <th onclick="sortBy('reliability')">Reliability</th>
-                    <th onclick="sortBy('avg_latency_ms')">Latency</th>
-                    <th>Agreement</th>
-                    <!-- Public-vs-holdout efficacy gap (issue #31). Header is shown
-                         only when a holdout run is present; otherwise hidden so the
-                         table layout is unchanged on non-holdout runs. -->
-                    <th id="holdout-th" class="holdout-col" style="display:none;"
-                        title="Public efficacy minus private-holdout efficacy. A positive gap is an overfitting signal — stronger on the public corpus than on the never-published holdout. See docs/governance.md §4.">Holdout &Delta;</th>
-                </tr>
-            </thead>
-            <tbody id="leaderboard-body">
-                <tr><td colspan="10" class="loading">Loading results...</td></tr>
-            </tbody>
-        </table>
-
-        <p id="stat-note" class="stat-note" style="display:none;"></p>
-
-        <!-- Efficiency Frontier: Efficacy vs Cost -->
-        <div class="scatter-container">
-            <h2>Efficiency Frontier: Efficacy vs. Cost per Task</h2>
-            <p>Models in the top-left are the most efficient — high efficacy at low cost. Green dots mark the efficiency frontier.</p>
-            <div class="scatter-plot" id="scatter-plot">
-                <span class="axis-label x">Cost per Task (USD) &rarr;</span>
-                <span class="axis-label y">&uarr; Efficacy</span>
+        <!-- Empty / pre-launch state. Rendered only when no leaderboard.json
+             exists yet. Deliberately carries NO numbers so it can never be
+             mistaken for results. -->
+        <section id="empty-state" class="empty-state" style="display:none;">
+            <span class="empty-badge"><span class="pulse"></span>First evaluation run pending</span>
+            <h2>The board is set. Scores are coming.</h2>
+            <p>COT Bench is published methodology-first: the rubrics, scenario schema, judge panel,
+            and governance rules are all live before a single model is scored, so the evaluation
+            can't be reverse-engineered to flatter a result.</p>
+            <p>When the first scored run lands, this page fills with a ranked, statistically-banded
+            table and a cost-vs-efficacy frontier — drawn live from the published results file.</p>
+            <ul class="empty-checklist">
+                <li><span class="ok">&#10003;</span> Methodology &amp; rubrics published</li>
+                <li><span class="ok">&#10003;</span> Judge panel fixed (3 independent judges)</li>
+                <li><span class="ok">&#10003;</span> Private holdout reserved (overfitting tripwire)</li>
+                <li><span class="pending">&#9675;</span> First scored run — pending</li>
+            </ul>
+            <div class="empty-links">
+                <a href="https://github.com/conorbronsdon/cot-bench">GitHub repo</a>
+                <a href="https://github.com/conorbronsdon/cot-bench/blob/master/docs/methodology.md">Methodology</a>
+                <a href="https://github.com/conorbronsdon/cot-bench/blob/master/docs/governance.md">Governance</a>
+                <a href="https://github.com/conorbronsdon/cot-bench/blob/master/eval/scoring/rubrics.py">Rubrics</a>
             </div>
-        </div>
+        </section>
 
-        <!-- Changelog -->
-        <div class="changelog">
-            <h2>Changelog</h2>
-            <div class="changelog-entry">
-                <span class="date">2026-03-20</span>
-                COT Bench v0.1.0 methodology and harness published. 10 models configured, 2 domains (banking, customer success), 3 judges (Kimi K2.6, GLM-4.6, Claude Opus). First scored run pending.
+        <!-- Populated state. Everything below is hidden until data loads. -->
+        <div id="results-view" style="display:none;">
+            <div class="metrics-legend">
+                <span class="metric-tag"><b>CLEAR</b> = composite: Efficacy 35% + Reliability 25% + Cost 20% + Latency 20%</span>
+                <span class="metric-tag"><b>Efficacy</b> = task completion + tool selection</span>
+                <span class="metric-tag"><b>Reliability</b> = pass@3 consistency</span>
+                <span class="metric-tag"><b>Value</b> = efficacy per dollar</span>
+                <span class="metric-tag"><b>Band</b> = statistically tied (overlapping CLEAR CIs)</span>
             </div>
+
+            <div class="controls">
+                <span class="label">Domain</span>
+                <select id="domain-filter" onchange="render()">
+                    <option value="all">All domains</option>
+                </select>
+                <span class="spacer"></span>
+                <span class="label">Sort</span>
+                <button class="sort-btn active" data-field="clear_score" onclick="sortBy('clear_score')">CLEAR</button>
+                <button class="sort-btn" data-field="efficacy" onclick="sortBy('efficacy')">Efficacy</button>
+                <button class="sort-btn" data-field="value_per_dollar" onclick="sortBy('value_per_dollar')">Value</button>
+                <button class="sort-btn" data-field="cost_per_task_usd" onclick="sortBy('cost_per_task_usd')">Cost</button>
+                <button class="sort-btn" data-field="reliability" onclick="sortBy('reliability')">Reliability</button>
+            </div>
+
+            <div class="table-wrap">
+              <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="col-rank">#</th>
+                            <th class="col-band" title="Statistical rank band: models in the same band have overlapping CLEAR confidence intervals and are not distinguishable.">Band</th>
+                            <th class="col-left col-model">Model</th>
+                            <th class="sortable col-clear" data-field="clear_score" onclick="sortBy('clear_score')">CLEAR<span class="arrow"></span></th>
+                            <th class="sortable" data-field="efficacy" onclick="sortBy('efficacy')">Efficacy<span class="arrow"></span></th>
+                            <th class="sortable" data-field="value_per_dollar" onclick="sortBy('value_per_dollar')" title="Efficacy per dollar of cost per task (higher is better).">Value<span class="arrow"></span></th>
+                            <th class="sortable" data-field="cost_per_task_usd" onclick="sortBy('cost_per_task_usd')">$/Task<span class="arrow"></span></th>
+                            <th class="sortable" data-field="reliability" onclick="sortBy('reliability')">Reliability<span class="arrow"></span></th>
+                            <th class="sortable" data-field="avg_latency_ms" onclick="sortBy('avg_latency_ms')">Latency<span class="arrow"></span></th>
+                            <th title="Inter-judge agreement (within-0.2 rate across the judge panel).">Agreement</th>
+                            <th id="holdout-th" class="holdout-col" style="display:none;"
+                                title="Public efficacy minus private-holdout efficacy. A positive gap is an overfitting signal — stronger on the public corpus than on the never-published holdout. See docs/governance.md.">Holdout &Delta;</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <p id="stat-note" class="stat-note desktop-only" style="display:none;"></p>
+
+            <!-- Mobile card view -->
+            <div class="cards" id="cards-view"></div>
+            <p id="stat-note-mobile" class="stat-note" style="display:none;"></p>
+
+            <!-- Cost-vs-efficacy Pareto scatter (#56) -->
+            <section class="panel" id="scatter-panel">
+                <h2>Cost vs. Efficacy frontier</h2>
+                <p class="panel-desc">Cost per task (log scale) against efficacy. Models on the green
+                frontier are Pareto-optimal — nothing matches them at lower cost. Top-left is best:
+                high efficacy, low cost.</p>
+                <svg id="scatter-svg" viewBox="0 0 760 380" role="img" aria-labelledby="scatter-title">
+                    <title id="scatter-title">Scatter plot of cost per task versus efficacy with Pareto frontier</title>
+                </svg>
+                <div class="sc-legend">
+                    <span><span class="swatch" style="background:var(--green)"></span>Pareto frontier (best value)</span>
+                    <span><span class="swatch" style="background:var(--accent)"></span>Dominated</span>
+                    <span>x-axis log scale · hover a point for detail</span>
+                </div>
+            </section>
+
+            <!-- Run history -->
+            <section class="changelog">
+                <h2>Run history</h2>
+                <div id="changelog-body"></div>
+            </section>
         </div>
 
         <footer>
+            <div class="footer-links">
+                <a href="https://github.com/conorbronsdon/cot-bench">GitHub</a>
+                <a href="https://github.com/conorbronsdon/cot-bench/blob/master/docs/methodology.md">Methodology</a>
+                <a href="https://github.com/conorbronsdon/cot-bench/blob/master/docs/governance.md">Governance</a>
+                <a href="https://github.com/conorbronsdon/cot-bench/blob/master/eval/scoring/rubrics.py">Rubrics</a>
+                <a href="https://chainofthought.show/">Chain of Thought</a>
+                <a href="https://github.com/conorbronsdon/cot-bench#paper">Paper (coming)</a>
+            </div>
             <p>
                 COT Bench evaluates AI agents on multi-turn tool-calling tasks across real-world domains.
                 Scoring uses three independent judges — two open-weight models via
                 <a href="https://openrouter.ai/">OpenRouter</a> and one frontier model, none of them
-                also under test — for vendor-neutral, transparent evaluation.
+                also under test — for vendor-neutral, transparent evaluation. Methodology adapted from the
+                <a href="https://github.com/rungalileo/agent-leaderboard">Galileo Agent Leaderboard</a> (Apache 2.0).
             </p>
-            <p style="margin-top: 0.5rem;">
-                <a href="https://github.com/conorbronsdon/cot-bench">GitHub</a> ·
-                Rubrics are <a href="https://github.com/conorbronsdon/cot-bench/blob/master/eval/scoring/rubrics.py">published in full</a> ·
-                Methodology adapted from <a href="https://github.com/rungalileo/agent-leaderboard">Galileo Agent Leaderboard</a> (Apache 2.0)
-            </p>
-            <p style="margin-top: 0.75rem; font-style: italic; opacity: 0.65;">
+            <p class="disclaimer">
                 A personal project. All views and statements here are my own and do not
                 reflect the views, positions, or policies of my employer.
             </p>
         </footer>
     </div>
 
+    <div class="sc-tooltip" id="sc-tooltip"></div>
+
     <script>
         let leaderboardData = null;
         let currentSort = 'clear_score';
         let sortAsc = false;
 
-        // Demo data renders ONLY with an explicit ?demo=1 query param (for
-        // working on the table/scatter rendering without real results). It
-        // must never be a fallback on the public page: fabricated scores
-        // attached to real model names will be read — and screenshotted —
-        // as real benchmark results, tiny "demo" label or not.
+        // Demo data renders ONLY with an explicit ?demo=1 query param (for working
+        // on the table/scatter rendering without real results). It must never be a
+        // fallback on the public page: fabricated scores attached to real model
+        // names will be read — and screenshotted — as real benchmark results.
         const DEMO_MODE = new URLSearchParams(location.search).get('demo') === '1';
 
         async function loadData() {
             try {
                 const resp = await fetch('data/results/leaderboard.json');
-                if (!resp.ok) {
-                    if (DEMO_MODE) renderDemo();
-                    else renderEmpty();
-                    return;
-                }
+                if (!resp.ok) { DEMO_MODE ? renderDemo() : renderEmpty(); return; }
                 leaderboardData = await resp.json();
-                document.getElementById('last-updated').textContent = `Updated: ${new Date(leaderboardData.updated).toLocaleDateString()}`;
-                render();
-                renderScatter();
+                onDataLoaded();
             } catch (e) {
-                if (DEMO_MODE) renderDemo();
-                else renderEmpty();
+                DEMO_MODE ? renderDemo() : renderEmpty();
             }
+        }
+
+        // Single entry point once we have a leaderboard object (real or demo).
+        function onDataLoaded() {
+            if (!leaderboardData || !Array.isArray(leaderboardData.models) || leaderboardData.models.length === 0) {
+                renderEmpty();
+                return;
+            }
+            document.getElementById('empty-state').style.display = 'none';
+            document.getElementById('results-view').style.display = '';
+            if (leaderboardData.updated) {
+                const d = new Date(leaderboardData.updated);
+                document.getElementById('last-updated').textContent =
+                    'Updated ' + (isNaN(d) ? leaderboardData.updated : d.toLocaleDateString());
+            }
+            if (leaderboardData.version) {
+                document.getElementById('version-pill').textContent = 'v' + leaderboardData.version;
+            }
+            populateDomainFilter();
+            render();
+            renderScatter();
+            renderChangelog();
         }
 
         function renderEmpty() {
             document.getElementById('last-updated').textContent = 'No results yet';
-            const tbody = document.querySelector('table tbody');
-            if (tbody) {
-                tbody.innerHTML =
-                    '<tr><td colspan="10" style="text-align:center; padding: 2.5rem 1rem; color: var(--text-muted);">' +
-                    'No evaluation results yet — the first scored run is pending. ' +
-                    'The <a href="https://github.com/conorbronsdon/cot-bench/blob/master/docs/methodology.md">methodology</a> and ' +
-                    '<a href="https://github.com/conorbronsdon/cot-bench/blob/master/eval/scoring/rubrics.py">rubrics</a> are already published.' +
-                    '</td></tr>';
+            document.getElementById('results-view').style.display = 'none';
+            document.getElementById('empty-state').style.display = '';
+        }
+
+        function populateDomainFilter() {
+            const sel = document.getElementById('domain-filter');
+            if (!sel) return;
+            const domains = Array.isArray(leaderboardData.domains) ? leaderboardData.domains : [];
+            sel.querySelectorAll('option:not([value="all"])').forEach(o => o.remove());
+            domains.forEach(dn => {
+                const opt = document.createElement('option');
+                opt.value = dn;
+                opt.textContent = dn.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                sel.appendChild(opt);
+            });
+        }
+
+        // ---- pure helpers (also unit-tested headlessly via node) ----
+
+        // Efficacy per dollar. Cost can legitimately be ~0 for very cheap models;
+        // guard divide-by-zero and return null so the cell renders "—".
+        function valuePerDollar(m) {
+            const c = m.cost_per_task_usd;
+            if (c == null || !(c > 0) || m.efficacy == null) return null;
+            return m.efficacy / c;
+        }
+
+        // Pareto frontier on (cost asc, efficacy desc): a model is on the frontier
+        // if no cheaper-or-equal model has higher efficacy. Returns a Set of names.
+        function computeFrontier(models) {
+            const sorted = [...models].sort((a, b) =>
+                (a.cost_per_task_usd - b.cost_per_task_usd) || (b.efficacy - a.efficacy));
+            const frontier = new Set();
+            let bestEff = -Infinity;
+            for (const m of sorted) {
+                if (m.efficacy > bestEff) { frontier.add(m.name); bestEff = m.efficacy; }
             }
-            const scatter = document.querySelector('.scatter-container');
-            if (scatter) scatter.style.display = 'none';
+            return frontier;
         }
 
-        function renderDemo() {
-            // Demo data for development/preview
-            leaderboardData = {
-                updated: new Date().toISOString(),
-                models: [
-                    { name: "GPT-5.5", clear_score: 0.847, efficacy: 0.89, task_completion: 0.91, tool_selection: 0.87, cost_per_task_usd: 0.0234, reliability: 0.85, avg_latency_ms: 3200, judge_agreement: { task_completion: 0.92, tool_selection: 0.88 }},
-                    { name: "Claude Opus 4.8", clear_score: 0.831, efficacy: 0.87, task_completion: 0.89, tool_selection: 0.85, cost_per_task_usd: 0.0412, reliability: 0.82, avg_latency_ms: 2800, judge_agreement: { task_completion: 0.90, tool_selection: 0.85 }},
-                    { name: "Gemini 3.1 Pro", clear_score: 0.819, efficacy: 0.85, task_completion: 0.87, tool_selection: 0.83, cost_per_task_usd: 0.0198, reliability: 0.80, avg_latency_ms: 3500, judge_agreement: { task_completion: 0.89, tool_selection: 0.86 }},
-                    { name: "DeepSeek-V4 Pro", clear_score: 0.803, efficacy: 0.82, task_completion: 0.84, tool_selection: 0.80, cost_per_task_usd: 0.0045, reliability: 0.78, avg_latency_ms: 4100, judge_agreement: { task_completion: 0.87, tool_selection: 0.83 }},
-                    { name: "Qwen3.7-Max", clear_score: 0.795, efficacy: 0.81, task_completion: 0.83, tool_selection: 0.79, cost_per_task_usd: 0.0067, reliability: 0.79, avg_latency_ms: 3800, judge_agreement: { task_completion: 0.85, tool_selection: 0.82 }},
-                    { name: "GPT-5.4-mini", clear_score: 0.782, efficacy: 0.76, task_completion: 0.78, tool_selection: 0.74, cost_per_task_usd: 0.0041, reliability: 0.83, avg_latency_ms: 1900, judge_agreement: { task_completion: 0.91, tool_selection: 0.87 }},
-                    { name: "Gemini 3.5 Flash", clear_score: 0.771, efficacy: 0.74, task_completion: 0.76, tool_selection: 0.72, cost_per_task_usd: 0.0012, reliability: 0.81, avg_latency_ms: 1600, judge_agreement: { task_completion: 0.88, tool_selection: 0.84 }},
-                    { name: "Claude Haiku 4.5", clear_score: 0.758, efficacy: 0.73, task_completion: 0.75, tool_selection: 0.71, cost_per_task_usd: 0.0089, reliability: 0.77, avg_latency_ms: 2100, judge_agreement: { task_completion: 0.86, tool_selection: 0.82 }},
-                    { name: "MiniMax M3", clear_score: 0.741, efficacy: 0.72, task_completion: 0.74, tool_selection: 0.70, cost_per_task_usd: 0.0038, reliability: 0.75, avg_latency_ms: 3400, judge_agreement: { task_completion: 0.83, tool_selection: 0.80 }},
-                    { name: "Mistral Large 3", clear_score: 0.728, efficacy: 0.71, task_completion: 0.73, tool_selection: 0.69, cost_per_task_usd: 0.0178, reliability: 0.74, avg_latency_ms: 3100, judge_agreement: { task_completion: 0.84, tool_selection: 0.81 }},
-                ],
-            };
-            document.getElementById('last-updated').textContent = 'DEMO DATA (?demo=1) — fabricated numbers, not benchmark results';
-            render();
-            renderScatter();
+        function fillClass(v) { return v >= 0.8 ? 'fill-high' : v >= 0.6 ? 'fill-mid' : 'fill-low'; }
+        function agreeClass(v) {
+            if (v == null) return 'agree-na';
+            return v >= 0.85 ? 'agree-high' : v >= 0.7 ? 'agree-med' : 'agree-low';
         }
 
-        function scoreColor(val, invert = false) {
-            const v = invert ? 1 - val : val;
-            if (v >= 0.8) return 'score-high';
-            if (v >= 0.6) return 'score-mid';
-            return 'score-low';
+        function avgAgreement(m) {
+            const a = m.judge_agreement || {};
+            const vals = [a.task_completion, a.tool_selection].filter(x => x != null);
+            if (!vals.length) return null;
+            return vals.reduce((s, x) => s + x, 0) / vals.length;
         }
 
-        function agreementClass(val) {
-            if (val >= 0.85) return 'agreement-high';
-            if (val >= 0.7) return 'agreement-med';
-            return 'agreement-low';
+        function activeModels() {
+            const domain = document.getElementById('domain-filter')?.value || 'all';
+            let models = leaderboardData.models;
+            if (domain !== 'all' && leaderboardData.domain_scores && leaderboardData.domain_scores[domain]) {
+                // Domain view: overlay per-domain efficacy/cost/etc onto a copy.
+                const byName = {};
+                leaderboardData.domain_scores[domain].forEach(d => { byName[d.model] = d; });
+                models = models
+                    .filter(m => byName[m.name])
+                    .map(m => Object.assign({}, m, byName[m.name]));
+            }
+            return [...models].sort((a, b) => {
+                const av = sortVal(a), bv = sortVal(b);
+                return sortAsc ? av - bv : bv - av;
+            });
+        }
+
+        function sortVal(m) {
+            if (currentSort === 'value_per_dollar') return valuePerDollar(m) ?? -Infinity;
+            return m[currentSort] ?? -Infinity;
         }
 
         function sortBy(field) {
-            if (currentSort === field) {
-                sortAsc = !sortAsc;
-            } else {
-                currentSort = field;
-                // Lower is better for cost and latency
-                sortAsc = (field === 'cost_per_task_usd' || field === 'avg_latency_ms');
-            }
+            if (currentSort === field) sortAsc = !sortAsc;
+            else { currentSort = field; sortAsc = (field === 'cost_per_task_usd' || field === 'avg_latency_ms'); }
 
-            document.querySelectorAll('.filters button').forEach(b => b.classList.remove('active'));
-            const btnMap = { clear_score: 'sort-clear', efficacy: 'sort-efficacy', cost_per_task_usd: 'sort-cost', reliability: 'sort-reliability' };
-            if (btnMap[field]) document.getElementById(btnMap[field])?.classList.add('active');
-
-            document.querySelectorAll('thead th').forEach(th => th.classList.remove('sorted'));
-
+            document.querySelectorAll('.sort-btn').forEach(b =>
+                b.classList.toggle('active', b.dataset.field === field));
+            document.querySelectorAll('thead th.sortable').forEach(th => {
+                const on = th.dataset.field === field;
+                th.classList.toggle('sorted', on);
+                th.classList.toggle('asc', on && sortAsc);
+            });
             render();
         }
 
-        function render() {
-            if (!leaderboardData) return;
-
-            const models = [...leaderboardData.models].sort((a, b) => {
-                const av = a[currentSort] ?? 0;
-                const bv = b[currentSort] ?? 0;
-                return sortAsc ? av - bv : bv - av;
-            });
-
-            // Models whose rank_band matches the leader's band share the top
-            // band — their ordering is not statistically distinguishable, so we
-            // mark their rank with "=" and gray it out. rank_band is absent on
-            // demo / pre-CI data; fall back to plain ranks then.
-            const leaderBand = models[0]?.rank_band;
-
-            // Show the holdout column only when this run actually has a holdout
-            // (issue #31). The top-level header carries `present`; older / demo
-            // data omits it, in which case the column stays hidden and the table
-            // is exactly the pre-holdout layout. Toggle the <th> here and emit a
-            // matching <td> per row below so the column count always lines up.
-            const showHoldout = leaderboardData.holdout?.present === true;
-            const holdoutTh = document.getElementById('holdout-th');
-            if (holdoutTh) holdoutTh.style.display = showHoldout ? '' : 'none';
-
-            const tbody = document.getElementById('leaderboard-body');
-            tbody.innerHTML = models.map((m, i) => {
-                const rank = i + 1;
-                const sharesLeaderBand = m.rank_band != null && m.rank_band === leaderBand;
-                // Within the leader's band, ranks are tied: show "1=" and dim them.
-                const rankLabel = sharesLeaderBand ? `${rank}=` : `${rank}`;
-                let rankClass = rank <= 3 ? `rank rank-${rank}` : 'rank';
-                if (sharesLeaderBand && rank > 1) rankClass += ' rank-tied';
-                const avgAgreement = ((m.judge_agreement?.task_completion || 0) + (m.judge_agreement?.tool_selection || 0)) / 2;
-                const clearCell = renderClearCell(m);
-                const holdoutCell = showHoldout ? `<td class="holdout-col">${renderHoldoutGap(m)}</td>` : '';
-
-                return `<tr>
-                    <td class="${rankClass}">${rankLabel}</td>
-                    <td class="model-name">${m.name}</td>
-                    <td class="clear-score">${clearCell}<span class="score-bar ${scoreColor(m.clear_score)}" style="width:${m.clear_score * 60}px"></span></td>
-                    <td>${m.efficacy.toFixed(3)}</td>
-                    <td>${m.task_completion.toFixed(3)}</td>
-                    <td>${m.tool_selection.toFixed(3)}</td>
-                    <td>$${m.cost_per_task_usd.toFixed(4)}</td>
-                    <td>${m.reliability.toFixed(3)}<span class="score-bar ${scoreColor(m.reliability)}" style="width:${m.reliability * 40}px"></span>${renderReliabilityDetail(m)}</td>
-                    <td>${(m.avg_latency_ms / 1000).toFixed(1)}s</td>
-                    <td><span class="agreement-badge ${agreementClass(avgAgreement)}">${(avgAgreement * 100).toFixed(0)}%</span></td>
-                    ${holdoutCell}
-                </tr>`;
-            }).join('');
-
-            renderStatNote();
+        // SVG CI whisker for efficacy: a small horizontal range bar with a center
+        // tick. Gives the CI a SHAPE cue, not just text. Renders nothing when no
+        // CI is present (degraded data).
+        function ciWhisker(m) {
+            const ci = m.efficacy_ci;
+            if (!Array.isArray(ci) || ci[0] == null || ci[1] == null) return '';
+            const W = 46, lo = ci[0], hi = ci[1], pt = m.efficacy;
+            const pad = Math.max((hi - lo) * 0.5, 0.005);
+            const dmin = lo - pad, dmax = hi + pad, span = (dmax - dmin) || 1;
+            const X = v => ((v - dmin) / span) * W;
+            const y = 6;
+            return `<svg class="ci-whisker" width="${W}" height="12" aria-hidden="true">
+                <line x1="${X(lo).toFixed(1)}" y1="${y}" x2="${X(hi).toFixed(1)}" y2="${y}" stroke="var(--text-muted)" stroke-width="1.5"/>
+                <line x1="${X(lo).toFixed(1)}" y1="3" x2="${X(lo).toFixed(1)}" y2="9" stroke="var(--text-muted)" stroke-width="1.5"/>
+                <line x1="${X(hi).toFixed(1)}" y1="3" x2="${X(hi).toFixed(1)}" y2="9" stroke="var(--text-muted)" stroke-width="1.5"/>
+                <circle cx="${X(pt).toFixed(1)}" cy="${y}" r="2.5" fill="var(--accent)"/>
+            </svg>`;
         }
 
-        // CLEAR cell: show "0.847 ±0.031" using the CI half-width when a
-        // clear_score_ci is present. Demo / pre-CI data omits it -> bare score.
-        function renderClearCell(m) {
+        function clearCell(m) {
             const ci = m.clear_score_ci;
+            let ciTxt = '';
             if (Array.isArray(ci) && ci[0] != null && ci[1] != null) {
-                const half = (ci[1] - ci[0]) / 2;
-                return `${m.clear_score.toFixed(3)} <span class="ci">&plusmn;${half.toFixed(3)}</span>`;
+                ciTxt = ` <span class="clear-ci">&plusmn;${((ci[1] - ci[0]) / 2).toFixed(3)}</span>`;
             }
-            return m.clear_score.toFixed(3);
+            const pct = Math.max(0, Math.min(1, m.clear_score)) * 100;
+            return `<span class="clear-val">${m.clear_score.toFixed(3)}</span>${ciTxt}
+                <span class="clear-bar-track"><span class="clear-bar-fill ${fillClass(m.clear_score)}" style="width:${pct.toFixed(1)}%"></span></span>`;
         }
 
-        // Holdout gap cell (issue #31): public efficacy minus private-holdout
-        // efficacy. None when this model has no holdout rows (column is shown for
-        // the run but this model wasn't in the holdout) -> render "—". A
-        // materially positive gap (>0.05) is the overfitting tripwire and is
-        // tinted red; near-zero/negative gaps are neutral/green. The holdout
-        // SCORE itself is intentionally not shown — only the gap is published per
-        // model, never any per-scenario holdout detail.
-        function renderHoldoutGap(m) {
+        function valueCell(m) {
+            const v = valuePerDollar(m);
+            if (v == null) return '<span class="na">&mdash;</span>';
+            const disp = v >= 100 ? Math.round(v).toString() : v.toFixed(1);
+            return `<span class="value-badge">${disp}</span><span class="value-sub">eff/$</span>`;
+        }
+
+        function holdoutCell(m) {
             const gap = m.holdout_gap;
-            if (gap == null) return '<span class="holdout-gap-neutral">&mdash;</span>';
-            let cls = 'holdout-gap-neutral';
-            if (gap > 0.05) cls = 'holdout-gap-pos';
-            else if (gap < -0.005) cls = 'holdout-gap-neg';
+            if (gap == null) return '<span class="gap-neutral">&mdash;</span>';
+            let cls = 'gap-neutral';
+            if (gap > 0.05) cls = 'gap-pos'; else if (gap < -0.005) cls = 'gap-neg';
             const sign = gap > 0 ? '+' : '';
             const title = m.holdout_score != null
                 ? `Public ${m.efficacy.toFixed(3)} vs holdout ${m.holdout_score.toFixed(3)}`
@@ -624,14 +816,7 @@
             return `<span class="${cls}" title="${title}">${sign}${gap.toFixed(3)}</span>`;
         }
 
-        // Detail line under the reliability score: pass^k (tau-bench, the
-        // all-k-trials-succeed probability) and the premature-end rate (#32, the
-        // share of runs the user-sim ended before the deterministic state check
-        // passed). Both are new fields and may be absent/empty on older data, in
-        // which case nothing extra renders. pass^3 is shown as the headline k
-        // (it pairs with the existing pass@3 reliability number); the full per-k
-        // block is surfaced in the cell tooltip.
-        function renderReliabilityDetail(m) {
+        function relDetail(m) {
             const parts = [];
             const phk = m.reliability_pass_hat_k;
             if (phk && typeof phk === 'object') {
@@ -649,67 +834,265 @@
             if (m.premature_end_rate != null) {
                 parts.push(`<span title="Share of runs the user simulator ended before the deterministic state check passed (#32)">early-end ${(m.premature_end_rate * 100).toFixed(0)}%</span>`);
             }
-            return parts.length ? `<span class="reliability-detail">${parts.join(' · ')}</span>` : '';
+            return parts.length ? `<span class="rel-detail">${parts.join(' · ')}</span>` : '';
         }
 
-        function renderStatNote() {
-            const el = document.getElementById('stat-note');
-            if (!el) return;
-            const note = leaderboardData && leaderboardData.statistical_note;
-            if (note) {
-                el.textContent = note;
-                el.style.display = '';
-            } else {
-                el.style.display = 'none';
-            }
-        }
-
-        function renderScatter() {
-            if (!leaderboardData) return;
-            const plot = document.getElementById('scatter-plot');
-            // Clear existing dots
-            plot.querySelectorAll('.scatter-dot, .scatter-label').forEach(el => el.remove());
-
-            const models = leaderboardData.models;
-            if (!models.length) return;
-
-            const maxCost = Math.max(...models.map(m => m.cost_per_task_usd)) * 1.15;
-            const minEff = Math.min(...models.map(m => m.efficacy)) * 0.95;
-            const maxEff = Math.max(...models.map(m => m.efficacy)) * 1.02;
-            const effRange = maxEff - minEff;
-
-            // Find efficiency frontier (Pareto-optimal: higher efficacy at same or lower cost)
-            const sorted = [...models].sort((a, b) => a.cost_per_task_usd - b.cost_per_task_usd);
-            const frontier = new Set();
-            let bestEff = -1;
-            for (const m of sorted) {
-                if (m.efficacy > bestEff) {
-                    frontier.add(m.name);
-                    bestEff = m.efficacy;
-                }
-            }
-
-            models.forEach(m => {
-                const x = (m.cost_per_task_usd / maxCost) * 92 + 4; // % from left
-                const y = ((m.efficacy - minEff) / effRange) * 85 + 5; // % from bottom
-
-                const dot = document.createElement('div');
-                dot.className = 'scatter-dot' + (frontier.has(m.name) ? ' frontier' : '');
-                dot.style.left = x + '%';
-                dot.style.bottom = y + '%';
-                dot.title = `${m.name}: Efficacy=${m.efficacy.toFixed(3)}, Cost=$${m.cost_per_task_usd.toFixed(4)}`;
-                plot.appendChild(dot);
-
-                const label = document.createElement('div');
-                label.className = 'scatter-label';
-                label.style.left = x + '%';
-                label.style.bottom = (y + 2) + '%';
-                label.textContent = m.name.replace('Claude ', '').replace('Gemini ', '');
-                plot.appendChild(label);
+        // Annotate models with rank position within their band so the table can
+        // draw band brackets and tint. Bands come from aggregate's rank_band; when
+        // absent (degraded/demo) every model is its own band (no false ties).
+        function annotateBands(models) {
+            models.forEach((m, i) => {
+                const band = m.rank_band != null ? m.rank_band : (i + 1);
+                const prev = i > 0 ? (models[i - 1].rank_band != null ? models[i - 1].rank_band : i) : null;
+                const next = i < models.length - 1 ? (models[i + 1].rank_band != null ? models[i + 1].rank_band : i + 2) : null;
+                m._band = band;
+                m._bandFirst = band !== prev;
+                m._bandLast = band !== next;
+                m._bandTied = (band === prev) || (band === next);
             });
         }
 
+        function showHoldout() { return leaderboardData.holdout && leaderboardData.holdout.present === true; }
+
+        function render() {
+            if (!leaderboardData) return;
+            const models = activeModels();
+            annotateBands(models);
+
+            const sh = showHoldout();
+            const holdoutTh = document.getElementById('holdout-th');
+            if (holdoutTh) holdoutTh.style.display = sh ? '' : 'none';
+
+            // Distinct bands get alternating tint; map band -> parity.
+            const bandParity = {};
+            let order = 0;
+            models.forEach(m => { if (!(m._band in bandParity)) bandParity[m._band] = (order++ % 2); });
+
+            const tbody = document.getElementById('leaderboard-body');
+            tbody.innerHTML = models.map((m, i) => {
+                const rank = i + 1;
+                const rankCls = rank <= 3 ? `rank-${rank}` : '';
+                const bracket = (m._bandFirst && m._bandLast) ? '&nbsp;'
+                    : m._bandFirst ? '&#9484;'
+                    : m._bandLast ? '&#9492;'
+                    : '&#9474;';
+                const bandCell = `<span class="band-bracket">${bracket}</span>` +
+                    (m._bandFirst ? `<span class="band-label">${m._band}</span>` : '');
+                const tied = m._bandTied ? '<span class="tied-flag" title="Statistically tied within this band">tie</span>' : '';
+                const agree = avgAgreement(m);
+                const agreeTxt = agree == null ? 'n/a' : `${(agree * 100).toFixed(0)}%`;
+
+                return `<tr class="${bandParity[m._band] ? 'band-even' : ''}" data-band-pos="${m._band}">
+                    <td class="col-rank ${rankCls}"><span class="rank-num">${rank}</span></td>
+                    <td class="col-band">${bandCell}</td>
+                    <td class="col-left col-model"><span class="model-name">${esc(m.name)}${tied}</span></td>
+                    <td class="col-clear">${clearCell(m)}</td>
+                    <td class="col-efficacy"><span class="eff-row"><span class="eff-val">${m.efficacy.toFixed(3)}</span>${ciWhisker(m)}</span></td>
+                    <td>${valueCell(m)}</td>
+                    <td>$${m.cost_per_task_usd.toFixed(4)}</td>
+                    <td>${m.reliability.toFixed(3)}${relDetail(m)}</td>
+                    <td>${(m.avg_latency_ms / 1000).toFixed(1)}s</td>
+                    <td><span class="agree-badge ${agreeClass(agree)}">${agreeTxt}</span></td>
+                    ${sh ? `<td class="holdout-col">${holdoutCell(m)}</td>` : ''}
+                </tr>`;
+            }).join('');
+
+            renderCards(models, bandParity);
+            renderStatNote();
+        }
+
+        function renderCards(models, bandParity) {
+            const wrap = document.getElementById('cards-view');
+            if (!wrap) return;
+            const sh = showHoldout();
+            wrap.innerHTML = models.map((m, i) => {
+                const v = valuePerDollar(m);
+                const vTxt = v == null ? '—' : (v >= 100 ? Math.round(v) : v.toFixed(1)) + ' eff/$';
+                const agree = avgAgreement(m);
+                const ci = m.clear_score_ci;
+                const ciTxt = (Array.isArray(ci) && ci[0] != null) ? ` ±${((ci[1]-ci[0])/2).toFixed(3)}` : '';
+                const holdoutLine = (sh && m.holdout_gap != null)
+                    ? `<div><span class="k">Holdout Δ</span><div class="v">${m.holdout_gap > 0 ? '+' : ''}${m.holdout_gap.toFixed(3)}</div></div>` : '';
+                return `<div class="card ${bandParity[m._band] ? 'band-even' : ''}">
+                    <div class="card-head">
+                        <span class="card-rank">#${i + 1}${m._bandTied ? ' (tie)' : ''}</span>
+                        <span class="card-name">${esc(m.name)}</span>
+                        <span class="card-clear">${m.clear_score.toFixed(3)}<span class="clear-ci">${ciTxt}</span></span>
+                    </div>
+                    <div class="card-grid">
+                        <div><span class="k">Efficacy</span><div class="v">${m.efficacy.toFixed(3)}</div></div>
+                        <div><span class="k">Value</span><div class="v">${vTxt}</div></div>
+                        <div><span class="k">$/Task</span><div class="v">$${m.cost_per_task_usd.toFixed(4)}</div></div>
+                        <div><span class="k">Reliability</span><div class="v">${m.reliability.toFixed(3)}</div></div>
+                        <div><span class="k">Latency</span><div class="v">${(m.avg_latency_ms / 1000).toFixed(1)}s</div></div>
+                        <div><span class="k">Agreement</span><div class="v">${agree == null ? 'n/a' : (agree*100).toFixed(0) + '%'}</div></div>
+                        ${holdoutLine}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function renderStatNote() {
+            const note = leaderboardData && leaderboardData.statistical_note;
+            ['stat-note', 'stat-note-mobile'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (note) { el.textContent = note; el.style.display = ''; }
+                else el.style.display = 'none';
+            });
+        }
+
+        function renderChangelog() {
+            const wrap = document.getElementById('changelog-body');
+            if (!wrap) return;
+            const hist = Array.isArray(leaderboardData.history) ? leaderboardData.history : [];
+            if (!hist.length) {
+                const d = leaderboardData.updated ? new Date(leaderboardData.updated) : null;
+                const dateTxt = d && !isNaN(d) ? d.toLocaleDateString() : '—';
+                const n = leaderboardData.models.length;
+                wrap.innerHTML = `<div class="changelog-entry">
+                    <span class="date">${dateTxt}</span>
+                    <span>Latest run: ${n} model${n === 1 ? '' : 's'} scored across
+                    ${(leaderboardData.domains || []).length} domain(s)${leaderboardData.n_rank_bands ? `, ${leaderboardData.n_rank_bands} rank band(s)` : ''}.</span>
+                </div>`;
+                return;
+            }
+            wrap.innerHTML = hist.slice().reverse().map(h => {
+                const d = h.timestamp ? new Date(h.timestamp) : null;
+                const dateTxt = d && !isNaN(d) ? d.toLocaleDateString() : (h.timestamp || '—');
+                const n = h.models ? Object.keys(h.models).length : (h.n_models ?? '?');
+                return `<div class="changelog-entry"><span class="date">${dateTxt}</span><span>${n} model(s) scored.${h.note ? ' ' + esc(h.note) : ''}</span></div>`;
+            }).join('');
+        }
+
+        // ---- Pareto scatter (#56) ----
+        function renderScatter() {
+            const svg = document.getElementById('scatter-svg');
+            if (!svg || !leaderboardData) return;
+            const models = leaderboardData.models.filter(m => m.cost_per_task_usd > 0 && m.efficacy != null);
+            // Clear previous render (keep <title>).
+            Array.from(svg.childNodes).forEach(n => { if (!(n.nodeType === 1 && n.tagName.toLowerCase() === 'title')) svg.removeChild(n); });
+            const panel = document.getElementById('scatter-panel');
+            if (!models.length) { if (panel) panel.style.display = 'none'; return; }
+            if (panel) panel.style.display = '';
+
+            const W = 760, H = 380, pad = { l: 56, r: 90, t: 18, b: 46 };
+            const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+
+            const costs = models.map(m => m.cost_per_task_usd);
+            const effs = models.map(m => m.efficacy);
+            const logMin = Math.log10(Math.min(...costs));
+            const logMax = Math.log10(Math.max(...costs));
+            const lpad = (logMax - logMin) * 0.12 || 0.3;
+            const lo = logMin - lpad, hi = logMax + lpad, lspan = (hi - lo) || 1;
+            const effLo = Math.max(0, Math.min(...effs) - 0.05);
+            const effHi = Math.min(1, Math.max(...effs) + 0.05);
+            const espan = (effHi - effLo) || 1;
+
+            const X = c => pad.l + ((Math.log10(c) - lo) / lspan) * plotW;
+            const Y = e => pad.t + (1 - (e - effLo) / espan) * plotH;
+
+            const NS = 'http://www.w3.org/2000/svg';
+            const mk = (tag, attrs, text) => {
+                const el = document.createElementNS(NS, tag);
+                for (const k in attrs) el.setAttribute(k, attrs[k]);
+                if (text != null) el.textContent = text;
+                svg.appendChild(el);
+                return el;
+            };
+
+            // Axes
+            mk('line', { class: 'sc-axis', x1: pad.l, y1: pad.t, x2: pad.l, y2: pad.t + plotH });
+            mk('line', { class: 'sc-axis', x1: pad.l, y1: pad.t + plotH, x2: pad.l + plotW, y2: pad.t + plotH });
+
+            // X ticks at integer powers of 10 within range.
+            const tickPows = [];
+            for (let p = Math.ceil(lo); p <= Math.floor(hi); p++) tickPows.push(p);
+            (tickPows.length ? tickPows : [Math.round((lo + hi) / 2)]).forEach(p => {
+                const x = pad.l + ((p - lo) / lspan) * plotW;
+                mk('line', { class: 'sc-grid', x1: x, y1: pad.t, x2: x, y2: pad.t + plotH });
+                const v = Math.pow(10, p);
+                const lbl = v >= 1 ? `$${v}` : `$${v.toFixed(v >= 0.01 ? 2 : 4)}`;
+                mk('text', { class: 'sc-tick-label', x: x, y: pad.t + plotH + 16, 'text-anchor': 'middle' }, lbl);
+            });
+            // Y ticks every 0.1
+            for (let e = Math.ceil(effLo * 10) / 10; e <= effHi + 1e-9; e += 0.1) {
+                const y = Y(e);
+                mk('line', { class: 'sc-grid', x1: pad.l, y1: y, x2: pad.l + plotW, y2: y });
+                mk('text', { class: 'sc-tick-label', x: pad.l - 8, y: y + 3, 'text-anchor': 'end' }, e.toFixed(1));
+            }
+
+            // Axis titles
+            mk('text', { class: 'sc-axis-title', x: pad.l + plotW / 2, y: H - 6, 'text-anchor': 'middle' }, 'Cost per task (USD, log scale)');
+            const yt = mk('text', { class: 'sc-axis-title', x: 14, y: pad.t + plotH / 2, 'text-anchor': 'middle' }, 'Efficacy');
+            yt.setAttribute('transform', `rotate(-90 14 ${pad.t + plotH / 2})`);
+
+            // Frontier polyline (sorted by cost asc)
+            const frontier = computeFrontier(models);
+            const fpts = models.filter(m => frontier.has(m.name))
+                .sort((a, b) => a.cost_per_task_usd - b.cost_per_task_usd)
+                .map(m => `${X(m.cost_per_task_usd).toFixed(1)},${Y(m.efficacy).toFixed(1)}`).join(' ');
+            if (frontier.size > 1) mk('polyline', { class: 'sc-frontier', points: fpts });
+
+            // Dots + labels
+            const tooltip = document.getElementById('sc-tooltip');
+            models.forEach(m => {
+                const cx = X(m.cost_per_task_usd), cy = Y(m.efficacy);
+                const onF = frontier.has(m.name);
+                const dot = mk('circle', { class: 'sc-dot' + (onF ? ' frontier' : ''), cx: cx.toFixed(1), cy: cy.toFixed(1), r: 5 });
+                dot.addEventListener('mouseenter', ev => {
+                    const v = valuePerDollar(m);
+                    tooltip.innerHTML = `<b>${esc(m.name)}</b><br>Efficacy ${m.efficacy.toFixed(3)} · $${m.cost_per_task_usd.toFixed(4)}<br>Value ${v == null ? '—' : (v >= 100 ? Math.round(v) : v.toFixed(1))} eff/$${onF ? '<br><span style="color:var(--green)">on frontier</span>' : ''}`;
+                    tooltip.style.opacity = '1';
+                    moveTip(ev);
+                });
+                dot.addEventListener('mousemove', moveTip);
+                dot.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
+                const short = m.name.replace(/^(Claude|Gemini|OpenAI)\s+/, '');
+                const lx = Math.min(cx + 8, pad.l + plotW + pad.r - 4);
+                mk('text', { class: 'sc-label', x: lx.toFixed(1), y: (cy - 7).toFixed(1) }, short);
+            });
+
+            function moveTip(ev) {
+                tooltip.style.left = (ev.clientX + 14) + 'px';
+                tooltip.style.top = (ev.clientY + 14) + 'px';
+            }
+        }
+
+        function esc(s) {
+            return String(s).replace(/[&<>"']/g, c =>
+                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        function renderDemo() {
+            // Synthetic data for local preview ONLY (?demo=1). Fabricated numbers on
+            // real model names — never a public fallback. Banner makes that loud.
+            leaderboardData = {
+                updated: new Date().toISOString(),
+                version: '0.1.0-demo',
+                domains: ['banking', 'customer_success'],
+                holdout: { present: true },
+                n_rank_bands: 3,
+                statistical_note: 'DEMO DATA — fabricated numbers, not benchmark results.',
+                models: [
+                    { name: 'GPT-5.5', clear_score: 0.847, clear_score_ci: [0.82, 0.874], efficacy: 0.89, efficacy_ci: [0.86, 0.92], task_completion: 0.91, tool_selection: 0.87, cost_per_task_usd: 0.0234, reliability: 0.85, reliability_pass_hat_k: {1:0.88,2:0.80,3:0.72}, premature_end_rate: 0.03, avg_latency_ms: 3200, judge_agreement: { task_completion: 0.92, tool_selection: 0.88 }, holdout_gap: 0.012, holdout_score: 0.878, rank_band: 1 },
+                    { name: 'Claude Opus 4.8', clear_score: 0.831, clear_score_ci: [0.805, 0.857], efficacy: 0.87, efficacy_ci: [0.84, 0.90], task_completion: 0.89, tool_selection: 0.85, cost_per_task_usd: 0.0412, reliability: 0.82, reliability_pass_hat_k: {1:0.85,2:0.77,3:0.68}, premature_end_rate: 0.04, avg_latency_ms: 2800, judge_agreement: { task_completion: 0.90, tool_selection: 0.85 }, holdout_gap: 0.071, holdout_score: 0.799, rank_band: 1 },
+                    { name: 'Gemini 3.1 Pro', clear_score: 0.819, clear_score_ci: [0.79, 0.848], efficacy: 0.85, efficacy_ci: [0.82, 0.88], task_completion: 0.87, tool_selection: 0.83, cost_per_task_usd: 0.0198, reliability: 0.80, reliability_pass_hat_k: {1:0.83,2:0.74,3:0.64}, premature_end_rate: 0.05, avg_latency_ms: 3500, judge_agreement: { task_completion: 0.89, tool_selection: 0.86 }, holdout_gap: -0.008, holdout_score: 0.858, rank_band: 1 },
+                    { name: 'DeepSeek-V4 Pro', clear_score: 0.803, clear_score_ci: [0.77, 0.836], efficacy: 0.82, efficacy_ci: [0.79, 0.85], task_completion: 0.84, tool_selection: 0.80, cost_per_task_usd: 0.0045, reliability: 0.78, reliability_pass_hat_k: {1:0.80,2:0.70,3:0.60}, premature_end_rate: 0.06, avg_latency_ms: 4100, judge_agreement: { task_completion: 0.87, tool_selection: 0.83 }, holdout_gap: 0.02, holdout_score: 0.80, rank_band: 2 },
+                    { name: 'Gemini 3.5 Flash', clear_score: 0.771, clear_score_ci: [0.74, 0.802], efficacy: 0.74, efficacy_ci: [0.71, 0.77], task_completion: 0.76, tool_selection: 0.72, cost_per_task_usd: 0.0012, reliability: 0.81, reliability_pass_hat_k: {1:0.83,2:0.75,3:0.66}, premature_end_rate: 0.04, avg_latency_ms: 1600, judge_agreement: { task_completion: 0.88, tool_selection: 0.84 }, holdout_gap: 0.005, holdout_score: 0.735, rank_band: 2 },
+                    { name: 'Mistral Large 3', clear_score: 0.728, clear_score_ci: [0.69, 0.766], efficacy: 0.71, efficacy_ci: [0.67, 0.75], task_completion: 0.73, tool_selection: 0.69, cost_per_task_usd: 0.0178, reliability: 0.74, reliability_pass_hat_k: {1:0.77,2:0.68,3:0.58}, premature_end_rate: 0.08, avg_latency_ms: 3100, judge_agreement: { task_completion: 0.84, tool_selection: 0.81 }, holdout_gap: 0.09, holdout_score: 0.62, rank_band: 3 },
+                ],
+            };
+            onDataLoaded();
+            document.getElementById('last-updated').textContent = 'DEMO DATA (?demo=1) — fabricated, not results';
+        }
+
         loadData();
+
+        // Expose pure helpers + render entry points for headless (node) testing.
+        if (typeof module !== 'undefined' && module.exports) {
+            module.exports = { computeFrontier, valuePerDollar, annotateBands, avgAgreement, agreeClass, fillClass };
+        }
     </script>
 </body>
 </html>

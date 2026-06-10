@@ -9,18 +9,29 @@ the two in sync is that every key the JS dereferences is actually emitted by
 1. Every top-level and per-model key the frontend reads is a subset of what
    ``compute_leaderboard`` emits (so a rename/removal on the Python side that
    would silently break the page fails CI here instead).
-2. The new fields surfaced by the frontend (holdout gap, pass^k, premature-end)
-   are present in the emitted entry with the expected types.
+2. The new fields surfaced by the frontend (holdout gap, pass^k, premature-end,
+   the efficacy CI whisker, the Pareto/value columns) are present in the emitted
+   entry with the expected types.
+3. The page's render() runs against synthetic populated / empty / degraded JSON
+   under a headless DOM (node + a tiny DOM stub), so the actual render path — not
+   just the key list — is exercised for all three data states. These tests SKIP
+   when node is unavailable (e.g. minimal CI images) rather than failing, since
+   the page ships dependency-free and CI can't render a browser.
 
 The "expected keys" lists below are the ground truth for what index.html touches;
 update them in lockstep when the page starts reading a new field.
 """
 
+import json
 import re
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from scripts.aggregate_results import compute_leaderboard
 
@@ -33,6 +44,12 @@ FRONTEND_TOPLEVEL_KEYS = {
     "models",
     "statistical_note",
     "holdout",
+    # Visual overhaul (#56): version pill, domain filter source, per-domain
+    # overlay for the domain view, and the rank-band count in the run summary.
+    "version",
+    "domains",
+    "domain_scores",
+    "n_rank_bands",
 }
 
 # Keys index.html dereferences off each entry in leaderboard.models.
@@ -53,6 +70,8 @@ FRONTEND_MODEL_KEYS = {
     "holdout_score",
     "premature_end_rate",
     "reliability_pass_hat_k",
+    # Visual overhaul (#56): inline efficacy CI whisker reads efficacy_ci.
+    "efficacy_ci",
 }
 
 
@@ -154,3 +173,210 @@ class TestFrontendReadsDocumentedKeys:
         html_no_demo = re.sub(r"function renderDemo\(\).*?^\s{8}\}", "", html, flags=re.S | re.M)
         for key in FRONTEND_MODEL_KEYS:
             assert key in html_no_demo, f"declared frontend key '{key}' not found in index.html"
+
+
+# --- Headless render test (#56) -----------------------------------------------
+# The page ships dependency-free; there is no bundler and CI has no browser. To
+# still exercise render()/renderScatter()/computeFrontier()/valuePerDollar()
+# against real aggregate output we extract the page's <script> body and run it in
+# node under a minimal DOM stub. This catches a class of bugs the key-subset
+# checks can't: a render path that reads an emitted key but mis-handles a null,
+# or that throws on the empty / degraded shapes. Skips cleanly without node.
+
+NODE = shutil.which("node")
+_skip_no_node = pytest.mark.skipif(
+    NODE is None, reason="node not available; headless render test skipped"
+)
+
+# A tiny DOM stub: enough surface for the page's render functions (getElementById,
+# querySelector(All), createElement(NS), classList, style, innerHTML, dataset,
+# addEventListener). It records innerHTML writes so the test can assert on output.
+_DOM_STUB = r"""
+class ClassList {
+  constructor(){ this._s = new Set(); }
+  add(...c){ c.forEach(x=>this._s.add(x)); }
+  remove(...c){ c.forEach(x=>this._s.delete(x)); }
+  toggle(c,on){
+    if(on===undefined) on=!this._s.has(c);
+    on?this._s.add(c):this._s.delete(c); return on;
+  }
+  contains(c){ return this._s.has(c); }
+}
+class El {
+  constructor(tag){
+    this.tagName = tag || 'DIV';
+    this.children = []; this.childNodes = this.children;
+    this.classList = new ClassList(); this.style = {}; this.dataset = {};
+    this.attrs = {}; this._innerHTML = ''; this.textContent = '';
+    this.nodeType = 1;
+  }
+  set innerHTML(v){ this._innerHTML = String(v); }
+  get innerHTML(){ return this._innerHTML; }
+  setAttribute(k,v){
+    this.attrs[k]=String(v);
+    if(k==='class'){
+      this.classList=new ClassList();
+      String(v).split(/\s+/).forEach(c=>c&&this.classList.add(c));
+    }
+  }
+  getAttribute(k){ return this.attrs[k]; }
+  appendChild(c){ this.children.push(c); return c; }
+  removeChild(c){ const i=this.children.indexOf(c); if(i>=0) this.children.splice(i,1); return c; }
+  addEventListener(){}
+  querySelector(){ return null; }
+  querySelectorAll(){ return []; }
+}
+const registry = {};
+function getEl(id){ if(!registry[id]) registry[id]=new El('div'); return registry[id]; }
+const ids = ['last-updated','version-pill','empty-state','results-view','domain-filter',
+  'leaderboard-body','cards-view','holdout-th','stat-note','stat-note-mobile',
+  'scatter-svg','scatter-panel','changelog-body','sc-tooltip'];
+ids.forEach(getEl);
+// scatter-svg needs a <title> child so the "keep title" clear logic has something.
+const titleEl = new El('title'); getEl('scatter-svg').appendChild(titleEl);
+
+global.document = {
+  getElementById: getEl,
+  querySelector(sel){ if(sel==='table tbody') return getEl('leaderboard-body'); return null; },
+  querySelectorAll(){ return []; },
+  createElement: tag => new El(tag),
+  createElementNS: (ns,tag) => new El(tag),
+};
+global.location = { search: '' };
+global.URLSearchParams = class { constructor(){} get(){ return null; } };
+global.fetch = async () => { throw new Error('no network in test'); };
+global.module = { exports: {} };
+global.window = global;
+"""
+
+_RUNNER_TMPL = r"""
+%(stub)s
+%(script)s
+// --- drive the render paths for the supplied state ---
+const STATE = %(state)s;
+const out = { ok: true, steps: [] };
+try {
+  if (STATE === 'empty') {
+    leaderboardData = { models: [] };
+    onDataLoaded();
+    out.steps.push('empty:' + (document.getElementById('empty-state').style.display === ''));
+    out.empty_shown = document.getElementById('empty-state').style.display === '';
+    out.results_hidden = document.getElementById('results-view').style.display === 'none';
+  } else {
+    leaderboardData = %(data)s;
+    onDataLoaded();
+    out.body_html = document.getElementById('leaderboard-body').innerHTML;
+    out.cards_html = document.getElementById('cards-view').innerHTML;
+    out.svg_children = document.getElementById('scatter-svg').children.length;
+    out.holdout_th_display = document.getElementById('holdout-th').style.display;
+    // exercise a re-sort to make sure sortBy + render don't throw
+    sortBy('value_per_dollar');
+    sortBy('cost_per_task_usd');
+    out.body_after_sort_len = document.getElementById('leaderboard-body').innerHTML.length;
+    // pure-helper sanity
+    const fr = computeFrontier(leaderboardData.models);
+    out.frontier = [...fr];
+    out.values = leaderboardData.models.map(m => valuePerDollar(m));
+  }
+} catch (e) {
+  out.ok = false; out.error = String(e && e.stack || e);
+}
+console.log(JSON.stringify(out));
+"""
+
+
+def _extract_script(html: str) -> str:
+    """Pull the page's inline <script> body, minus the loadData() bootstrap call.
+
+    We drive the render functions directly from the test, so we strip the
+    auto-run ``loadData();`` line (it would try to fetch over the network).
+    """
+    m = re.search(r"<script>(.*)</script>", html, flags=re.S)
+    assert m, "no <script> block found in index.html"
+    body = m.group(1)
+    body = body.replace("loadData();", "// loadData(); (driven by test)")
+    return body
+
+
+def _run_node(state: str, data: dict | None) -> dict:
+    html = FRONTEND.read_text(encoding="utf-8")
+    runner = _RUNNER_TMPL % {
+        "stub": _DOM_STUB,
+        "script": _extract_script(html),
+        "state": json.dumps(state),
+        "data": json.dumps(data) if data is not None else "null",
+    }
+    # Write the runner to a temp file rather than passing via -e: the assembled
+    # script (DOM stub + the whole page <script> + JSON payload) easily exceeds
+    # the Windows command-line length limit.
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".cjs", delete=False, encoding="utf-8"
+    ) as fh:
+        fh.write(runner)
+        runner_path = fh.name
+    try:
+        proc = subprocess.run(
+            [NODE, runner_path],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    finally:
+        Path(runner_path).unlink(missing_ok=True)
+    assert proc.returncode == 0, f"node exited {proc.returncode}: {proc.stderr}\n{proc.stdout}"
+    # The page logs one JSON line; take the last non-empty line.
+    line = [ln for ln in proc.stdout.splitlines() if ln.strip()][-1]
+    return json.loads(line)
+
+
+def _populated_payload(degraded: bool = False) -> dict:
+    """Real aggregate output, optionally stripped to the degraded (null) shape."""
+    lb = compute_leaderboard(_build_df(with_holdout=not degraded))
+    if degraded:
+        # Degraded data: nulls for CI + holdout, empty pass^k. Mimics a run where
+        # bootstrap/holdout didn't produce values. The page must still render.
+        for mdl in lb["models"]:
+            mdl["clear_score_ci"] = [None, None]
+            mdl["efficacy_ci"] = [None, None]
+            mdl["holdout_gap"] = None
+            mdl["holdout_score"] = None
+            mdl["reliability_pass_hat_k"] = {}
+            mdl["premature_end_rate"] = None
+            mdl["rank_band"] = None
+        lb["statistical_note"] = None
+    return lb
+
+
+@_skip_no_node
+class TestHeadlessRender:
+    def test_empty_state_renders_intentional_panel(self):
+        out = _run_node("empty", None)
+        assert out["ok"], out.get("error")
+        assert out["empty_shown"] is True
+        assert out["results_hidden"] is True
+
+    def test_populated_state_renders_rows_and_scatter(self):
+        out = _run_node("populated", _populated_payload(degraded=False))
+        assert out["ok"], out.get("error")
+        # One <tr> per model in the table body.
+        assert out["body_html"].count("<tr") == 3
+        assert out["cards_html"].count("card-head") == 3
+        # Scatter drew axes + dots (well more than just the kept <title>).
+        assert out["svg_children"] > 3
+        # Holdout column visible (this payload has a holdout).
+        assert out["holdout_th_display"] == ""
+        # Value column computed a finite number for every model.
+        assert all(v is not None for v in out["values"])
+        # Pareto frontier is non-empty and a subset of the model names.
+        assert out["frontier"], "expected a non-empty Pareto frontier"
+
+    def test_degraded_state_renders_without_throwing(self):
+        out = _run_node("populated", _populated_payload(degraded=True))
+        assert out["ok"], out.get("error")
+        # Still one row per model even with null CIs / holdout / pass^k.
+        assert out["body_html"].count("<tr") == 3
+        # No holdout column (degraded payload drops the holdout half).
+        assert out["holdout_th_display"] == "none"
+        # CI whisker / pass^k detail simply omitted — no "NaN"/"undefined" leak.
+        assert "undefined" not in out["body_html"]
+        assert "NaN" not in out["body_html"]
