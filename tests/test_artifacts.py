@@ -144,6 +144,34 @@ class TestBuildArtifact:
         assert art["sim_meta"]["state_progress_at_end"] is None
         assert art["sim_meta"]["premature_end"] is False
 
+    def test_domain_category_holdout_persisted(self):
+        """Issue #46/#31: domain, category, and holdout are top-level fields."""
+        tc = _consensus("task_completion", [_judge("Kimi", 0.8, "task_completion")])
+        ts = _consensus("tool_selection", [_judge("Kimi", 0.7, "tool_selection")])
+        art = build_artifact(
+            "cs_adaptive_tool_use_0001",
+            "GPT-4.1",
+            0,
+            _sim_result(),
+            tc,
+            ts,
+            domain="customer_success",
+            category="adaptive_tool_use",
+            holdout=True,
+        )
+        assert art["domain"] == "customer_success"
+        assert art["category"] == "adaptive_tool_use"
+        assert art["holdout"] is True
+
+    def test_domain_category_default_none_holdout_false(self):
+        """Backward-compatible defaults when a caller omits the new fields."""
+        tc = _consensus("task_completion", [_judge("Kimi", 0.8, "task_completion")])
+        ts = _consensus("tool_selection", [_judge("Kimi", 0.7, "tool_selection")])
+        art = build_artifact("banking_001", "GPT-4.1", 0, _sim_result(), tc, ts)
+        assert art["domain"] is None
+        assert art["category"] is None
+        assert art["holdout"] is False
+
     def test_sim_meta_carries_premature_ending(self):
         tc = _consensus("task_completion", [_judge("Kimi", 0.8, "task_completion")])
         ts = _consensus("tool_selection", [_judge("Kimi", 0.7, "tool_selection")])

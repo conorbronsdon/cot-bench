@@ -245,6 +245,60 @@ Because failures shrink the panel, every row publishes explicit accounting so co
 
 **Agreement is undefined with fewer than 2 valid judges.** Agreement rate and max-disagreement are reported as **null** in that case — a single grader is not "perfect agreement." Downstream aggregation skips these nulls (a model whose rows are all single-judge will show a null judge-agreement rather than a misleading 1.0).
 
+##### Human judge calibration (protocol defined; study runs after the rehearsal run)
+
+Inter-judge agreement is necessary but not sufficient: three judges can agree
+with each other and all be wrong. The MT-Bench and PoLL precedent is that the
+strongest pre-launch credibility move is to double-label a small set of
+transcripts by hand and report judge-vs-human agreement, turning "we use three
+judges" into "our judges agree with humans at alpha = X." The calibration
+protocol below is **defined and tooled now**; the study itself runs after the
+one-model rehearsal run produces transcripts (it needs human hours, not API
+spend). Tracked in [issue #33](https://github.com/conorbronsdon/cot-bench/issues/33).
+
+**Protocol.**
+
+- **Stratified, seeded sample.** From a run's per-evaluation artifacts, draw 50-80
+  transcripts (default 60) stratified by domain x category x difficulty band
+  (low/mid/high efficacy, where efficacy is reconstructed from each artifact's
+  judge consensus and deterministic state score). Domain and category are read
+  from the authoritative fields the eval run persists on each artifact (the
+  scenario's `domain` and `category`), so the strata are the real taxonomy
+  (`banking` / `customer_success` x category) rather than anything inferred from
+  the scenario id. Stratifying by band ensures the labeler sees the full
+  difficulty range — the hard and ambiguous cases, not just easy passes. The draw
+  is seeded and deterministic so the sample is reproducible and auditable.
+- **One transcript per scenario+model.** Reliability repeats of the same
+  (scenario, model) are near-duplicates; labeling several would waste human effort
+  and inject correlated rows into the agreement math (pseudo-replication), biasing
+  the headline alpha. The sampler therefore collapses to a single seeded choice
+  per (scenario, model) by default (`--all-runs` overrides).
+- **Private holdout excluded.** Holdout transcripts (the issue #31 hash-pinned
+  private split) are excluded from the workbook by default, since a workbook may
+  be shared with an external (guest-network) labeler and the holdout must not
+  leak. `--include-holdout` overrides this with a loud warning.
+- **Blind double-labeling.** The sample is emitted as a labeling workbook: one
+  markdown sheet per transcript with the conversation rendered readable, the same
+  0-1 rubric anchors the judges score against printed inline, and empty score
+  fields. Each sheet is identified by an opaque token, not the artifact id, so the
+  labeler is blind to which model produced the transcript (avoiding pro/anti-model
+  priors) as well as to the scores. The judge scores, the real artifact id, and
+  the model identity are written to a **separate key file kept outside the
+  workbook** — the human never sees them while labeling. Ideally two labelers
+  (Conor plus a guest-network expert) score the same sheets independently.
+- **Metrics.** Filled-in labels are scored against the key for human-vs-judge
+  agreement: Krippendorff's alpha (the same interval-level chance-corrected
+  metric used for inter-judge reliability, reusing `eval/scoring/agreement.py`),
+  mean absolute difference, and Pearson correlation — both against the judge
+  **consensus** (the headline number) and against **each individual judge**. A
+  materially higher human-vs-consensus alpha than the worst human-vs-single-judge
+  alpha would be direct evidence the panel beats any one judge, the PoLL result.
+
+The tooling is one command to set up and one to score
+([`scripts/calibration.py`](../scripts/calibration.py), `sample` and `score`
+subcommands). This is a calibration smoke test against gross miscalibration, not
+a powered study; the published alpha will be labeled as such.
+
 ##### Length-bias check
 
 LLM judges can favor verbose outputs (the AlpacaEval length-bias lesson). Rather than assert we are immune, we measure it: the per-row agent `output_tokens` already exists, so at aggregation we fit a simple ordinary-least-squares regression of each judge dimension (`task_completion` and `tool_selection` consensus) on `output_tokens` across all rows — the bias is a property of the judge panel, not of any one model, so the regression pools all rows. The deterministic `state_score` is judge-independent and therefore excluded. The regression is plain math (no new dependency): for each dimension we publish the slope, intercept, R², the slope's standard error, its t-statistic, the sample size, and a simple significance flag (`|t| > 1.96`, the ~5% two-sided threshold) under the top-level `length_bias` key in `leaderboard.json`. A materially positive, significant slope is direct evidence that longer agent outputs earn higher judge scores independent of correctness; publishing it makes the confound measurable rather than deniable, and is the trigger for adding an explicit length-neutrality line to the rubrics.
@@ -457,8 +511,14 @@ Each run persists exactly four things, and nothing is claimed that isn't on disk
      output: `judge_name`, `rubric_type`, `overall_score`, `reasoning`,
      `parse_failed`, and the raw parsed `raw_response`. Parse-failed judges are
      retained here for transparency (they are still excluded from consensus math).
-   - `sim_meta` — `completed`, `total_turns`, token counts, `latency_ms`, and any
-     simulation `error`.
+   - `sim_meta` — `completed`, `total_turns`, token counts, `latency_ms`, any
+     simulation `error`, plus the completion-decoupling fields (`ended_by`,
+     `state_progress_at_end`, `premature_end`).
+   - `state` — the deterministic state-check result (per-assertion outcomes and
+     the state score) for scenarios with `expected_state_changes`.
+   - `domain`, `category`, `holdout` — the scenario's domain and category as the
+     run resolved them, and whether it came from the private holdout set (used
+     for calibration stratification and holdout exclusion).
 
    `run_id` is the stem of the results parquet, so a run's artifacts sit alongside
    the results they explain. Artifact persistence is **on by default**; pass
