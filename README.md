@@ -203,6 +203,7 @@ cot-bench/
 ## Documentation
 
 - **[Methodology](docs/methodology.md)** — detailed explanation of evaluation approach, scoring rubrics, and statistical methods
+- **[Governance](docs/governance.md)** — no-retraction, judge pinning, pre-registration, contamination, and versioning policy
 - **[Contributing](docs/contributing.md)** — how to add models, domains, or improve the evaluation
 - **[Roadmap](docs/roadmap.md)** — planned improvements and feature priorities
 
