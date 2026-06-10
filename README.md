@@ -44,7 +44,7 @@ COT Bench aligns with the [CLEAR framework](https://arxiv.org/abs/2511.14136), w
 
 | Dimension | Weight | What it measures | How |
 |-----------|--------|-----------------|-----|
-| **Efficacy** | 35% | Task completion + tool selection accuracy | Multi-judge LLM evaluation (consensus of 3 judges) |
+| **Efficacy** | 35% | Task completion + tool selection accuracy + state verification | Hybrid: multi-judge LLM consensus (3 judges) plus deterministic state verification against each scenario's ground-truth world (did the transfer actually happen?) |
 | **Reliability** | 25% | Consistency across repeated runs | Pass@3 — same scenario run 3×, measuring score variance |
 | **Cost** | 20% | Dollars per task | Token count × published per-token pricing |
 | **Latency** | 20% | Speed of task completion | Wall-clock time across all agent turns |

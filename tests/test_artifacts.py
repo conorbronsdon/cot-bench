@@ -140,6 +140,28 @@ class TestBuildArtifact:
         assert art["sim_meta"]["output_tokens"] == 60
         assert art["sim_meta"]["error"] is None
 
+    def test_no_state_block_when_state_omitted(self):
+        tc = _consensus("task_completion", [_judge("Kimi", 0.8, "task_completion")])
+        ts = _consensus("tool_selection", [_judge("Kimi", 0.7, "tool_selection")])
+        art = build_artifact("banking_001", "GPT-4.1", 0, _sim_result(), tc, ts)
+        assert "state" not in art
+
+    def test_state_block_included_when_provided(self):
+        tc = _consensus("task_completion", [_judge("Kimi", 0.8, "task_completion")])
+        ts = _consensus("tool_selection", [_judge("Kimi", 0.7, "tool_selection")])
+        sim = _sim_result()
+        sim.final_world = {"accounts": {"A1": {"balance": 150.0}}}
+        state = {
+            "score": 1.0,
+            "checks": [{"passed": True, "detail": "balance increased"}],
+            "n_passed": 1,
+            "n_total": 1,
+        }
+        art = build_artifact("banking_001", "GPT-4.1", 0, sim, tc, ts, state=state)
+        assert art["state"]["score"] == 1.0
+        assert art["state"]["checks"][0]["passed"] is True
+        assert art["state"]["final_world"] == {"accounts": {"A1": {"balance": 150.0}}}
+
     def test_parse_failed_judge_kept_for_audit(self):
         tc = _consensus(
             "task_completion",
@@ -212,6 +234,8 @@ class TestNoArtifactsHonored:
             category = "adaptive_tool_use"
             user_goals = ["move money"]
             tools = [{"name": "transfer_funds", "description": "x"}]
+            ground_truth = None
+            expected_state_changes = None
 
         # Stub out the judge layer entirely (no network).
         monkeypatch.setattr(

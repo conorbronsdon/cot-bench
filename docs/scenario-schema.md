@@ -58,6 +58,26 @@ answer from and mutate. Keys are the **canonical IDs** (e.g. `BUS-CHK-001`); the
 resolving the friendly name to the canonical ID is part of what the agent is
 graded on. Do **not** leak canonical IDs into user-visible text.
 
+#### Tool-simulator state deltas (the `__append__` convention)
+
+During a stateful run the tool simulator returns
+`{"response": …, "state_delta": …}`. The `state_delta` maps **dotted paths** into
+the world to new values, and the runner applies them deterministically
+(`eval/simulation/runner.py:apply_state_delta`):
+
+- A plain value at a path **replaces** whatever is there, e.g.
+  `{"accounts.BUS-CHK-001.balance": 10920.55}`. Intermediate dicts are created on
+  demand, so a delta can set a previously-absent key.
+- To **append** to a list, the value must be the explicit form
+  `{"__append__": <item>}`, e.g.
+  `{"recurring_transfers": {"__append__": {"from": "BUS-CHK-001", "amount": 500}}}`.
+  This is the only way to grow a list (creating an empty list first if the key is
+  absent) — it keeps list mutation explicit rather than guessing append-vs-replace
+  from the value's type.
+
+Invalid paths (descending into a non-dict, `__append__` onto a non-list) are
+logged and skipped; a malformed delta never crashes a run.
+
 ### `expected_state_changes`
 
 A list of assertions over the world state **after** the conversation. Each

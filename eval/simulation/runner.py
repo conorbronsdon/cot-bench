@@ -12,6 +12,7 @@ or hits the inner tool-round cap. Loop structure and tool-schema conversion are
 adapted from Galileo's agent-leaderboard (Apache 2.0), acknowledged in the README.
 """
 
+import copy
 import json
 import logging
 import re
@@ -83,6 +84,9 @@ class SimulationResult:
     total_output_tokens: int
     completed: bool  # Whether conversation reached natural completion
     error: str | None = None
+    # Final mutable world state at end of run. None for legacy (stateless)
+    # scenarios that carry no ground_truth.
+    final_world: dict | None = None
 
 
 @dataclass
@@ -96,6 +100,102 @@ class Scenario:
     tools: list[dict]  # repo tool definitions (name/description/parameters list)
     category: str
     initial_message: str
+    # v0.2 stateful world. ``ground_truth`` is the canonical initial world the
+    # tool simulator answers from and mutates; ``expected_state_changes`` are the
+    # deterministic post-conversation assertions. Both None for legacy scenarios.
+    ground_truth: dict | None = None
+    expected_state_changes: list | None = None
+
+
+def apply_state_delta(world: dict, delta: dict) -> None:
+    """Apply a tool-sim ``state_delta`` to ``world`` in place (deterministic).
+
+    ``delta`` maps a dotted path to a new value, e.g.::
+
+        {"accounts.BUS-CHK-001.balance": 10920.55}
+
+    Dotted segments walk nested dicts; intermediate dicts are created on demand
+    so a path can set a previously-absent key. Two conventions:
+
+    - A plain value at ``path`` REPLACES whatever is at that path.
+    - A value of the form ``{"__append__": <item>}`` APPENDS ``<item>`` to the
+      list at ``path`` (creating an empty list first if the key is absent). This
+      is the only way to grow a list — it keeps list mutation explicit and
+      deterministic rather than guessing append-vs-replace from the value type.
+
+    Invalid paths (e.g. trying to descend into a non-dict) are logged and
+    skipped — a malformed delta must never crash a run.
+    """
+    if not isinstance(delta, dict):
+        logger.warning("Ignoring non-dict state_delta: %r", delta)
+        return
+
+    for dotted, value in delta.items():
+        parts = str(dotted).split(".")
+        node = world
+        ok = True
+        # Walk to the parent of the final segment, creating dicts as needed.
+        for key in parts[:-1]:
+            nxt = node.get(key)
+            if nxt is None:
+                nxt = {}
+                node[key] = nxt
+            elif not isinstance(nxt, dict):
+                logger.warning("Skipping state_delta path %r: %r is not a dict", dotted, key)
+                ok = False
+                break
+            node = nxt
+        if not ok:
+            continue
+
+        leaf = parts[-1]
+        if isinstance(value, dict) and "__append__" in value:
+            target = node.get(leaf)
+            if target is None:
+                target = []
+                node[leaf] = target
+            if not isinstance(target, list):
+                logger.warning("Skipping __append__ at %r: target is not a list", dotted)
+                continue
+            target.append(value["__append__"])
+        else:
+            node[leaf] = value
+
+
+def _parse_sim_response(content: str) -> dict | None:
+    """Leniently extract the tool-sim's ``{"response", "state_delta"}`` JSON.
+
+    Mirrors judge.py's ``_parse_judge_response`` recovery ladder: direct parse,
+    then a ```` ```json ```` / bare ```` ``` ```` code block, then the first
+    ``{ ... }`` brace boundary. Returns ``None`` when nothing parses (the caller
+    then treats the raw text as the tool response with no state mutation).
+    """
+    try:
+        parsed = json.loads(content)
+        return parsed if isinstance(parsed, dict) else None
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    code_block = re.search(r"```(?:json)?\s*\n(.*?)\n\s*```", content, re.DOTALL)
+    if code_block:
+        try:
+            parsed = json.loads(code_block.group(1).strip())
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+    start = content.find("{")
+    end = content.rfind("}")
+    if start != -1 and end > start:
+        try:
+            parsed = json.loads(content[start : end + 1])
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+    return None
 
 
 def tool_to_json_schema(tool: dict) -> dict:
@@ -207,6 +307,11 @@ class SimulationRunner:
         total_latency_ms = 0.0
         completed = False
 
+        # Stateful world for this run. Deep-copy so each reliability run starts
+        # from a pristine ground_truth and mutations never leak across runs.
+        # None for legacy scenarios -> stateless tool simulation (unchanged).
+        world = copy.deepcopy(scenario.ground_truth) if scenario.ground_truth is not None else None
+
         # System prompt no longer teaches a JSON tool-call convention — the model
         # uses native tool calling via the bound schemas.
         agent_system = (
@@ -255,6 +360,7 @@ class SimulationRunner:
                         total_output_tokens=total_output_tokens,
                         completed=False,
                         error=str(e),
+                        final_world=world,
                     )
                 agent_latency = (time.perf_counter() - start) * 1000
                 total_latency_ms += agent_latency
@@ -327,7 +433,7 @@ class SimulationRunner:
 
                 # Run each tool, append result to transcript AND agent history.
                 for tc in tool_calls_this_turn:
-                    tool_result = self._simulate_tool(tc, scenario.tools)
+                    tool_result = self._simulate_tool(tc, scenario.tools, world)
                     tc.result = tool_result
                     turns.append(
                         ConversationTurn(
@@ -374,6 +480,7 @@ class SimulationRunner:
             total_input_tokens=total_input_tokens,
             total_output_tokens=total_output_tokens,
             completed=completed,
+            final_world=world,
         )
 
     def _extract_tool_calls(self, response, content: str, turn: int) -> tuple[list[ToolCall], bool]:
@@ -444,13 +551,34 @@ class SimulationRunner:
 
         return calls
 
-    def _simulate_tool(self, tool_call: ToolCall, available_tools: list[dict]) -> str:
-        """Use an LLM to generate a realistic tool response."""
+    def _simulate_tool(
+        self, tool_call: ToolCall, available_tools: list[dict], world: dict | None
+    ) -> str:
+        """Use an LLM to generate a realistic tool response.
+
+        Two paths:
+
+        - **Stateless (legacy)** — ``world`` is ``None`` (scenario has no
+          ground_truth). The simulator invents a realistic response from the tool
+          schema and args, exactly as before.
+        - **Stateful (v0.2)** — ``world`` is the run's mutable world dict. The
+          simulator is told to answer ONLY from the world, and to return both the
+          tool ``response`` and a ``state_delta`` describing any mutation. The
+          delta is applied to ``world`` (so later calls see the change); only the
+          ``response`` part is fed back to the agent — it never sees the delta or
+          the world.
+        """
         tool_schema = next(
             (t for t in available_tools if t.get("name") == tool_call.tool_name),
             None,
         )
 
+        if world is None:
+            return self._simulate_tool_stateless(tool_call, tool_schema)
+        return self._simulate_tool_stateful(tool_call, tool_schema, world)
+
+    def _simulate_tool_stateless(self, tool_call: ToolCall, tool_schema: dict | None) -> str:
+        """Legacy stateless tool simulation (no ground-truth world)."""
         prompt = (
             "You are simulating a tool/API response. Generate a realistic, "
             "well-formed response for this tool call.\n\n"
@@ -466,6 +594,61 @@ class SimulationRunner:
 
         response = self._tool_sim.invoke([HumanMessage(content=prompt)])
         return response.content if isinstance(response.content, str) else str(response.content)
+
+    def _simulate_tool_stateful(
+        self, tool_call: ToolCall, tool_schema: dict | None, world: dict
+    ) -> str:
+        """Stateful tool simulation: answer from + mutate the canonical world.
+
+        Returns the serialized ``response`` part only (the agent never sees the
+        ``state_delta`` or the world). Applies any parsed ``state_delta`` to
+        ``world`` in place so subsequent tool calls stay coherent.
+        """
+        prompt = (
+            "You are simulating a tool/API backend that operates on a canonical "
+            "STATE (the source of truth). Answer ONLY from STATE. Do not invent "
+            "balances, IDs, or records not present in STATE. If the call should "
+            "fail (unknown ID, insufficient funds, etc.), return a realistic error "
+            "response and an empty state_delta.\n\n"
+            f"Tool: {tool_call.tool_name}\n"
+            f"Arguments: {json.dumps(tool_call.arguments)}\n"
+        )
+        if tool_schema:
+            prompt += f"Tool Schema: {json.dumps(tool_schema)}\n"
+        prompt += (
+            f"\nCURRENT STATE (JSON):\n{json.dumps(world)}\n\n"
+            "Respond with ONLY a JSON object of the form:\n"
+            '{"response": <what the tool returns to the caller>, '
+            '"state_delta": <map of dotted-path -> new value, or {} if read-only>}\n'
+            "Rules for state_delta:\n"
+            '- Keys are dotted paths into STATE, e.g. "accounts.BUS-CHK-001.balance".\n'
+            "- A plain value REPLACES the value at that path.\n"
+            '- To append to a list, use {"__append__": <item>} as the value, e.g. '
+            '"recurring_transfers": {"__append__": {"from": "BUS-CHK-001", ...}}.\n'
+            "- Read-only calls (lookups) return an empty state_delta {}.\n"
+            "- Apply each mutation exactly as the tool would (e.g. a transfer "
+            "decrements the source and increments the destination)."
+        )
+
+        response = self._tool_sim.invoke([HumanMessage(content=prompt)])
+        raw = response.content if isinstance(response.content, str) else str(response.content)
+
+        parsed = _parse_sim_response(raw)
+        if parsed is None:
+            logger.warning(
+                "Tool-sim output for %s unparseable; feeding raw text back, no state_delta",
+                tool_call.tool_name,
+            )
+            return raw
+
+        delta = parsed.get("state_delta")
+        if delta:
+            apply_state_delta(world, delta)
+
+        tool_response = parsed.get("response", parsed)
+        if isinstance(tool_response, str):
+            return tool_response
+        return json.dumps(tool_response)
 
     def _simulate_user_turn(
         self,

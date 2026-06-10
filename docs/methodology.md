@@ -69,6 +69,23 @@ agent loop that lets the agent act on tool results *before* the user replies:
 4. Steps 2–3 repeat within the turn until the agent produces a user-facing message (no tool calls), or an inner cap of **5 tool rounds per user turn** is reached (a safeguard against runaway tool loops).
 5. The user simulator then evaluates whether all goals are met. If yes, the conversation ends. Otherwise the outer loop continues with a new user turn.
 
+**Stateful tool simulation (schema v0.2).** For scenarios that carry a
+`ground_truth`, the tool simulator is no longer a stateless response generator.
+At the start of each run the world is seeded from a deep copy of `ground_truth`
+(one world per run, reset between reliability repeats so mutations never leak
+across runs). On every tool call the simulator is shown the *current* world and
+instructed to **answer ONLY from that state** — never to invent balances, IDs, or
+records not present in it — and to return a structured
+`{"response": …, "state_delta": …}` object. Read-only calls return an empty
+delta; mutating calls (a transfer, a fraud report, a feature request) return a
+dotted-path `state_delta` that the runner applies deterministically to the world,
+so a later "check my balance" reflects the earlier transfer. Only the `response`
+part is fed back to the agent; it never sees the delta or the world. This removes
+the simulator-incoherence failure mode where asking a balance twice yields two
+different numbers and the judge then penalizes the *agent* for the *simulator's*
+drift. When a scenario has no `ground_truth`, the simulator keeps the original
+stateless behavior.
+
 This agent→tool→agent iteration means the model sees and reasons over tool output within the same turn, rather than only on the following turn. The transcript preserves true conversational order — user → agent (with tool calls) → tool results → agent follow-up → … → user — so judges read each tool call before its result.
 
 Native tool calling (rather than a regex-parsed JSON-in-text protocol) measures real tool-calling ability and avoids penalizing models tuned for function-calling APIs. A content-embedded fallback parser exists only for providers that return no native tool calls; it logs a warning whenever it fires so its use is measurable.
@@ -79,7 +96,7 @@ Temperature 0.0 for the agent under test ensures reproducibility. The user simul
 
 After simulation, the full transcript is sent to three independent judges.
 
-#### Task Completion (50% of Efficacy)
+#### Task Completion (40% of Efficacy, or 50% for legacy scenarios)
 
 Each judge evaluates whether the agent accomplished the user's goals:
 
@@ -91,7 +108,7 @@ Judges also assess: appropriate clarifying questions, graceful error recovery, s
 
 The full rubric is in [`eval/scoring/rubrics.py`](../eval/scoring/rubrics.py).
 
-#### Tool Selection Quality (50% of Efficacy)
+#### Tool Selection Quality (30% of Efficacy, or 50% for legacy scenarios)
 
 Each judge evaluates every tool call on five dimensions:
 
@@ -100,6 +117,19 @@ Each judge evaluates every tool call on five dimensions:
 3. **Sequencing**: Were tools called in logical order?
 4. **Necessity**: Was the call needed, or was it redundant?
 5. **Omissions**: Were there tool calls the agent should have made?
+
+#### State Verification (30% of Efficacy, deterministic; v0.2 scenarios only)
+
+For scenarios with a `ground_truth`, the final world state (after the
+conversation) is checked against the scenario's `expected_state_changes` with no
+LLM in the loop. Each assertion uses a tiny vocabulary — `equals`,
+`increased_by`/`decreased_by` (float tolerance 0.01), `contains` (partial-dict
+match with optional `*_contains` substrings) — and the state score is simply the
+fraction of assertions that pass. An empty assertion list encodes the
+no-unauthorized-mutation contract (score 1.0 iff the world is unchanged), which is
+the objective signal for refusal-heavy scope-management and adversarial scenarios.
+This component is judge-independent and free to compute. See
+[`eval/scoring/state_check.py`](../eval/scoring/state_check.py).
 
 #### Multi-Judge Consensus
 
@@ -130,6 +160,23 @@ Because failures shrink the panel, every row publishes explicit accounting so co
 ### 4. CLEAR Dimensions
 
 #### Efficacy (weight: 35%)
+
+Efficacy is **hybrid**: two LLM-judge dimensions plus one deterministic,
+judge-independent dimension (state verification, see §2). For a v0.2 scenario
+that carries a `ground_truth` world:
+
+```
+efficacy = 0.4 × task_completion_consensus
+         + 0.3 × tool_selection_consensus
+         + 0.3 × state_verification   (deterministic, from expected_state_changes)
+```
+
+A full third of Efficacy is therefore objective — "did the transfer actually
+happen?" is checked against the post-conversation world, not inferred by a judge.
+For **legacy scenarios with no `ground_truth`**, state verification is
+inapplicable and Efficacy degrades gracefully, renormalizing to the original
+equal split over the two judge dimensions:
+
 ```
 efficacy = 0.5 × task_completion_consensus + 0.5 × tool_selection_consensus
 ```
@@ -213,7 +260,7 @@ These weights reflect production priorities: efficacy matters most (a wrong answ
 
 - **Synthetic scenarios**: While carefully designed, synthetic conversations don't capture the full messiness of real-world interactions
 - **LLM-as-judge**: Judge quality is bounded by the judge models' capabilities. We mitigate with multi-judge consensus but this is an inherent limitation
-- **Tool simulation**: Tool responses are LLM-generated, not from real APIs. Edge cases in real API behavior may not be represented
+- **Tool simulation**: The tool simulator still generates the response *surface* with an LLM, so edge cases in real API behavior may not be perfectly represented. For v0.2 scenarios, however, the underlying *values* are pinned to a canonical `ground_truth` world the simulator must answer from and mutate, and the resulting state is verified deterministically — so balances, IDs, and records stay coherent across a run rather than being freely invented
 - **Temperature 0.0**: Deterministic agent responses miss potential failure modes at higher temperatures
 - **Domain coverage**: V1 covers 2 domains. Agent performance varies significantly by domain
 - **Cost approximation**: Token costs use published pricing; actual costs may vary with volume discounts or cached tokens
