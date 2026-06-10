@@ -65,7 +65,7 @@ Two open-weight judges from different labs (Kimi from Moonshot AI, GLM from Zhip
 
 ## Models Evaluated
 
-The launch roster spans 12 models across 2 domains — 11 current frontier/
+The launch roster spans 11 models across 2 domains — 10 current frontier/
 efficient/open-weight models plus one legacy cross-generation anchor (verified
 against live provider sources 2026-06-10):
 
@@ -136,11 +136,48 @@ python -m scripts.run_eval --parallel-models 2
 
 All three judges run over hosted APIs — Kimi K2.6 and GLM-4.6 through OpenRouter, Opus through Anthropic — so the full consensus needs only API keys, no GPU.
 
+Other `run_eval` options:
+
+```bash
+# Run an external private-holdout scenario set alongside the public corpus, so
+# the board shows a public-vs-holdout efficacy gap (overfitting tripwire, #31).
+# The holdout content is never stored in this repo; falls back to the
+# COT_BENCH_HOLDOUT_DIR env var when the flag is omitted.
+python -m scripts.run_eval --holdout-dir /path/to/private/scenarios
+
+# Also run the deterministic do-nothing null agent (anti-gaming validation).
+# It should score near zero; it never appears on the leaderboard.
+python -m scripts.run_eval --include-null-agent
+
+# Use the legacy two-call judge path (one call per rubric) instead of the
+# default combined single-call path. Kept for A/B validation only.
+python -m scripts.run_eval --separate-judge-calls
+```
+
+By default each run also writes a `pre_registration.json` (the run's frozen
+config, model list, and scenario-corpus hash, committed *before* any model call)
+and per-run artifacts; disable artifacts with `--no-artifacts`.
+
 ### Generate leaderboard
 
 ```bash
 python -m scripts.aggregate_results
 # Outputs: data/results/leaderboard.json + data/results/latest.csv
+```
+
+### Validate scenarios and calibrate judges
+
+```bash
+# Validate the scenario corpus against the schema and distribution bands
+python -m scripts.validate_scenarios            # informational distribution check
+python -m scripts.validate_scenarios --strict-distribution  # bands become failures
+
+# Human judge-calibration (issue #33): sample a blind labeling workbook from a
+# run's artifacts, then score filled-in human labels against the key. The key is
+# written as a sibling of the workbook dir (workbook_key.json) so it can't be
+# opened by accident while labeling.
+python -m scripts.calibration sample --artifacts data/results/artifacts/<run_id> --out workbook/
+python -m scripts.calibration score --workbook workbook/ --key workbook_key.json
 ```
 
 ## Architecture
@@ -176,25 +213,37 @@ cot-bench/
 ├── eval/                          # Core evaluation library
 │   ├── config.py                  # Domains, models, judges, token costs
 │   ├── tracing.py                 # OpenInference/OTel trace emission
+│   ├── artifacts.py               # Per-run artifact (transcript + judge output) writer
+│   ├── pre_registration.py        # Pre-run config + corpus-hash artifact (frozen before any call)
 │   ├── scoring/
 │   │   ├── rubrics.py             # Published evaluation rubrics (the IP)
-│   │   └── judge.py              # Concurrent multi-judge orchestration
+│   │   ├── judge.py               # Concurrent multi-judge orchestration
+│   │   ├── agreement.py           # Inter-judge agreement (Krippendorff alpha)
+│   │   └── state_check.py         # Deterministic ground-truth state verification
 │   ├── simulation/
-│   │   └── runner.py             # Multi-turn conversation engine
+│   │   └── runner.py              # Multi-turn conversation engine
 │   └── providers/
-│       └── registry.py           # Config-driven model provider registry
+│       ├── registry.py            # Config-driven model provider registry
+│       └── null_agent.py          # Deterministic do-nothing agent (anti-gaming)
 ├── data/
 │   ├── domains/                   # Domain tool + persona definitions
 │   ├── scenarios/                 # Test scenarios (generated JSON)
 │   └── results/                   # Evaluation outputs (parquet + csv + json)
+│       ├── leaderboard.json       # Aggregated leaderboard (the frontend reads this)
+│       ├── pre_registration.json  # Per-run frozen config + corpus hash
+│       ├── run_manifest.json      # Per-run requested/completed/failed models + counts
 │       ├── artifacts/             # Per-run transcripts + raw judge outputs (audit trail)
 │       └── traces/                # OpenInference spans as JSONL (Phoenix-loadable)
 ├── scripts/
-│   ├── run_eval.py               # Main evaluation CLI
-│   ├── generate_data.py          # Synthetic scenario generation
-│   └── aggregate_results.py      # Leaderboard computation
+│   ├── run_eval.py                # Main evaluation CLI
+│   ├── generate_data.py           # Synthetic scenario generation
+│   ├── aggregate_results.py       # Leaderboard computation
+│   ├── validate_scenarios.py      # Scenario schema + distribution validation
+│   ├── calibration.py             # Human judge-calibration workbook + scoring
+│   ├── preflight.py               # API-key / environment preflight check
+│   └── first_run.sh               # Minimal end-to-end first-run script
 ├── frontend/
-│   └── index.html                # Leaderboard UI (GitHub Pages)
+│   └── index.html                 # Leaderboard UI (GitHub Pages)
 ├── tests/                         # Tests covering scoring, parsing, config, validation
 ├── docs/                          # Detailed documentation
 └── .github/workflows/             # CI + weekly eval + GitHub Pages deploy
@@ -223,6 +272,7 @@ cot-bench/
 
 Every run publishes the evidence behind its scores, not just the numbers:
 
+- **Pre-registration** — before any model or simulator call, `data/results/pre_registration.json` records the run's frozen config (models, judges, reliability runs, seeds, temperatures) and a SHA-256 hash of the public scenario corpus plus its scenario index. A private holdout (if run) is recorded as a hash and count only — never its scenario IDs. This commits to the evaluation setup up front so results can't be selectively reported after the fact.
 - **Per-evaluation artifacts** — for each `(scenario, model, run)`, a JSON file under `data/results/artifacts/{run_id}/{model-slug}/{scenario_id}_run{n}.json` contains the full conversation transcript (every turn, tool call, tool result, and call id) plus each judge's raw output for both rubrics (score, reasoning, `parse_failed` flag, and the raw parsed response). This lets anyone see *why* a published score is what it is. On by default; disable with `--no-artifacts`.
 - **Trace export** — agent turns and judge evaluations are emitted as [OpenInference](https://github.com/Arize-ai/openinference)-attributed OpenTelemetry spans and written to `data/results/traces/{run_id}/spans.jsonl` (one span per line). The JSONL is loadable into [Arize Phoenix](https://github.com/Arize-ai/phoenix) or any OTel/OpenInference reader. Set `COT_BENCH_TRACE_DIR` to override the output location.
 - **Run manifest** — `data/results/run_manifest.json` records the run id, which models were requested/completed/failed, domains, scenario counts, and the artifact/trace directories.

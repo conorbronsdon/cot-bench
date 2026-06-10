@@ -50,8 +50,7 @@ bash scripts/first_run.sh
 
 **What happens under the hood:**
 - Loads the 2 banking scenarios (Margaret Chen's multi-task banking visit, James Okafor's bounced rent payment)
-- For each scenario, runs GPT-4.1-mini through a multi-turn conversation (up to 10 turns)
-- Then runs Claude Haiku 4.5 through the same scenarios
+- Evaluates two cheap/fast models under test — GPT-5.4-mini and Claude Haiku 4.5 — running each through every scenario in a multi-turn conversation (up to 10 turns). The user and tool simulators are GPT-4.1-mini.
 - After each simulation, sends the transcript to Claude Opus to score task completion and tool selection
 - Saves results to `data/results/`
 
@@ -74,7 +73,7 @@ open frontend/index.html
 ```bash
 # More models
 python -m scripts.run_eval \
-  --models "GPT-5.5" "Claude Opus 4.8" "Gemini 3.1 Pro" \
+  --models "GPT-5.5" "Claude Sonnet 4.6" "Gemini 3.1 Pro" \
   --judges opus
 
 # Both domains
