@@ -46,7 +46,9 @@ def canonical_scenario_bytes(scenario_data: dict) -> bytes:
 
     Sorted keys, compact separators, UTF-8. The same logical scenario produces
     the same bytes regardless of on-disk key order or whitespace, so the corpus
-    hash tracks scenario *content*, not file formatting.
+    hash tracks scenario *content*, not file formatting. Float repr stability is
+    guaranteed on CPython (shortest-repr since 3.1), which is what the bench and
+    CI run; other interpreters are not a supported audit path.
     """
     return json.dumps(scenario_data, sort_keys=True, separators=(",", ":")).encode("utf-8")
 

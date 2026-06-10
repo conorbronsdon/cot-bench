@@ -85,7 +85,8 @@ The pre-registration records:
   scenario is re-serialized with sorted keys, the per-scenario digests are sorted
   by scenario ID, and they are folded into one corpus digest — so the hash is
   deterministic and independent of on-disk file order or whitespace. A
-  `scenario_index` (id → content sha256) is included so an auditor can recompute
+  `scenario_index` (a sorted list of `{domain, scenario_id, sha256}` entries) is
+  included so an auditor can recompute
   it. Any change to any scenario's content, or adding/removing a scenario,
   changes the corpus hash. This is the corpus-level hash the per-scenario ID
   fragments (`scripts/generate_data.py`) did not previously provide.
