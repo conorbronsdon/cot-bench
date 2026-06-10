@@ -67,7 +67,7 @@ agent loop that lets the agent act on tool results *before* the user replies:
 2. **Agent under test** (the model being evaluated, temperature 0.0) responds. Tools are provided through **native function calling** (LangChain `bind_tools`): each scenario tool definition is converted to an OpenAI-style JSON Schema function, and tool calls are read from the model's structured `tool_calls`. The agent is not asked to emit a bespoke JSON-in-text convention.
 3. If the agent calls one or more tools, the **tool simulator** (GPT-4.1-mini, temperature 0.0) generates realistic responses conforming to each tool's schema. Results are returned to the agent as `ToolMessage`s, and **the agent is re-invoked** on those results.
 4. Steps 2–3 repeat within the turn until the agent produces a user-facing message (no tool calls), or an inner cap of **5 tool rounds per user turn** is reached (a safeguard against runaway tool loops).
-5. The user simulator then evaluates whether all goals are met. If yes, the conversation ends. Otherwise the outer loop continues with a new user turn.
+5. The user simulator then decides whether it is **done talking**. If it signals completion the conversation ends; otherwise the outer loop continues with a new user turn. Crucially, the user sim does **not** get to declare the goals *met* — see "Decoupling completion from goal-completion" below.
 
 **Stateful tool simulation (schema v0.2).** For scenarios that carry a
 `ground_truth`, the tool simulator is no longer a stateless response generator.
@@ -85,6 +85,46 @@ the simulator-incoherence failure mode where asking a balance twice yields two
 different numbers and the judge then penalizes the *agent* for the *simulator's*
 drift. When a scenario has no `ground_truth`, the simulator keeps the original
 stateless behavior.
+
+**Decoupling completion from goal-completion (user-sim independence).** A single
+LLM plays the user simulator, and the published literature is clear that
+simulated users are miscalibrated and over-cooperative: which model plays the
+user can swing agent success by up to ~9 points ([Lost in Simulation, arXiv
+2601.17087](https://arxiv.org/abs/2601.17087); [Sim2Real, arXiv
+2603.11245](https://arxiv.org/pdf/2603.11245)). If that same simulator both plays
+the customer **and** decides the goals are met, its bias contaminates the stop
+condition: a sim that gets tired or is too easily satisfied can end a
+conversation early, and the agent is then credited (or blamed) for an ending the
+simulator chose. We therefore split the two signals:
+
+- The user simulator only declares that it is **done talking** (it emits the
+  conversation-complete token). This is recorded as `ended_by = "user_sim"`.
+- Whether the goals were actually accomplished is the **deterministic state
+  check** (`score_state_changes`, the same grader used for the post-run
+  `state_score`), evaluated against the mutated world at the exact moment the
+  conversation ended and recorded as `state_progress_at_end` (the pass fraction
+  in `[0, 1]`, or null for legacy scenarios with no `ground_truth`).
+
+When the sim ends the conversation while the state check is still below 1.0, the
+run is flagged `premature_end = True`: the simulator quit before the goals were
+verifiably met. We do **not** silently treat that ending as a success, and we do
+not extend the conversation either — extending would let an already-miscalibrated
+sim keep driving turns and would change the agent's scoring conditions. Instead
+the discrepancy is made **visible and aggregable**: `ended_by`,
+`state_progress_at_end`, and `premature_end` are written to every per-run
+artifact (`sim_meta`) and to the results parquet, and `aggregate_results` reports
+a per-model **premature-ending rate** on the leaderboard. The deterministic
+state check — not the simulator's satisfaction — remains the source of truth for
+goal completion (it already drives 30% of Efficacy via `state_score`); this
+change ensures a biased sim can no longer launder an early exit into an apparent
+pass. Scenarios without a `ground_truth` have no deterministic check to gate on,
+so for those the sim signal is still all the harness has; `state_progress_at_end`
+is null and `premature_end` is false for them, which is the honest accounting.
+
+This is part 1 of the user-simulator de-risking. A planned part 2 (not yet run)
+is a sim-sensitivity check that re-runs a subset under a second simulator model
+and publishes the agent-score delta, directly quantifying the swing the
+literature warns about.
 
 This agent→tool→agent iteration means the model sees and reasons over tool output within the same turn, rather than only on the following turn. The transcript preserves true conversational order — user → agent (with tool calls) → tool results → agent follow-up → … → user — so judges read each tool call before its result.
 

@@ -576,6 +576,24 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
     else:
         overall["state_score"] = np.nan
 
+    # Premature-ending rate (#32): the fraction of a model's runs the user sim
+    # ended while the deterministic state check was still below 1.0. This makes
+    # the user-sim/goal-completion decoupling visible at the leaderboard level —
+    # a high rate means the simulator is quitting before goals are verifiably met
+    # (or the agent is leaving goals unmet but reassuring the sim). Merged
+    # separately so legacy parquets without the column don't break the agg.
+    if "premature_end" in df.columns:
+        premature = (
+            df.assign(_premature=df["premature_end"].fillna(False).astype(bool))
+            .groupby("model")["_premature"]
+            .mean()
+            .reset_index()
+            .rename(columns={"_premature": "premature_end_rate"})
+        )
+        overall = overall.merge(premature, on="model", how="left")
+    else:
+        overall["premature_end_rate"] = np.nan
+
     # Compute composite CLEAR score (normalized, equal weight)
     # Higher is better for efficacy and reliability
     # Lower is better for cost and latency — invert these
@@ -685,6 +703,10 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
             "task_completion": round(row["task_completion"], 4),
             "tool_selection": round(row["tool_selection"], 4),
             "state_score": _round_or_none(row.get("state_score"), 4),
+            # Premature-ending rate (#32): share of this model's runs the user
+            # sim ended before the deterministic state check passed. None for
+            # legacy parquets that predate the column.
+            "premature_end_rate": _round_or_none(row.get("premature_end_rate"), 4),
             "cost_per_task_usd": round(row["cost_per_task"], 6),
             "avg_latency_ms": round(row["avg_latency_ms"], 1),
             "reliability": round(row["reliability"], 4),

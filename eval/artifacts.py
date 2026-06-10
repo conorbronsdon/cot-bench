@@ -105,6 +105,14 @@ def build_artifact(
             "latency_ms": sim_result.total_latency_ms,
             "error": sim_result.error,
             "resolved_model": getattr(sim_result, "resolved_model", None),
+            # User-sim completion decoupling (#32). ``completed`` only says the
+            # conversation stopped; these three say HOW it stopped and whether
+            # the goals were verifiably met when it did, so a premature ending
+            # (sim quit before the deterministic state check passed) is auditable
+            # per run and aggregable into a premature-ending rate.
+            "ended_by": getattr(sim_result, "ended_by", "max_turns"),
+            "state_progress_at_end": getattr(sim_result, "state_progress_at_end", None),
+            "premature_end": getattr(sim_result, "premature_end", False),
         },
     }
     if state is not None:
