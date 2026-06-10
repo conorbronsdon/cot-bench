@@ -113,6 +113,18 @@ class SimulationResult:
     # provider says it SERVED — they can differ on alias/routed providers
     # (OpenRouter does not pin the upstream provider or quantization).
     resolved_model: str | None = None
+    # Simulator-side token usage, summed across all user-sim + tool-sim calls in
+    # this conversation (issue #47). Separate from the agent token totals above so
+    # the running cost guard can price the simulators at THEIR model id (which can
+    # be overridden per run, issue #50) rather than the agent's. Zero when a
+    # provider returns no usage_metadata.
+    sim_input_tokens: int = 0
+    sim_output_tokens: int = 0
+    # Resolved sim model ids (requested form) for this run — recorded so the sim
+    # tokens above can be priced and the sensitivity-test delta (#50) is
+    # attributable. Filled from the runner's SimulationConfig.
+    user_sim_model: str | None = None
+    tool_sim_model: str | None = None
 
 
 @dataclass
@@ -309,6 +321,32 @@ class SimulationRunner:
         )
 
     @staticmethod
+    def _usage_tokens(response) -> tuple[int, int]:
+        """Extract (input_tokens, output_tokens) from a LangChain response.
+
+        Returns ``(0, 0)`` when the provider returned no ``usage_metadata`` so a
+        missing count never crashes a run — it just under-counts that call's
+        contribution to the cost guard, which is the safe direction (the preflight
+        estimate already over-states; a missing-usage provider only makes the
+        actual look cheaper, never falsely tripping the cap).
+        """
+        usage = getattr(response, "usage_metadata", None)
+        if not usage:
+            return 0, 0
+        return usage.get("input_tokens", 0) or 0, usage.get("output_tokens", 0) or 0
+
+    def _accumulate_sim_tokens(self, response) -> None:
+        """Add one simulator call's token usage to the per-run sim totals.
+
+        Only ever called from within :meth:`run`, which initializes the counters
+        before any simulator call. Uses ``getattr`` defaults so a test that drives
+        a simulator helper directly (without going through ``run``) does not crash.
+        """
+        in_t, out_t = self._usage_tokens(response)
+        self._sim_input_tokens = getattr(self, "_sim_input_tokens", 0) + in_t
+        self._sim_output_tokens = getattr(self, "_sim_output_tokens", 0) + out_t
+
+    @staticmethod
     def _state_progress(scenario: Scenario, world: dict | None) -> float | None:
         """Deterministic state-check pass fraction for ``world`` right now.
 
@@ -361,6 +399,11 @@ class SimulationRunner:
         turns: list[ConversationTurn] = []
         total_input_tokens = 0
         total_output_tokens = 0
+        # Simulator-side tokens (user sim + tool sim), accumulated per-run for the
+        # cost guard (issue #47). Reset every run() call so a runner reused across
+        # scenarios does not leak one scenario's sim tokens into the next.
+        self._sim_input_tokens = 0
+        self._sim_output_tokens = 0
         total_latency_ms = 0.0
         completed = False
         resolved_model: str | None = None
@@ -429,6 +472,10 @@ class SimulationRunner:
                         ended_by="error",
                         state_progress_at_end=self._state_progress(scenario, world),
                         premature_end=False,
+                        sim_input_tokens=self._sim_input_tokens,
+                        sim_output_tokens=self._sim_output_tokens,
+                        user_sim_model=self.config.user_simulator_model,
+                        tool_sim_model=self.config.tool_simulator_model,
                     )
                 agent_latency = (time.perf_counter() - start) * 1000
                 total_latency_ms += agent_latency
@@ -582,6 +629,10 @@ class SimulationRunner:
             ended_by=ended_by,
             state_progress_at_end=state_progress_at_end,
             premature_end=premature_end,
+            sim_input_tokens=self._sim_input_tokens,
+            sim_output_tokens=self._sim_output_tokens,
+            user_sim_model=self.config.user_simulator_model,
+            tool_sim_model=self.config.tool_simulator_model,
         )
 
     def _extract_tool_calls(self, response, content: str, turn: int) -> tuple[list[ToolCall], bool]:
@@ -694,6 +745,7 @@ class SimulationRunner:
         )
 
         response = self._tool_sim.invoke([HumanMessage(content=prompt)])
+        self._accumulate_sim_tokens(response)
         return response.content if isinstance(response.content, str) else str(response.content)
 
     def _simulate_tool_stateful(
@@ -732,6 +784,7 @@ class SimulationRunner:
         )
 
         response = self._tool_sim.invoke([HumanMessage(content=prompt)])
+        self._accumulate_sim_tokens(response)
         raw = response.content if isinstance(response.content, str) else str(response.content)
 
         parsed = _parse_sim_response(raw)
@@ -829,4 +882,5 @@ class SimulationRunner:
         )
 
         response = self._user_sim.invoke([HumanMessage(content=prompt)])
+        self._accumulate_sim_tokens(response)
         return response.content if isinstance(response.content, str) else str(response.content)

@@ -41,6 +41,14 @@ class JudgeResult:
     # Provider-reported model id for the call (for OpenRouter judges, the
     # upstream model actually served). Recorded for reproducibility audits.
     resolved_model: str = ""
+    # Judge-call token usage (issue #47), used to price the judge side of a run's
+    # actual spend at the judge's configured model id. Zero when the provider
+    # returned no usage on the response. For the combined single-call path BOTH
+    # returned per-dimension results carry the SAME call's usage; the run loop
+    # must count it ONCE per judge call, not once per dimension (see
+    # evaluate_scenario).
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 @dataclass
@@ -162,14 +170,17 @@ def _call_judge_api(
     judge: JudgeConfig,
     system_prompt: str,
     rubric_prompt: str,
-) -> tuple[str, str]:
-    """Make a single judge API call; return (raw text content, resolved model).
+) -> tuple[str, str, tuple[int, int]]:
+    """Make a single judge API call.
+
+    Returns ``(raw text content, resolved model, (input_tokens, output_tokens))``.
 
     Separated from :func:`score_with_judge` so the orchestration layer can
     retry it (a fresh API call) without re-implementing provider dispatch.
     The resolved model is the provider-reported model id for the call — for
     OpenRouter judges this is the upstream model actually served, which the
-    request slug does not pin.
+    request slug does not pin. The token tuple feeds the run's actual-spend
+    accumulator (issue #47); it is ``(0, 0)`` if the provider returns no usage.
     """
     if judge.provider == "anthropic":
         client = _get_anthropic_client()
@@ -180,7 +191,13 @@ def _call_judge_api(
             temperature=judge.temperature,
             max_tokens=judge.max_tokens,
         )
-        return response.content[0].text, getattr(response, "model", "") or ""
+        usage = getattr(response, "usage", None)
+        tokens = (
+            (getattr(usage, "input_tokens", 0) or 0, getattr(usage, "output_tokens", 0) or 0)
+            if usage
+            else (0, 0)
+        )
+        return response.content[0].text, getattr(response, "model", "") or "", tokens
     elif judge.provider == "openrouter":
         # Open-weight judges via OpenRouter (OpenAI-compatible). Needs a real
         # key, unlike a self-hosted local endpoint.
@@ -195,7 +212,13 @@ def _call_judge_api(
             temperature=judge.temperature,
             max_tokens=judge.max_tokens,
         )
-        return response.choices[0].message.content, getattr(response, "model", "") or ""
+        usage = getattr(response, "usage", None)
+        tokens = (
+            (getattr(usage, "prompt_tokens", 0) or 0, getattr(usage, "completion_tokens", 0) or 0)
+            if usage
+            else (0, 0)
+        )
+        return response.choices[0].message.content, getattr(response, "model", "") or "", tokens
     else:
         raise ValueError(
             f"Unknown judge provider {judge.provider!r} for {judge.name}. "
@@ -230,9 +253,17 @@ def score_with_judge(
 
     parsed = None
     resolved_model = ""
+    input_tokens = 0
+    output_tokens = 0
     attempts = 2  # initial call + one retry on parse failure
     for attempt in range(attempts):
-        content, resolved_model = _call_judge_api(judge, system_prompt, rubric_prompt)
+        content, resolved_model, (in_t, out_t) = _call_judge_api(
+            judge, system_prompt, rubric_prompt
+        )
+        # Cost is incurred on every call, including the retry, so accumulate
+        # across attempts rather than overwriting (issue #47).
+        input_tokens += in_t
+        output_tokens += out_t
         parsed = _parse_judge_response(content)
         if parsed is not None:
             break
@@ -257,6 +288,8 @@ def score_with_judge(
             latency_ms=latency_ms,
             parse_failed=True,
             resolved_model=resolved_model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )
 
     return JudgeResult(
@@ -267,6 +300,8 @@ def score_with_judge(
         raw_response=parsed,
         latency_ms=latency_ms,
         resolved_model=resolved_model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
     )
 
 
@@ -304,9 +339,16 @@ def score_with_judge_combined(
 
     parsed = None
     resolved_model = ""
+    input_tokens = 0
+    output_tokens = 0
     attempts = 2  # initial call + one retry on parse failure
     for attempt in range(attempts):
-        content, resolved_model = _call_judge_api(judge, system_prompt, combined_prompt)
+        content, resolved_model, (in_t, out_t) = _call_judge_api(
+            judge, system_prompt, combined_prompt
+        )
+        # Accumulate across attempts (the retry costs real tokens too).
+        input_tokens += in_t
+        output_tokens += out_t
         candidate = _parse_judge_response(content)
         # A whole-judge success requires BOTH dimensions to be present and valid.
         if candidate is not None and all(
@@ -330,6 +372,10 @@ def score_with_judge_combined(
             judge.name,
             attempts,
         )
+        # One API call produced both dimensions, so its token usage is attributed
+        # to the FIRST dimension only (index 0) and zero to the second — the run's
+        # cost accumulator then counts each combined call's tokens exactly once
+        # (issue #47).
         failed = tuple(
             JudgeResult(
                 judge_name=judge.name,
@@ -340,11 +386,16 @@ def score_with_judge_combined(
                 latency_ms=latency_ms,
                 parse_failed=True,
                 resolved_model=resolved_model,
+                input_tokens=input_tokens if i == 0 else 0,
+                output_tokens=output_tokens if i == 0 else 0,
             )
-            for rt in COMBINED_RUBRIC_TYPES
+            for i, rt in enumerate(COMBINED_RUBRIC_TYPES)
         )
         return failed  # type: ignore[return-value]
 
+    # Token usage from the single combined call goes on the FIRST dimension only
+    # (see the parse-failure branch above) so the run's cost accumulator counts it
+    # once per call rather than once per dimension.
     results = tuple(
         JudgeResult(
             judge_name=judge.name,
@@ -354,8 +405,10 @@ def score_with_judge_combined(
             raw_response=_extract_combined_dimension(parsed, rt),
             latency_ms=latency_ms,
             resolved_model=resolved_model,
+            input_tokens=input_tokens if i == 0 else 0,
+            output_tokens=output_tokens if i == 0 else 0,
         )
-        for rt in COMBINED_RUBRIC_TYPES
+        for i, rt in enumerate(COMBINED_RUBRIC_TYPES)
     )
     return results  # type: ignore[return-value]
 

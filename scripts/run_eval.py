@@ -20,6 +20,12 @@ from eval.config import (
     TOKEN_COSTS,
     Domain,
 )
+from eval.cost import (
+    BUDGET_EXCEEDED_EXIT_CODE,
+    CostAccumulator,
+    estimate_run_cost,
+    token_cost,
+)
 from eval.pre_registration import (
     PRE_REGISTRATION_FILENAME,
     build_pre_registration,
@@ -138,6 +144,19 @@ def format_transcript(turns) -> str:
         for tc in t.tool_calls:
             lines.append(f"  -> Tool Call: {tc.tool_name}({json.dumps(tc.arguments)})")
     return "\n".join(lines)
+
+
+def _judge_model_id(judge_name: str) -> str | None:
+    """Map a judge's display name back to its configured model_id for pricing.
+
+    JudgeResult carries the human-facing judge name (e.g. "Claude Opus 4.6"), but
+    TOKEN_COSTS is keyed by model_id. This reverse lookup lets the cost guard price
+    judge tokens (issue #47). Returns None for an unknown name (priced at $0).
+    """
+    for cfg in JUDGES.values():
+        if cfg.name == judge_name:
+            return cfg.model_id
+    return None
 
 
 def _round_or_none(value, ndigits):
@@ -281,6 +300,11 @@ def evaluate_scenario(
 ):
     """Run simulation + multi-judge scoring for one scenario, one model.
 
+    Returns ``(result_row, eval_cost_usd)`` — the flat results row and the TOTAL
+    actual spend for this evaluation (agent + simulators + judges), the latter fed
+    to the run's --max-cost accumulator (issue #47). The row's own ``cost_usd``
+    column stays agent-only (the published CLEAR Cost dimension).
+
     Args:
         run_id: Stem of the output parquet — groups a run's artifacts/traces.
         run_index: Which reliability repeat this is (0-based).
@@ -376,7 +400,11 @@ def evaluate_scenario(
     # gracefully to 0.5/0.5 when there is no state score).
     efficacy = compute_efficacy(tc_result.consensus_score, ts_result.consensus_score, state_score)
 
-    # Compute cost
+    # Compute cost. The PUBLISHED row cost (the CLEAR Cost dimension) is the AGENT
+    # cost only — what it costs to run the model under test — so the leaderboard
+    # number is unchanged by the cost guard. The simulator + judge costs are
+    # harness overhead, priced separately below and fed only to the run's
+    # actual-spend accumulator (issue #47), never into the row's cost_usd.
     costs = TOKEN_COSTS.get(agent_spec.model_id)
     if costs is None:
         logger.warning(
@@ -388,6 +416,30 @@ def evaluate_scenario(
         sim_result.total_input_tokens * costs["input"] / 1_000_000
         + sim_result.total_output_tokens * costs["output"] / 1_000_000
     )
+
+    # Total actual spend for THIS evaluation = agent + simulators + judges, each
+    # priced at its own model id. This is what the --max-cost budget guard tracks.
+    # Simulators are priced at the (possibly overridden, issue #50) sim model ids
+    # recorded on the result; judges at each judge's configured model id. The
+    # combined judge path attributes each call's tokens to the first dimension
+    # only, so summing input/output_tokens across all JudgeResults counts each
+    # call once.
+    sim_cost = token_cost(
+        sim_result.user_sim_model, sim_result.sim_input_tokens / 2, sim_result.sim_output_tokens / 2
+    ) + token_cost(
+        sim_result.tool_sim_model, sim_result.sim_input_tokens / 2, sim_result.sim_output_tokens / 2
+    )
+    judge_cost = 0.0
+    for consensus in (tc_result, ts_result):
+        for jr in consensus.judge_results:
+            jr_costs = TOKEN_COSTS.get(_judge_model_id(jr.judge_name))
+            if jr_costs is None:
+                continue
+            judge_cost += (
+                jr.input_tokens * jr_costs["input"] / 1_000_000
+                + jr.output_tokens * jr_costs["output"] / 1_000_000
+            )
+    eval_cost_usd = cost_usd + sim_cost + judge_cost
 
     # Persist the per-evaluation artifact (transcript + raw judge outputs) so a
     # published score is auditable back to its evidence. Default on; disabled
@@ -418,7 +470,7 @@ def evaluate_scenario(
                 run_index,
             )
 
-    return build_result_row(
+    row = build_result_row(
         scenario,
         agent_spec,
         sim_result,
@@ -428,6 +480,10 @@ def evaluate_scenario(
         cost_usd,
         state_result=state_result,
     )
+    # Return the row plus the TOTAL actual spend for this evaluation (agent + sims
+    # + judges) so the run loop can feed the --max-cost accumulator (issue #47).
+    # The row's own cost_usd stays agent-only (the published Cost dimension).
+    return row, eval_cost_usd
 
 
 def _run_model_scenarios(
@@ -440,22 +496,66 @@ def _run_model_scenarios(
     run_id,
     artifacts_root=None,
     separate_judge_calls=False,
+    runner=None,
+    cost_acc=None,
+    completed_keys=None,
 ):
-    """Evaluate a single model across all domains/scenarios. Runs in a thread."""
+    """Evaluate a single model across all domains/scenarios. Runs in a thread.
+
+    ``runner`` lets a caller inject a pre-built SimulationRunner with overridden
+    simulator models (issue #50); when None a default one is created here, so
+    every existing caller keeps the previous behavior. ``cost_acc`` is the run's
+    shared :class:`CostAccumulator` (issue #47): each completed evaluation adds its
+    actual spend, and once the cap is crossed this model stops submitting new
+    evaluations (in-flight work already finished, its artifacts persisted). The
+    per-evaluation artifact is the checkpoint — the parquet is only written at the
+    end — so a budget stop leaves completed work auditable on disk.
+    ``completed_keys`` is the set of ``(model, scenario_id, run_index)`` tuples
+    already done in a resumed run (issue #48); matching tuples are skipped.
+    """
     agent_spec = ModelSpec(
         name=model_cfg["name"],
         model_id=model_cfg["model_id"],
         provider=model_cfg["provider"],
     )
     # Each model gets its own runner (owns its own simulator model instances)
-    runner = SimulationRunner()
+    # unless one was injected (sim-model override path, issue #50).
+    if runner is None:
+        runner = SimulationRunner()
+    completed_keys = completed_keys or set()
     results = []
 
     for domain, scenarios in scenarios_by_domain.items():
         logger.info("Evaluating %s on %s", agent_spec.name, domain.value)
         for scenario in scenarios:
+            # Stop submitting new evaluations once the budget cap is crossed
+            # (issue #47). In-flight evaluations for OTHER models keep running in
+            # their own threads and finish; this model just stops here.
+            if cost_acc is not None and cost_acc.exceeded():
+                logger.warning(
+                    "Budget cap reached ($%.4f >= $%.2f) — %s stops before %s "
+                    "(completed work is persisted to artifacts)",
+                    cost_acc.total(),
+                    cost_acc.max_cost,
+                    agent_spec.name,
+                    scenario.id,
+                )
+                return results
             run_scores = []
+            scored_indices = []
             for run_idx in range(reliability_runs):
+                # Resume: skip a (model, scenario, run) tuple already completed in
+                # the original run (issue #48). Its artifact is reloaded and merged
+                # by the caller; we must not re-run (and re-pay for) it.
+                if (agent_spec.name, scenario.id, run_idx) in completed_keys:
+                    logger.info(
+                        "  RESUME skip: %s / %s run %d/%d already completed",
+                        agent_spec.name,
+                        scenario.id,
+                        run_idx + 1,
+                        reliability_runs,
+                    )
+                    continue
                 logger.info(
                     "  %s / %s, run %d/%d",
                     agent_spec.name,
@@ -463,7 +563,7 @@ def _run_model_scenarios(
                     run_idx + 1,
                     reliability_runs,
                 )
-                result = evaluate_scenario(
+                result, eval_cost = evaluate_scenario(
                     runner,
                     scenario,
                     agent_spec,
@@ -478,9 +578,25 @@ def _run_model_scenarios(
                 result["evaluated_at"] = datetime.now(timezone.utc).isoformat()
                 results.append(result)
                 run_scores.append(result["efficacy"])
+                scored_indices.append(len(results) - 1)
 
+                if cost_acc is not None:
+                    running = cost_acc.add(agent_spec.name, eval_cost)
+                    logger.info(
+                        "  running cost: %s $%.4f / total $%.4f",
+                        agent_spec.name,
+                        cost_acc.model_total(agent_spec.name),
+                        running,
+                    )
+
+            # Reliability is only computable over the runs scored THIS session;
+            # a resumed run reattaches reliability from artifacts on merge, and a
+            # fully-skipped scenario has no fresh rows to annotate here.
+            if not scored_indices:
+                continue
             reliability = compute_reliability(run_scores)
-            for r in results[-reliability_runs:]:
+            for idx in scored_indices:
+                r = results[idx]
                 r["reliability_pass_rate"] = reliability["pass_rate"]
                 r["reliability_consistency"] = reliability["consistency"]
                 # pass^k (tau-bench): one column per k. The headline is k = the
@@ -590,6 +706,18 @@ def main():
             "Output path for results "
             "(default: data/results/results_<UTC timestamp>.parquet, "
             "matching the glob aggregate_results.py expects)"
+        ),
+    )
+    parser.add_argument(
+        "--max-cost",
+        type=float,
+        default=None,
+        help=(
+            "Abort gracefully once actual accumulated spend (agent + simulators + "
+            "judges, in USD) reaches this cap. In-flight evaluations finish and all "
+            "artifacts/parquet/manifest for completed work are written; the process "
+            f"then exits with code {BUDGET_EXCEEDED_EXIT_CODE}. Default: no cap "
+            "(a rehearsal sets one). Issue #47."
         ),
     )
     parser.add_argument(
@@ -743,6 +871,43 @@ def main():
     pre_registration_path = write_pre_registration(results_dir, pre_registration)
     logger.info("Pre-registration written to %s (before any model call)", pre_registration_path)
 
+    # Preflight cost ESTIMATE (issue #47): print the expected spend from the
+    # resolved roster + per-eval token priors BEFORE the first call, so a run with
+    # a tight budget can be sized up front. Total scenarios = public + holdout
+    # across all evaluated domains (one evaluation per model x scenario x
+    # reliability run). Conservative priors -> an over-stated, safe estimate.
+    n_scenarios = sum(len(s) for s in scenarios_by_domain.values())
+    estimate = estimate_run_cost(
+        models=models,
+        n_scenarios=n_scenarios,
+        reliability_runs=args.reliability_runs,
+        judge_keys=args.judges,
+        user_sim_model_id=DEFAULT_SIMULATION.user_simulator_model,
+        tool_sim_model_id=DEFAULT_SIMULATION.tool_simulator_model,
+        separate_judge_calls=args.separate_judge_calls,
+    )
+    logger.info(
+        "Cost ESTIMATE (priors, before any call): $%.2f total over %d evaluations "
+        "[agent $%.2f / sims $%.2f / judges $%.2f]",
+        estimate["total_usd"],
+        estimate["n_evals_total"],
+        estimate["agent_total_usd"],
+        estimate["sim_total_usd"],
+        estimate["judge_total_usd"],
+    )
+    if args.max_cost is not None:
+        logger.info("Budget cap (--max-cost): $%.2f", args.max_cost)
+        if estimate["total_usd"] > args.max_cost:
+            logger.warning(
+                "Estimated cost $%.2f EXCEEDS the cap $%.2f — the run will stop "
+                "early once actual spend crosses the cap.",
+                estimate["total_usd"],
+                args.max_cost,
+            )
+
+    # Shared, thread-safe actual-spend accumulator for the run (issue #47).
+    cost_acc = CostAccumulator(max_cost=args.max_cost)
+
     # Run models in parallel
     all_results = []
     failed_models: list[str] = []
@@ -759,6 +924,7 @@ def main():
                 run_id,
                 artifacts_root,
                 args.separate_judge_calls,
+                cost_acc=cost_acc,
             ): model_cfg["name"]
             for model_cfg in models
         }
@@ -771,6 +937,16 @@ def main():
             except Exception:
                 logger.exception("Failed evaluating %s", model_name)
                 failed_models.append(model_name)
+
+    budget_stopped = cost_acc.exceeded()
+    if budget_stopped:
+        logger.warning(
+            "BUDGET STOP: actual spend $%.4f reached cap $%.2f. Writing artifacts/"
+            "parquet/manifest for completed work, then exiting %d.",
+            cost_acc.total(),
+            args.max_cost,
+            BUDGET_EXCEEDED_EXIT_CODE,
+        )
 
     assert_results_nonempty(all_results, failed_models)
 
@@ -803,6 +979,17 @@ def main():
         # coarse to avoid hinting at its composition).
         "scenario_counts": {d.value: len(scenarios) for d, scenarios in public_by_domain.items()},
         "reliability_runs": args.reliability_runs,
+        # Cost guard accounting (issue #47): the preflight estimate, the measured
+        # actual spend (agent + simulators + judges) and its per-model breakdown,
+        # the cap, and whether the run stopped because the cap was hit. Lets a
+        # rehearsal reconcile estimate vs. actual and confirm a budget stop.
+        "cost": {
+            "estimate_usd": round(estimate["total_usd"], 6),
+            "actual_usd": round(cost_acc.total(), 6),
+            "actual_by_model": {k: round(v, 6) for k, v in cost_acc.by_model().items()},
+            "max_cost_usd": args.max_cost,
+            "budget_stopped": budget_stopped,
+        },
         # Link the completion record back to the pre-registration written before
         # any model call (issue #38), so the pair is verifiable: the path and a
         # sha256 of the exact pre-registration file. The corpus_sha256 is lifted
@@ -851,6 +1038,13 @@ def main():
         )
         print("\n=== COT Bench Results ===\n")
         print(summary.to_string())
+
+    # Distinct exit ONLY after all artifacts/parquet/manifest/CSV are on disk, so
+    # a budget stop still leaves completed work fully persisted and auditable
+    # (issue #47). A wrapper/CI can tell this apart from a clean finish (0) or a
+    # crash (non-zero from an exception/SystemExit elsewhere).
+    if budget_stopped:
+        raise SystemExit(BUDGET_EXCEEDED_EXIT_CODE)
 
 
 if __name__ == "__main__":
