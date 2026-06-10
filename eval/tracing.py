@@ -2,24 +2,99 @@
 
 Emits traces in OpenInference format so results can be ingested by
 Arize Phoenix or any OTel-compatible backend.
+
+Two exporters run side by side:
+
+- An :class:`InMemorySpanExporter` so tests can introspect emitted spans via
+  :func:`get_collected_spans`.
+- A dependency-free :class:`JSONLFileSpanExporter` that, when a trace directory
+  is configured, writes every finished span to ``spans.jsonl`` (one JSON object
+  per line). These are real, durable traces — not in-memory-only — so a run's
+  spans survive the process and can be loaded into Arize Phoenix (via its
+  OTLP/file import) or any tool that reads OpenInference-attributed spans.
 """
+
+import json
+import os
+import threading
+from pathlib import Path
 
 # OpenInference semantic conventions
 from openinference.semconv.trace import (
     SpanAttributes,
 )
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace.export import (
+    SimpleSpanProcessor,
+    SpanExporter,
+    SpanExportResult,
+)
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 _provider: TracerProvider | None = None
 _exporter: InMemorySpanExporter | None = None
+_file_exporter: "JSONLFileSpanExporter | None" = None
 
 
-def init_tracing(service_name: str = "cot-bench") -> TracerProvider:
-    """Initialize OpenTelemetry tracing with OpenInference conventions."""
-    global _provider, _exporter
+class JSONLFileSpanExporter(SpanExporter):
+    """Write finished spans as JSON lines to a file.
+
+    Dependency-free: uses only the OTel SDK's in-SDK ``SpanExporter`` primitive
+    plus ``json`` from the stdlib. Each span becomes one line in ``spans.jsonl``
+    capturing the OpenInference-attributed name, attributes, and timestamps —
+    enough to reconstruct the trace in Phoenix or any OTel/OpenInference reader.
+    """
+
+    def __init__(self, output_path: str | Path):
+        self._path = Path(output_path)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _span_to_dict(span: ReadableSpan) -> dict:
+        ctx = span.get_span_context()
+        return {
+            "name": span.name,
+            "trace_id": format(ctx.trace_id, "032x") if ctx else None,
+            "span_id": format(ctx.span_id, "016x") if ctx else None,
+            "parent_id": (format(span.parent.span_id, "016x") if span.parent else None),
+            "kind": str(span.kind),
+            "start_time": span.start_time,
+            "end_time": span.end_time,
+            "status": str(span.status.status_code),
+            "attributes": dict(span.attributes or {}),
+        }
+
+    def export(self, spans) -> SpanExportResult:
+        lines = [json.dumps(self._span_to_dict(s)) for s in spans]
+        with self._lock, open(self._path, "a", encoding="utf-8") as f:
+            for line in lines:
+                f.write(line + "\n")
+        return SpanExportResult.SUCCESS
+
+    def shutdown(self) -> None:
+        return None
+
+    def force_flush(self, timeout_millis: int = 30_000) -> bool:
+        return True
+
+
+def init_tracing(
+    service_name: str = "cot-bench",
+    trace_dir: str | Path | None = None,
+) -> TracerProvider:
+    """Initialize OpenTelemetry tracing with OpenInference conventions.
+
+    Args:
+        service_name: ``service.name`` resource attribute.
+        trace_dir: Directory to write ``spans.jsonl`` into. When ``None``,
+            falls back to the ``COT_BENCH_TRACE_DIR`` env var; if neither is
+            set, only the in-memory exporter is attached (test/default-off
+            behavior). When a directory IS resolved, a real on-disk JSONL
+            exporter is attached alongside the in-memory one.
+    """
+    global _provider, _exporter, _file_exporter
 
     from opentelemetry.sdk.resources import Resource
 
@@ -27,6 +102,15 @@ def init_tracing(service_name: str = "cot-bench") -> TracerProvider:
     _exporter = InMemorySpanExporter()
     _provider = TracerProvider(resource=resource)
     _provider.add_span_processor(SimpleSpanProcessor(_exporter))
+
+    resolved_dir = trace_dir or os.environ.get("COT_BENCH_TRACE_DIR")
+    if resolved_dir:
+        spans_path = Path(resolved_dir) / "spans.jsonl"
+        _file_exporter = JSONLFileSpanExporter(spans_path)
+        _provider.add_span_processor(SimpleSpanProcessor(_file_exporter))
+    else:
+        _file_exporter = None
+
     trace.set_tracer_provider(_provider)
 
     return _provider

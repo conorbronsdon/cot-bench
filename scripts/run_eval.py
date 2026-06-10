@@ -3,12 +3,14 @@
 import argparse
 import json
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 
+from eval.artifacts import write_run_artifact
 from eval.config import (
     JUDGES,
     MODELS_UNDER_TEST,
@@ -26,7 +28,16 @@ from eval.scoring.rubrics import (
     compute_reliability,
 )
 from eval.simulation.runner import Scenario, SimulationRunner
-from eval.tracing import get_tracer, init_tracing, trace_judge_evaluation
+from eval.tracing import (
+    get_tracer,
+    init_tracing,
+    trace_agent_turn,
+    trace_judge_evaluation,
+)
+
+# Default directory (relative to the output parquet's parent) that holds
+# per-run artifact subtrees: data/results/artifacts/{run_id}/...
+ARTIFACTS_DIRNAME = "artifacts"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -145,10 +156,51 @@ def build_result_row(scenario, agent_spec, sim_result, tc_result, ts_result, eff
     }
 
 
-def evaluate_scenario(runner, scenario, agent_spec, tracer, judge_keys):
-    """Run simulation + multi-judge scoring for one scenario, one model."""
+def _trace_agent_turns(tracer, agent_spec, sim_result):
+    """Emit one OpenInference AGENT span per agent turn, post-hoc.
+
+    Iterates the completed simulation's turns rather than instrumenting inside
+    the runner — keeps eval/simulation/runner.py untouched. Tool calls on each
+    agent turn are passed through so the span records what the agent invoked.
+    """
+    for turn in sim_result.turns:
+        if turn.role != "agent":
+            continue
+        tool_calls = [{"name": tc.tool_name, "arguments": tc.arguments} for tc in turn.tool_calls]
+        trace_agent_turn(
+            tracer,
+            model_name=agent_spec.name,
+            input_text=f"<turn {turn.turn_number}>",
+            output_text=turn.content,
+            tool_calls=tool_calls or None,
+            token_count_output=turn.token_count,
+            latency_ms=turn.latency_ms,
+        )
+
+
+def evaluate_scenario(
+    runner,
+    scenario,
+    agent_spec,
+    tracer,
+    judge_keys,
+    run_id,
+    run_index,
+    artifacts_root=None,
+):
+    """Run simulation + multi-judge scoring for one scenario, one model.
+
+    Args:
+        run_id: Stem of the output parquet — groups a run's artifacts/traces.
+        run_index: Which reliability repeat this is (0-based).
+        artifacts_root: Directory under which per-run artifact subtrees are
+            written. ``None`` disables artifact persistence (``--no-artifacts``).
+    """
     sim_result = runner.run(scenario, agent_spec)
     transcript = format_transcript(sim_result.turns)
+
+    # Trace agent turns post-hoc (one AGENT span per agent turn).
+    _trace_agent_turns(tracer, agent_spec, sim_result)
 
     tools_desc = json.dumps(
         [{"name": t.get("name"), "description": t.get("description")} for t in scenario.tools]
@@ -215,13 +267,43 @@ def evaluate_scenario(runner, scenario, agent_spec, tracer, judge_keys):
         + sim_result.total_output_tokens * costs["output"] / 1_000_000
     )
 
+    # Persist the per-evaluation artifact (transcript + raw judge outputs) so a
+    # published score is auditable back to its evidence. Default on; disabled
+    # when artifacts_root is None (--no-artifacts).
+    if artifacts_root is not None:
+        try:
+            write_run_artifact(
+                artifacts_root,
+                run_id,
+                scenario.id,
+                agent_spec.name,
+                run_index,
+                sim_result,
+                tc_result,
+                ts_result,
+            )
+        except OSError:
+            logger.exception(
+                "Failed to persist artifact for %s / %s run %d",
+                agent_spec.name,
+                scenario.id,
+                run_index,
+            )
+
     return build_result_row(
         scenario, agent_spec, sim_result, tc_result, ts_result, efficacy, cost_usd
     )
 
 
 def _run_model_scenarios(
-    model_cfg, domains, scenarios_by_domain, reliability_runs, judge_keys, tracer
+    model_cfg,
+    domains,
+    scenarios_by_domain,
+    reliability_runs,
+    judge_keys,
+    tracer,
+    run_id,
+    artifacts_root=None,
 ):
     """Evaluate a single model across all domains/scenarios. Runs in a thread."""
     agent_spec = ModelSpec(
@@ -245,7 +327,16 @@ def _run_model_scenarios(
                     run_idx + 1,
                     reliability_runs,
                 )
-                result = evaluate_scenario(runner, scenario, agent_spec, tracer, judge_keys)
+                result = evaluate_scenario(
+                    runner,
+                    scenario,
+                    agent_spec,
+                    tracer,
+                    judge_keys,
+                    run_id=run_id,
+                    run_index=run_idx,
+                    artifacts_root=artifacts_root,
+                )
                 result["run_index"] = run_idx
                 result["evaluated_at"] = datetime.now(timezone.utc).isoformat()
                 results.append(result)
@@ -333,6 +424,14 @@ def main():
             "matching the glob aggregate_results.py expects)"
         ),
     )
+    parser.add_argument(
+        "--no-artifacts",
+        action="store_true",
+        help=(
+            "Disable per-run artifact persistence (transcripts + raw judge "
+            "outputs). Artifacts are written by default for auditability."
+        ),
+    )
     args = parser.parse_args()
 
     # Resolve the default per-run so the filename matches the results_*.parquet
@@ -341,8 +440,18 @@ def main():
         timestamp = f"{datetime.now(timezone.utc):%Y%m%d_%H%M%S}"
         args.output = f"data/results/results_{timestamp}.parquet"
 
-    # Init tracing
-    init_tracing()
+    # run_id groups a run's artifacts + traces; derive it from the output stem
+    # so they sit alongside the results parquet they explain.
+    output_path = Path(args.output)
+    run_id = output_path.stem
+    results_dir = output_path.parent
+    artifacts_root = None if args.no_artifacts else results_dir / ARTIFACTS_DIRNAME
+
+    # Init tracing. Default the trace dir to <results dir>/traces/{run_id}/ so
+    # spans.jsonl is written to disk (real, durable traces) unless an explicit
+    # COT_BENCH_TRACE_DIR override is set in the environment.
+    trace_dir = os.environ.get("COT_BENCH_TRACE_DIR") or str(results_dir / "traces" / run_id)
+    init_tracing(trace_dir=trace_dir)
     tracer = get_tracer()
 
     # Load scenarios for all requested domains
@@ -380,6 +489,8 @@ def main():
                 args.reliability_runs,
                 args.judges,
                 tracer,
+                run_id,
+                artifacts_root,
             ): model_cfg["name"]
             for model_cfg in models
         }
@@ -396,11 +507,13 @@ def main():
     assert_results_nonempty(all_results, failed_models)
 
     # Save results
-    output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df = pd.DataFrame(all_results)
     df.to_parquet(output_path, index=False)
     logger.info("Results saved to %s (%d rows)", output_path, len(df))
+    if artifacts_root is not None:
+        logger.info("Per-run artifacts written under %s", Path(artifacts_root) / run_id)
+    logger.info("Traces written to %s", Path(trace_dir) / "spans.jsonl")
 
     # Write a run manifest next to the parquet output. The downstream publish
     # gate (scripts/check_publish_ready.py) reads models_failed to block a
@@ -410,6 +523,9 @@ def main():
     models_completed = sorted({r["model"] for r in all_results})
     manifest = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "run_id": run_id,
+        "artifacts_dir": (str(Path(artifacts_root) / run_id) if artifacts_root else None),
+        "trace_dir": str(trace_dir),
         "models_requested": models_requested,
         "models_completed": models_completed,
         "models_failed": sorted(failed_models),
