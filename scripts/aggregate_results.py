@@ -237,6 +237,65 @@ def load_all_results() -> pd.DataFrame:
     return pd.read_parquet(latest)
 
 
+# --- Same-lab robustness check ---
+# The Claude Opus judge shares a lab (Anthropic) with the Claude contestants.
+# methodology.md discloses this pairing; the mitigation it promises is that
+# per-judge scores are published so anyone can recompute consensus with the
+# same-lab judge excluded. This check does that recomputation up front and
+# publishes it per Anthropic contestant: judge-mean task-completion and
+# tool-selection from the arm's-length (open) judges only, plus the delta vs
+# the full panel. A materially positive delta (full > excluded) would mean the
+# same-lab judge rates its siblings higher than the open judges do.
+SAME_LAB_JUDGE_MARKER = "opus"  # matches the judge's display name in tc_/ts_ columns
+SAME_LAB_CONTESTANT_MARKER = "claude"  # matches contestant display names
+
+
+def compute_same_lab_check(df: pd.DataFrame, judge_columns: list[str]) -> dict:
+    """Per-model same-lab robustness stats keyed by model name.
+
+    For each contestant whose name matches ``SAME_LAB_CONTESTANT_MARKER``,
+    recompute the mean task-completion / tool-selection over ONLY the per-judge
+    score columns that do not match ``SAME_LAB_JUDGE_MARKER``, and report the
+    delta against the published full-panel consensus columns. Models without a
+    same-lab relationship are omitted (their entry is null in the leaderboard).
+
+    Note this is a robustness diagnostic, not a re-scoring: the full-panel
+    consensus excludes parse-failed judges row by row, while this check uses
+    the published per-judge columns (which already exclude parse failures), so
+    small differences from row-level panel composition are expected.
+    """
+    same_lab_cols = {c for c in judge_columns if SAME_LAB_JUDGE_MARKER in c.lower()}
+    if not same_lab_cols:
+        return {}
+
+    open_tc = [c for c in judge_columns if c.startswith("tc_") and c not in same_lab_cols]
+    open_ts = [c for c in judge_columns if c.startswith("ts_") and c not in same_lab_cols]
+    if not open_tc and not open_ts:
+        return {}
+
+    checks: dict[str, dict] = {}
+    for model in df["model"].unique():
+        if SAME_LAB_CONTESTANT_MARKER not in str(model).lower():
+            continue
+        mdf = df[df["model"] == model]
+        entry: dict = {
+            "excluded_judge_columns": sorted(same_lab_cols),
+        }
+        for key, open_cols, full_col in (
+            ("task_completion", open_tc, "task_completion"),
+            ("tool_selection", open_ts, "tool_selection"),
+        ):
+            if not open_cols:
+                continue
+            # Per-row mean over available open-judge scores, then mean over rows.
+            excl = float(mdf[open_cols].mean(axis=1).mean())
+            full = float(mdf[full_col].mean())
+            entry[f"{key}_excl_same_lab"] = _round_or_none(excl, 4)
+            entry[f"{key}_delta"] = _round_or_none(full - excl, 4)
+        checks[model] = entry
+    return checks
+
+
 def compute_leaderboard(df: pd.DataFrame) -> dict:
     """Compute leaderboard rankings from raw results."""
     if df.empty:
@@ -340,6 +399,8 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
             judge_agg = df.groupby("model")[col].mean().reset_index()
             judge_scores[col] = judge_agg.set_index("model")[col].to_dict()
 
+    same_lab_checks = compute_same_lab_check(df, judge_columns)
+
     # Build leaderboard JSON
     leaderboard = {
         "updated": pd.Timestamp.now().isoformat(),
@@ -374,6 +435,10 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
                 "task_completion": _round_or_none(row["judge_agreement_tc"], 4),
                 "tool_selection": _round_or_none(row["judge_agreement_ts"], 4),
             },
+            # Same-lab robustness: judge-mean scores with the same-lab judge
+            # excluded, plus the delta vs the full panel. None for models with
+            # no same-lab judge on the panel.
+            "same_lab_check": same_lab_checks.get(row["model"]),
         }
         leaderboard["models"].append(model_entry)
 
