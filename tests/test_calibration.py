@@ -288,6 +288,10 @@ class TestBanding:
             # 8-char-hash variant from a generated batch.
             ("banking_adaptive_tool_use_0000_28d29485", "banking"),
             ("cs_adaptive_tool_use_0000_59bb2918", "customer_success"),
+            # Three generated-batch scenarios in the live corpus use the LONG
+            # customer_success_ prefix (re-verification finding on PR #45).
+            ("customer_success_adversarial_input_mitigation_0000_91d0ae09", "customer_success"),
+            ("customer_success_scope_management_0000_952a6351", "customer_success"),
         ],
     )
     def test_legacy_domain_from_real_id_prefix(self, tmp_path, scenario_id, expected_domain):

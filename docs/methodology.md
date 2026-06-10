@@ -511,8 +511,14 @@ Each run persists exactly four things, and nothing is claimed that isn't on disk
      output: `judge_name`, `rubric_type`, `overall_score`, `reasoning`,
      `parse_failed`, and the raw parsed `raw_response`. Parse-failed judges are
      retained here for transparency (they are still excluded from consensus math).
-   - `sim_meta` — `completed`, `total_turns`, token counts, `latency_ms`, and any
-     simulation `error`.
+   - `sim_meta` — `completed`, `total_turns`, token counts, `latency_ms`, any
+     simulation `error`, plus the completion-decoupling fields (`ended_by`,
+     `state_progress_at_end`, `premature_end`).
+   - `state` — the deterministic state-check result (per-assertion outcomes and
+     the state score) for scenarios with `expected_state_changes`.
+   - `domain`, `category`, `holdout` — the scenario's domain and category as the
+     run resolved them, and whether it came from the private holdout set (used
+     for calibration stratification and holdout exclusion).
 
    `run_id` is the stem of the results parquet, so a run's artifacts sit alongside
    the results they explain. Artifact persistence is **on by default**; pass

@@ -245,9 +245,12 @@ def load_evaluations(artifacts_run_dir: Path) -> list[Evaluation]:
 # legacy-artifact fallback (artifacts written before issue #46 added top-level
 # domain/category). Real ids are e.g. "banking_adaptive_tool_use_0001" and
 # "cs_adaptive_tool_use_0001" — note "cs_" -> "customer_success", which the old
-# regex got wrong. Keyed by the underscore-terminated prefix so a longer prefix
-# (were one ever added) is matched explicitly, not by a greedy regex.
+# regex got wrong. Three generated-batch scenarios carry the long
+# "customer_success_" prefix instead of "cs_", so both forms are mapped.
+# Keyed by the underscore-terminated prefix; first match wins, so longer
+# prefixes are listed before any prefix they contain.
 _DOMAIN_ID_PREFIXES = {
+    "customer_success_": "customer_success",
     "banking_": "banking",
     "cs_": "customer_success",
 }
@@ -259,8 +262,9 @@ def _derive_domain(data: dict, path: Path) -> str:
     Post-#46 artifacts carry an explicit top-level ``domain`` (the authoritative
     ``Domain.value``) and this is used directly. The fallback exists only for
     legacy artifacts that predate that field: it matches the known corpus id
-    prefixes (``banking_`` -> ``banking``, ``cs_`` -> ``customer_success``) and
-    returns ``"unknown"`` for anything unrecognized rather than guessing.
+    prefixes (``banking_`` -> ``banking``, ``cs_`` / ``customer_success_`` ->
+    ``customer_success``) and returns ``"unknown"`` for anything unrecognized
+    rather than guessing.
     """
     if data.get("domain"):
         return str(data["domain"])
