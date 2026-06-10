@@ -326,10 +326,20 @@ def main():
     parser.add_argument(
         "--output",
         type=str,
-        default="data/results/results.parquet",
-        help="Output path for results",
+        default=None,
+        help=(
+            "Output path for results "
+            "(default: data/results/results_<UTC timestamp>.parquet, "
+            "matching the glob aggregate_results.py expects)"
+        ),
     )
     args = parser.parse_args()
+
+    # Resolve the default per-run so the filename matches the results_*.parquet
+    # glob in aggregate_results.py; a static argparse default can't be timestamped.
+    if args.output is None:
+        timestamp = f"{datetime.now(timezone.utc):%Y%m%d_%H%M%S}"
+        args.output = f"data/results/results_{timestamp}.parquet"
 
     # Init tracing
     init_tracing()

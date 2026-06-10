@@ -142,6 +142,8 @@ CLEAR = 0.35 × efficacy_norm + 0.25 × reliability_norm
 
 Cost and latency are inverted because lower is better. When only one model is evaluated, CLEAR equals raw efficacy.
 
+Because the min-max normalization is relative to the set of models in the run, adding or removing a model rescales every other model's normalized dimensions and therefore changes every CLEAR score. CLEAR scores are only comparable within a single run. To compare a model across runs, use its per-dimension raw scores (efficacy, reliability, cost, latency) rather than the composite.
+
 ## Design Decisions
 
 ### Why synthetic scenarios instead of real conversations?
@@ -162,6 +164,8 @@ A single judge introduces systematic bias. Using three judges from different lab
 ### Why these judges?
 
 Two principles. First, **no judge is also a model under test** — if a model graded itself the conflict of interest would be structural, so judges are drawn only from models that aren't on the leaderboard (an earlier panel violated this with Qwen3-235B and DeepSeek-V3 judging while also competing). Second, **lab diversity**: two open-weight judges from different labs plus one frontier reference means a disagreement signals genuine ambiguity rather than a shared blind spot. Open judges run through OpenRouter (OpenAI-compatible), so the full panel needs no GPU or self-hosted inference.
+
+One same-lab pairing remains: the Claude Opus 4.6 judge shares a lab (Anthropic) with the Claude Sonnet 4.6 and Haiku 4.5 contestants. We don't claim this is eliminated. The mitigation is that the other two of three judges are from unrelated labs (Moonshot and Zhipu), so no Anthropic model can dominate consensus, and every per-judge score is published — anyone who wants a fully arm's-length view can recompute consensus with the same-lab judge excluded.
 
 ### Why CLEAR weights of 35/25/20/20?
 

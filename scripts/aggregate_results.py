@@ -35,7 +35,13 @@ def _round_or_none(value, ndigits):
 
 
 def load_all_results() -> pd.DataFrame:
-    """Load and concatenate all parquet result files."""
+    """Load the most recent parquet result file.
+
+    Each weekly run writes a complete snapshot of every model across every
+    scenario, so the latest file alone is the full leaderboard — we intentionally
+    use only that file rather than concatenating older runs (which would
+    double-count models and mix stale results with fresh ones).
+    """
     parquet_files = sorted(RESULTS_DIR.glob("results_*.parquet"))
     if not parquet_files:
         logger.warning("No result files found in %s", RESULTS_DIR)

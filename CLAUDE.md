@@ -9,7 +9,7 @@ Open agent evaluation leaderboard. Part of the Chain of Thought brand.
 - `docs/` — methodology, contributing guide
 - `.github/workflows/` — CI, weekly eval runs, GitHub Pages deploy
 - `frontend/` — static leaderboard UI (deployed to GitHub Pages)
-- `tests/` — 38 tests covering scoring, parsing, config, validation
+- `tests/` — tests covering scoring, parsing, config, validation
 
 ## Key design decisions
 - **Multi-judge scoring**: Kimi K2.6 + GLM-4.6 (open-weight, via OpenRouter) + Claude Opus (frontier reference). Judges are never also models under test — no self-grading.

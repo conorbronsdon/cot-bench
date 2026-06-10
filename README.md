@@ -190,7 +190,7 @@ cot-bench/
 │   └── aggregate_results.py      # Leaderboard computation
 ├── frontend/
 │   └── index.html                # Leaderboard UI (GitHub Pages)
-├── tests/                         # 30 tests covering scoring, parsing, config
+├── tests/                         # Tests covering scoring, parsing, config, validation
 ├── docs/                          # Detailed documentation
 └── .github/workflows/             # CI + weekly eval + GitHub Pages deploy
 ```

@@ -1,7 +1,7 @@
 [project]
 name = "cot-bench"
 version = "0.1.0"
-description = "Open agent evaluation leaderboard with multi-judge scoring on Modular MAX"
+description = "Open agent evaluation leaderboard with multi-judge scoring and CLEAR-aligned metrics"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
