@@ -58,8 +58,31 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# Env var that points at an EXTERNAL private-holdout scenario tree (issue #31).
+# The holdout corpus is authored and stored OUTSIDE this repo and is never
+# committed here; this var lets a run pull it in at evaluation time. The flag
+# (--holdout-dir) takes precedence over the env var when both are set.
+HOLDOUT_DIR_ENV = "COT_BENCH_HOLDOUT_DIR"
+
+
+def _scenario_from_dict(data: dict, domain: Domain, *, holdout: bool) -> Scenario:
+    """Build a Scenario from a loaded JSON dict (shared by both loaders)."""
+    return Scenario(
+        id=data["id"],
+        domain=domain,
+        persona=data["persona"],
+        user_goals=data["user_goals"],
+        tools=data["tools"],
+        category=data["category"],
+        initial_message=data["initial_message"],
+        ground_truth=data.get("ground_truth"),
+        expected_state_changes=data.get("expected_state_changes"),
+        holdout=holdout,
+    )
+
+
 def load_scenarios(domain: Domain) -> list[Scenario]:
-    """Load scenarios from data directory."""
+    """Load public scenarios from the in-repo data directory."""
     scenario_dir = Path(f"data/scenarios/{domain.value}")
     if not scenario_dir.exists():
         logger.warning("Scenario directory not found: %s", scenario_dir)
@@ -68,19 +91,34 @@ def load_scenarios(domain: Domain) -> list[Scenario]:
     for path in sorted(scenario_dir.glob("*.json")):
         with open(path) as f:
             data = json.load(f)
-        scenarios.append(
-            Scenario(
-                id=data["id"],
-                domain=domain,
-                persona=data["persona"],
-                user_goals=data["user_goals"],
-                tools=data["tools"],
-                category=data["category"],
-                initial_message=data["initial_message"],
-                ground_truth=data.get("ground_truth"),
-                expected_state_changes=data.get("expected_state_changes"),
-            )
-        )
+        scenarios.append(_scenario_from_dict(data, domain, holdout=False))
+    return scenarios
+
+
+def load_holdout_scenarios(holdout_root: Path, domain: Domain) -> list[Scenario]:
+    """Load private-holdout scenarios for a domain from an EXTERNAL directory.
+
+    ``holdout_root`` is a directory laid out exactly like ``data/scenarios/``:
+    one subdirectory per domain (``{holdout_root}/{domain}/*.json``), each file in
+    the same v0.2 scenario schema. Every scenario loaded here is tagged
+    ``holdout=True`` so its result rows carry ``holdout: true`` and the
+    aggregation can split public vs holdout efficacy.
+
+    Returning ``[]`` for a domain with no holdout subdir is intentional — a
+    holdout need not cover every domain; the run simply has no holdout rows for
+    the uncovered ones.
+    """
+    domain_dir = holdout_root / domain.value
+    if not domain_dir.exists():
+        # Path at DEBUG: CI logs on a public repo are public; don't reveal
+        # where the private holdout lives.
+        logger.debug("No holdout scenarios for domain %s under %s", domain.value, holdout_root)
+        return []
+    scenarios = []
+    for path in sorted(domain_dir.glob("*.json")):
+        with open(path) as f:
+            data = json.load(f)
+        scenarios.append(_scenario_from_dict(data, domain, holdout=True))
     return scenarios
 
 
@@ -149,6 +187,11 @@ def build_result_row(
         "domain": scenario.domain.value,
         "category": scenario.category,
         "model": agent_spec.name,
+        # Private-holdout flag (issue #31). Every row from an external holdout
+        # scenario is marked here so aggregation can compute a public-vs-holdout
+        # gap and keep holdout scenario detail off the published per-scenario
+        # surfaces. False for the public corpus.
+        "holdout": bool(getattr(scenario, "holdout", False)),
         "efficacy": round(efficacy, 4),
         "task_completion": round(tc_result.consensus_score, 4),
         "tool_selection": round(ts_result.consensus_score, 4),
@@ -485,6 +528,20 @@ def main():
         help="Model names to evaluate (default: all)",
     )
     parser.add_argument(
+        "--holdout-dir",
+        type=str,
+        default=None,
+        help=(
+            "Path to an EXTERNAL private-holdout scenario tree (issue #31), laid "
+            "out like data/scenarios/ (one subdir per domain). Scenarios loaded "
+            "from here are run alongside the public corpus, marked holdout=true in "
+            "results, and produce a public-vs-holdout gap on the leaderboard. The "
+            "holdout content is never stored in this repo; only its corpus hash "
+            f"and count are pre-registered. Falls back to the {HOLDOUT_DIR_ENV} "
+            "environment variable when the flag is omitted."
+        ),
+    )
+    parser.add_argument(
         "--include-null-agent",
         action="store_true",
         help=(
@@ -570,22 +627,69 @@ def main():
     init_tracing(trace_dir=trace_dir)
     tracer = get_tracer()
 
-    # Load scenarios for all requested domains
-    scenarios_by_domain: dict[Domain, list[Scenario]] = {}
+    # Load PUBLIC scenarios for all requested domains. Kept separate from the
+    # holdout set (below) so the pre-registration hashes the public corpus on its
+    # own — its scenario index is published, the holdout's is not.
+    public_by_domain: dict[Domain, list[Scenario]] = {}
     for domain_str in args.domains:
         domain = Domain(domain_str)
         scenarios = load_scenarios(domain)
         if scenarios:
             if args.scenario_limit > 0:
                 scenarios = scenarios[: args.scenario_limit]
-            scenarios_by_domain[domain] = scenarios
+            public_by_domain[domain] = scenarios
             logger.info("Loaded %d scenarios for %s", len(scenarios), domain.value)
         else:
             logger.warning("No scenarios found for %s, skipping", domain.value)
 
-    if not scenarios_by_domain:
+    if not public_by_domain:
         logger.error("No scenarios loaded. Run generate_data.py first.")
         return
+
+    # Private holdout (issue #31): an EXTERNAL scenario tree, never stored in this
+    # repo, run alongside the public corpus so a public-vs-holdout efficacy gap
+    # acts as an overfitting tripwire. Resolved from --holdout-dir or the
+    # COT_BENCH_HOLDOUT_DIR env var. Loaded into a SEPARATE structure so the
+    # pre-registration can hash it as its own set (hash + count only — never the
+    # IDs or content).
+    holdout_dir = args.holdout_dir or os.environ.get(HOLDOUT_DIR_ENV)
+    holdout_by_domain: dict[Domain, list[Scenario]] = {}
+    if holdout_dir:
+        holdout_root = Path(holdout_dir)
+        if not holdout_root.exists():
+            raise SystemExit(
+                f"Holdout directory not found: {holdout_root}. Unset {HOLDOUT_DIR_ENV} / "
+                "--holdout-dir or point it at the external holdout scenario tree."
+            )
+        for domain_str in args.domains:
+            domain = Domain(domain_str)
+            held = load_holdout_scenarios(holdout_root, domain)
+            if not held:
+                continue
+            if args.scenario_limit > 0:
+                held = held[: args.scenario_limit]
+            holdout_by_domain[domain] = held
+            logger.info("Loaded %d HOLDOUT scenarios for %s", len(held), domain.value)
+        if not holdout_by_domain:
+            # No path in the message: public CI logs must not reveal where the
+            # private holdout lives.
+            logger.warning(
+                "Holdout dir set but no holdout scenarios matched the requested "
+                "domains; running public corpus only."
+            )
+
+    # The run loop evaluates the PUBLIC corpus and the holdout together. Each
+    # holdout scenario already carries holdout=True, so its result rows are tagged
+    # for the public-vs-holdout split downstream; the two sets are hashed
+    # separately in the pre-registration.
+    scenarios_by_domain: dict[Domain, list[Scenario]] = {}
+    for domain in (*public_by_domain, *holdout_by_domain):
+        if domain in scenarios_by_domain:
+            continue
+        scenarios_by_domain[domain] = [
+            *public_by_domain.get(domain, []),
+            *holdout_by_domain.get(domain, []),
+        ]
 
     # Filter models. The null agent is NOT in MODELS_UNDER_TEST (so it never
     # runs as a real contestant); inject it only when explicitly requested via
@@ -610,10 +714,16 @@ def main():
     # cannot retroactively choose which run "counts". The post-run manifest links
     # back to this file by path + hash. Agent under test runs at ModelSpec's
     # default temperature (0.0); simulator temps come from DEFAULT_SIMULATION.
+    # The public set is pre-registered WITH its scenario index (IDs + per-scenario
+    # digests). The holdout set (issue #31) is pre-registered with its corpus hash
+    # and count ONLY — no IDs, no index — so the holdout is pinned (tamper-evident)
+    # without revealing its content. ``holdout_by_domain`` is None when no holdout
+    # was requested, which omits the holdout_set block entirely.
     pre_registration = build_pre_registration(
         run_id=run_id,
         models=models,
-        scenarios_by_domain=scenarios_by_domain,
+        scenarios_by_domain=public_by_domain,
+        holdout_by_domain=holdout_by_domain or None,
         judges=JUDGES,
         judge_keys=args.judges,
         reliability_runs=args.reliability_runs,
@@ -682,10 +792,11 @@ def main():
         "models_requested": models_requested,
         "models_completed": models_completed,
         "models_failed": sorted(failed_models),
-        "domains": [d.value for d in scenarios_by_domain],
-        "scenario_counts": {
-            d.value: len(scenarios) for d, scenarios in scenarios_by_domain.items()
-        },
+        "domains": [d.value for d in public_by_domain],
+        # PUBLIC scenario counts only — the holdout count is reported separately
+        # below (count is publishable; the holdout's per-domain breakdown stays
+        # coarse to avoid hinting at its composition).
+        "scenario_counts": {d.value: len(scenarios) for d, scenarios in public_by_domain.items()},
         "reliability_runs": args.reliability_runs,
         # Link the completion record back to the pre-registration written before
         # any model call (issue #38), so the pair is verifiable: the path and a
@@ -698,6 +809,18 @@ def main():
             "sha256": file_sha256(pre_registration_path),
             "corpus_sha256": pre_registration["scenario_set"]["sha256"],
         },
+        # Private holdout (issue #31): hash + count ONLY (no IDs), mirroring the
+        # pre-registration. None when no holdout ran. The run_manifest.json is a
+        # local/CI artifact (not committed to the repo), but it still records no
+        # holdout content so even the artifact never carries the held-out set.
+        "holdout": (
+            {
+                "corpus_sha256": pre_registration["holdout_set"]["sha256"],
+                "n_scenarios": pre_registration["holdout_set"]["n_scenarios"],
+            }
+            if pre_registration.get("holdout_set")
+            else None
+        ),
     }
     manifest_path = output_path.parent / "run_manifest.json"
     with open(manifest_path, "w") as f:

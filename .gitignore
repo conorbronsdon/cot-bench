@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -11,6 +11,9 @@ venv/
 data/scenarios/*.json
 data/results/*.parquet
 data/results/*.csv
+# Per-evaluation artifacts hold FULL transcripts — including private-holdout
+# scenario content when COT_BENCH_HOLDOUT_DIR is set. Never committable.
+data/results/artifacts/
 
 # Keep domain definitions
 !data/domains/**/*.json

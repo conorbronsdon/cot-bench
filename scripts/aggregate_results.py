@@ -537,13 +537,71 @@ def compute_same_lab_check(df: pd.DataFrame, judge_columns: list[str]) -> dict:
     return checks
 
 
+def compute_holdout_gap(df: pd.DataFrame) -> dict:
+    """Per-model public-vs-holdout efficacy split (issue #31).
+
+    Returns ``{model: {"public_score": .., "holdout_score": .., "holdout_gap": ..}}``
+    for models that have BOTH public and holdout rows. ``holdout_gap`` is
+    ``public_score - holdout_score`` (mean efficacy): a positive gap means the
+    model does better on the public corpus than on the private holdout — the
+    overfitting tripwire. Models with no holdout rows are omitted (their gap is
+    null in the leaderboard entry).
+
+    Only per-MODEL aggregates are returned — never per-scenario holdout detail —
+    so nothing about which holdout scenarios exist or how a model did on any one
+    of them is exposed. ``df`` here is already null-agent-stripped by the caller.
+    """
+    if df.empty or "holdout" not in df.columns:
+        return {}
+    holdout_mask = df["holdout"].fillna(False).astype(bool)
+    public_df = df[~holdout_mask]
+    holdout_df = df[holdout_mask]
+    if holdout_df.empty:
+        return {}
+
+    public_eff = public_df.groupby("model")["efficacy"].mean()
+    holdout_eff = holdout_df.groupby("model")["efficacy"].mean()
+
+    out: dict[str, dict] = {}
+    for model in holdout_eff.index:
+        pub = public_eff.get(model)
+        hold = float(holdout_eff[model])
+        entry = {
+            "public_score": _round_or_none(pub, 4),
+            "holdout_score": round(hold, 4),
+            # Gap only when both halves exist; otherwise the comparison is
+            # undefined and we publish null rather than a misleading number.
+            "holdout_gap": (None if pub is None or pd.isna(pub) else round(float(pub) - hold, 4)),
+        }
+        out[str(model)] = entry
+    return out
+
+
 def compute_leaderboard(df: pd.DataFrame) -> dict:
-    """Compute leaderboard rankings from raw results."""
+    """Compute leaderboard rankings from raw results.
+
+    The headline rankings (efficacy, CLEAR, per-domain, judge stats) are computed
+    over the PUBLIC corpus only — the private holdout (issue #31) is split out
+    first so it cannot move the public score, and is summarized per model as a
+    public-vs-holdout gap. No per-scenario holdout detail ever reaches the
+    leaderboard, history, or CSV.
+    """
     # Strip non-contestants (e.g. the do-nothing null-agent) before any
     # aggregation so they never appear on the board or skew normalization.
     df = exclude_non_contestants(df)
     if df.empty:
         return {"models": [], "updated": "", "domains": []}
+
+    # Private-holdout split (issue #31). Compute the per-model gap from the full
+    # frame first, then drop holdout rows so every downstream aggregate (efficacy,
+    # CLEAR, bootstrap CIs, per-domain, per-judge) is over the PUBLIC corpus only.
+    # The leaderboard publishes the gap per model but never holdout scenario IDs.
+    holdout_gap = compute_holdout_gap(df)
+    if "holdout" in df.columns:
+        df = df[~df["holdout"].fillna(False).astype(bool)]
+        if df.empty:
+            # A holdout-only run has no public leaderboard to publish.
+            return {"models": [], "updated": "", "domains": []}
 
     # Overall scores per model (averaged across all scenarios and runs)
     overall = (
@@ -690,6 +748,23 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
         "judge_scores": judge_scores,
         "judge_alpha": judge_alpha,
         "length_bias": length_bias,
+        # Private-holdout summary (issue #31). Top-level flag + the count of
+        # models that have a public-vs-holdout gap. Deliberately NO scenario IDs,
+        # text, or counts of the holdout corpus itself — the per-model gaps live
+        # in each model entry; this is only a "was a holdout run, for how many
+        # models" header for the frontend.
+        "holdout": {
+            "present": bool(holdout_gap),
+            "models_with_gap": len(holdout_gap),
+            "note": (
+                "Public-vs-holdout efficacy gap (gap = public - holdout). A "
+                "positive gap flags a model that does better on the public corpus "
+                "than on the private, never-published holdout — an overfitting "
+                "signal. See docs/governance.md §4 and issue #31."
+            ),
+        }
+        if holdout_gap
+        else {"present": False},
     }
 
     for _, row in overall.iterrows():
@@ -703,6 +778,14 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
             "task_completion": round(row["task_completion"], 4),
             "tool_selection": round(row["tool_selection"], 4),
             "state_score": _round_or_none(row.get("state_score"), 4),
+            # Private-holdout split (issue #31). ``efficacy`` above is the public
+            # score; these expose the held-out score and the gap (public -
+            # holdout) so an overfitting model — strong on the public corpus,
+            # weaker on the never-published holdout — is visible. None when this
+            # model has no holdout rows. Only per-model aggregates; no holdout
+            # scenario detail is ever published.
+            "holdout_score": holdout_gap.get(row["model"], {}).get("holdout_score"),
+            "holdout_gap": holdout_gap.get(row["model"], {}).get("holdout_gap"),
             # Premature-ending rate (#32): share of this model's runs the user
             # sim ended before the deterministic state check passed. None for
             # legacy parquets that predate the column.

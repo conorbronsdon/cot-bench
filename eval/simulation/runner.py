@@ -131,6 +131,14 @@ class Scenario:
     # deterministic post-conversation assertions. Both None for legacy scenarios.
     ground_truth: dict | None = None
     expected_state_changes: list | None = None
+    # Private-holdout flag (issue #31). True when the scenario was loaded from the
+    # external holdout directory rather than the public corpus. It tags result
+    # rows so aggregation can compute a public-vs-holdout gap, and it gates
+    # holdout content out of the published per-scenario surfaces. It is NOT part
+    # of the hashed scenario content (see _scenario_to_canonical_dict): the
+    # holdout's tamper-evidence comes from its own corpus hash, not from a
+    # per-scenario flag that would differ between the public and holdout loaders.
+    holdout: bool = False
 
 
 def apply_state_delta(world: dict, delta: dict) -> None:

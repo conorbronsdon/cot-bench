@@ -139,10 +139,47 @@ which is a strong native contamination defense — there is no scraped public
 dataset to have leaked into training. But the scenarios are themselves public on
 GitHub, so a future model could in principle train on them.
 
-**Private holdout (planned).** The committed defense against the public-exposure
-risk is a private holdout: a fresh scenario subset that is never published, run
-alongside the public set so a gap between public and holdout scores acts as an
-overfitting tripwire. This is planned, not yet built. Tracking: issue #31.
+**Private holdout (implemented).** The committed defense against the
+public-exposure risk is a private holdout: a fresh scenario subset that is
+**never published**, run alongside the public set so a gap between public and
+holdout scores acts as an overfitting tripwire. The harness support is built
+(issue #31); the held-out scenarios themselves are authored and stored *outside*
+this repository.
+
+How it works, and how privacy is guaranteed:
+
+- **External, opt-in.** The holdout corpus lives in a separate location and is
+  pulled in at evaluation time via `--holdout-dir` (or the `COT_BENCH_HOLDOUT_DIR`
+  environment variable). The public CI never sets it, so the holdout is only ever
+  exercised from a private run. Its scenarios are laid out exactly like
+  `data/scenarios/` (one subdirectory per domain) and use the identical v0.2
+  schema, so they are graded by the same simulator, judges, and deterministic
+  state checks as the public corpus.
+- **Hash-pinned, content never revealed.** When a holdout is run it gets its own
+  entry in `pre_registration.json`: a `holdout_set` block carrying the corpus
+  `sha256` **and the count only** — deliberately no scenario IDs and no
+  per-scenario index, unlike the public `scenario_set` (which publishes both).
+  The hash is computed by the same machinery as the public corpus hash, so it is
+  tamper-evident — any change to the held-out scenarios (a different scenario, an
+  added or removed one) changes the hash — yet the hash reveals nothing about the
+  scenarios' content. The set is *pinned without being exposed*.
+- **Public score is unaffected; the gap is published.** Holdout result rows are
+  tagged `holdout: true` and split out before aggregation, so the headline
+  efficacy and CLEAR rankings are computed over the **public corpus only**. The
+  leaderboard then publishes, per model, the public score, the holdout score, and
+  the gap (`gap = public - holdout`). A materially positive gap is the
+  overfitting signal: strong on the public scenarios a model could have trained
+  on, weaker on the never-seen holdout.
+- **No holdout scenario detail in any published output.** `leaderboard.json` and
+  `latest.csv` carry only the per-model holdout aggregates; no holdout scenario
+  ID, text, ground truth, or per-scenario score reaches the published surfaces.
+  (Per-scenario results and transcripts live only in the run's
+  `data/results/artifacts/` output, which is gitignored — never committable to
+  this repository. The public CI workflow additionally refuses to start if a
+  holdout directory is configured, because its workflow-artifact upload would
+  make transcripts downloadable; holdout runs are local-only by construction.)
+
+Count is publishable; content is not. Tracking: issue #31.
 
 ## 5. Versioning
 
