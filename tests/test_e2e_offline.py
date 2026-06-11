@@ -465,8 +465,10 @@ def offline_pipeline(tmp_path, monkeypatch):
         # the user-sim prompt's Goals section (never truncated by the turn window).
         _PROMPT_MARKERS[sc.id] = sc.user_goals[0]
 
-    def fake_load_scenarios(domain):
-        return list(subset.get(domain, []))
+    def fake_load_scenarios(domain, instantiation_seed):
+        # These real scenarios are not templates, so instantiation is a no-op and
+        # the raw-template list is empty (issue #60 signature: (scenarios, raw)).
+        return list(subset.get(domain, [])), []
 
     monkeypatch.setattr(run_eval, "load_scenarios", fake_load_scenarios)
     # Tracing off (no spans.jsonl side effects, keeps it fast). get_tracer returns

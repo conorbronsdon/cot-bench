@@ -368,7 +368,7 @@ def _run_cli(tmp_path, monkeypatch, extra_argv):
     results_dir.mkdir()
     output = results_dir / "results_20260611_000001.parquet"
 
-    monkeypatch.setattr(run_eval, "load_scenarios", lambda domain: [_scenario()])
+    monkeypatch.setattr(run_eval, "load_scenarios", lambda domain, seed: ([_scenario()], []))
     monkeypatch.setattr(run_eval, "init_tracing", lambda **kw: None)
     monkeypatch.setattr(run_eval, "get_tracer", lambda: None)
     monkeypatch.setattr(run_eval, "SimulationRunner", lambda *a, **k: object())

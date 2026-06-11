@@ -180,7 +180,7 @@ def _setup_resume_run(tmp_path, monkeypatch, scenarios):
     results_dir.mkdir()
     run_id = "results_resume_001"
 
-    monkeypatch.setattr(run_eval, "load_scenarios", lambda domain: scenarios)
+    monkeypatch.setattr(run_eval, "load_scenarios", lambda domain, seed: (scenarios, []))
     monkeypatch.setattr(run_eval, "init_tracing", lambda **kw: None)
     monkeypatch.setattr(run_eval, "get_tracer", lambda: None)
     monkeypatch.setattr(run_eval, "SimulationRunner", lambda *a, **k: object())
