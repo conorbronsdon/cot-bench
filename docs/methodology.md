@@ -165,11 +165,17 @@ row and per-run artifact (`sim_profile`).
 Rows produced under a non-cooperative profile are **excluded from all public
 leaderboard aggregates** — the same single-entry-point exclusion the null agent
 and the private holdout use — so a stratified run can never move public
-efficacy. They feed a separate persona-stratified robustness table
-(`compute_sim_profile_pass_rates` in `scripts/aggregate_results.py`): per-model,
+efficacy. They are published separately in a persona-stratified robustness table
+(`compute_sim_profile_pass_rates` in `scripts/aggregate_results.py`), emitted
+under the top-level `sim_profile_robustness` key of `leaderboard.json` whenever a
+run includes non-cooperative rows (the key is absent on a cooperative-only run,
+so a normal leaderboard ships no empty surface). It reports per-model,
 per-profile pass rates (pass = efficacy ≥ 0.7, the same threshold reliability
 uses) with each profile's delta against the cooperative condition, making the
-cooperative-only inflation a measured number rather than an assumption.
+cooperative-only inflation a measured number rather than an assumption. The table
+is computed from the full result frame before the cooperative exclusion, but
+null-agent and private-holdout rows are still removed first — they never appear
+in the robustness table any more than they appear on the public board.
 
 This agent→tool→agent iteration means the model sees and reasons over tool output within the same turn, rather than only on the following turn. The transcript preserves true conversational order — user → agent (with tool calls) → tool results → agent follow-up → … → user — so judges read each tool call before its result.
 
@@ -478,7 +484,7 @@ Every published dimension carries a 95% confidence interval, and the leaderboard
 
 **Rank bands.** Orderings are only meaningful where intervals separate. We cluster models into rank bands by CLEAR-score CI overlap using a simple greedy algorithm: walk the models sorted by CLEAR descending; the current band's leader is the highest unbanded model; every following model whose `clear_score_ci` overlaps the leader's joins that band; the first model that does *not* overlap starts a new band. Models within a band are not statistically distinguishable from one another, and the frontend marks them with a tied rank (`1=`). The leaderboard JSON also carries a top-level `statistical_note` stating the scenario count and the band caveat.
 
-**Publish minimum.** A leaderboard does not publish at all when any evaluated domain has fewer than **`MIN_SCENARIOS_FOR_PUBLISH` = 30** scenarios (see [`eval/config.py`](../eval/config.py)). The publish gate ([`scripts/check_publish_ready.py`](../scripts/check_publish_ready.py)) enforces this alongside the run-completeness check; `--allow-partial` downgrades it to a warning for deliberate previews. The project is scaling toward ~80 scenarios; the gate keeps the current state honest in the meantime.
+**Publish minimum.** A leaderboard does not publish at all when any evaluated domain has fewer than **`MIN_SCENARIOS_FOR_PUBLISH` = 30** scenarios (see [`eval/config.py`](../eval/config.py)). The publish gate ([`scripts/check_publish_ready.py`](../scripts/check_publish_ready.py)) enforces this alongside the run-completeness check; `--allow-partial` downgrades it to a warning for deliberate previews. The shipped corpus is 92 scenarios (49 banking + 43 customer_success), comfortably above the minimum; the gate keeps any future partial or reduced run honest.
 
 Edge cases are handled without crashing: a single scenario produces a degenerate (zero-width) CI equal to the point estimate, and a single-model run skips cross-model normalization so its CLEAR CI mirrors its efficacy CI.
 
@@ -641,11 +647,25 @@ Each run persists exactly four things, and nothing is claimed that isn't on disk
 
 3. **Run manifest (completion record).** `data/results/run_manifest.json` records
    the `run_id`, the models requested/completed/failed, domains, per-domain
-   scenario counts, the reliability-run count, and the artifact/trace directories
-   for the run. It also carries a `pre_registration` block linking back to the
-   pre-registration (item 0) by path and `sha256` (plus the corpus hash), so the
-   pre-registration and completion record are a verifiable pair.
+   scenario counts, the reliability-run count, the judge panel (requested keys +
+   resolved configured names), the behavioral sim profile, and the artifact/trace
+   directories for the run. It also carries an `environment` block — the Python
+   version and platform, plus the package count and a `sha256` of the full
+   resolved dependency list — because the repo floor-pins dependencies and CI
+   installs with a bare `pip install -e .`, so the exact library versions a run
+   resolved are otherwise unrecorded. The full `pip freeze`-equivalent list is
+   written to `data/results/env_freeze.txt` alongside the manifest (item 4
+   below). The manifest also carries a `pre_registration` block linking back to
+   the pre-registration (item 0) by path and `sha256` (plus the corpus hash), so
+   the pre-registration and completion record are a verifiable pair.
 
-All four are uploaded as workflow artifacts on every weekly evaluation run.
+4. **Resolved environment list.** `data/results/env_freeze.txt` is the sorted,
+   full installed-package list (`name==version`) captured in-process at the end
+   of each run. Its `sha256` is recorded in the manifest's `environment` block,
+   so two runs that claim to be identical can be checked for an environment that
+   silently drifted. (There is no committed lockfile; this records the resolved
+   environment after the fact rather than pinning it ahead of time.)
+
+All of the above are uploaded as workflow artifacts on every weekly evaluation run.
 
 The policies governing how these runs are published, corrected, and versioned — no silent retraction or rerun, judge pinning, run pre-registration, contamination handling, and what triggers a benchmark version bump — are documented in [governance.md](governance.md).

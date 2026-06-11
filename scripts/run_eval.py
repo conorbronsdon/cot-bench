@@ -1,9 +1,13 @@
 """CLI entry point for running COT Bench evaluations."""
 
 import argparse
+import hashlib
+import importlib.metadata
 import json
 import logging
 import os
+import platform
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -81,6 +85,49 @@ logger = logging.getLogger(__name__)
 # committed here; this var lets a run pull it in at evaluation time. The flag
 # (--holdout-dir) takes precedence over the env var when both are set.
 HOLDOUT_DIR_ENV = "COT_BENCH_HOLDOUT_DIR"
+
+# Full installed-package list written alongside the manifest each run (H3). The
+# repo floor-pins only (pyproject `>=`) and CI installs with a bare
+# `pip install -e .`, so two "identical" runs can resolve different library
+# versions; capturing the resolved environment makes which versions a run used an
+# auditable fact rather than an assumption. Written next to run_manifest.json and
+# uploaded as a CI artifact; the manifest records its sha256 + package count so
+# the (committed) trend record can point at the exact environment.
+ENV_FREEZE_FILENAME = "env_freeze.txt"
+
+
+def capture_environment(freeze_path: Path) -> dict:
+    """Write a sorted `pip freeze`-equivalent to ``freeze_path``; return a summary.
+
+    Uses :mod:`importlib.metadata` rather than shelling out to ``pip`` so the
+    list is the in-process resolved environment, deterministically sorted, and
+    independent of whether ``pip`` is on PATH. The returned dict (python version
+    + platform + freeze-file sha256 + package count) is embedded in the manifest;
+    the full list lives in the file so the manifest stays compact.
+    """
+    dists = sorted(
+        (
+            f"{d.metadata['Name']}=={d.version}"
+            for d in importlib.metadata.distributions()
+            if d.metadata["Name"]
+        ),
+        key=str.lower,
+    )
+    body = "\n".join(dists) + ("\n" if dists else "")
+    # Write bytes (not write_text) so the on-disk file is byte-for-byte the bytes
+    # we hash — write_text would translate "\n" to the platform newline and the
+    # recorded sha256 would no longer match the file (it must, so a drifted
+    # environment is detectable by comparing the file's hash to the manifest).
+    encoded = body.encode("utf-8")
+    freeze_path.write_bytes(encoded)
+    return {
+        "python_version": sys.version.split()[0],
+        "python_implementation": platform.python_implementation(),
+        "platform": platform.platform(),
+        "freeze_file": freeze_path.name,
+        "freeze_sha256": hashlib.sha256(encoded).hexdigest(),
+        "n_packages": len(dists),
+    }
 
 
 def _scenario_from_dict(data: dict, domain: Domain, *, holdout: bool) -> Scenario:
@@ -1233,6 +1280,15 @@ def main():
     # Overwritten each run; uses only data main() already has in scope.
     models_requested = [m["name"] for m in models]
     models_completed = sorted({r["model"] for r in all_results})
+    # Capture the resolved environment (H3): full package list to a sibling file,
+    # summary (python version + sha256 + count) into the manifest below. Capture
+    # failure must never lose the manifest of a completed (paid) run — degrade
+    # to an honest marker instead.
+    try:
+        environment = capture_environment(output_path.parent / ENV_FREEZE_FILENAME)
+    except Exception as exc:
+        logger.warning("Environment capture failed: %s", exc)
+        environment = {"capture_failed": str(exc)}
     manifest = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "run_id": run_id,
@@ -1255,6 +1311,27 @@ def main():
         # coarse to avoid hinting at its composition).
         "scenario_counts": {d.value: len(scenarios) for d, scenarios in public_by_domain.items()},
         "reliability_runs": args.reliability_runs,
+        # Judge panel used for this run (H2). The publish gate
+        # (scripts/check_publish_ready.py) blocks a scheduled commit when the
+        # panel is not the full default roster, because a single-judge board has
+        # a different (and uncomparable) consensus than a leaderboard run.
+        # ``requested`` is the panel keys the run was invoked with; ``resolved``
+        # is the configured model name per key. The model a provider ACTUALLY
+        # served (resolved_model) is knowable only at call time and is recorded
+        # per call in the artifacts (governance §2) — the manifest records the
+        # configured panel so the gate has something to check without the
+        # artifacts.
+        "judges": {
+            "requested": list(args.judges),
+            "resolved": [JUDGES[key].name for key in args.judges],
+        },
+        # Resolved environment (H3). The repo floor-pins dependencies and CI does
+        # a bare `pip install -e .`, so the exact library versions a run used were
+        # previously unrecorded. The full `pip freeze`-equivalent is written to
+        # ``environment.freeze_file`` next to this manifest; here we keep the
+        # python version/platform plus the freeze file's sha256 and package count
+        # so the environment is at least recorded (and tamper-evident) per run.
+        "environment": environment,
         # Behavioral user-sim profile for this run (issue #59 part 1). Mirrors the
         # value pre-registered in seeds_and_temperatures and stamped per row, so
         # the completion record states which behavioral condition the run was —

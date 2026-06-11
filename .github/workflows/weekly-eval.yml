@@ -138,6 +138,7 @@ jobs:
             data/results/leaderboard.json
             data/results/pre_registration.json
             data/results/run_manifest.json
+            data/results/env_freeze.txt
             data/results/artifacts/
             data/results/traces/
 
@@ -166,6 +167,13 @@ jobs:
           test -f data/results/leaderboard.json || { echo "::error::leaderboard.json was not generated despite eval+aggregate exiting 0 — investigate scripts/aggregate_results.py"; exit 1; }
           git config user.name "COT Bench Bot"
           git config user.email "bot@cot-bench.dev"
-          git add data/results/leaderboard.json data/results/latest.csv
+          # leaderboard.json + latest.csv are the published surfaces
+          # (governance §4 / methodology); history.jsonl is the append-only
+          # audit trail governance §1 leans on — it must be committed each run
+          # or the public trend record is discarded with the CI workspace.
+          # All three are un-ignored in .gitignore; if that regresses this
+          # `git add` dies on a pathspec error (the H1 bug). The
+          # tests/test_published_surfaces_committable.py guard pins it.
+          git add data/results/leaderboard.json data/results/latest.csv data/results/history.jsonl
           git diff --staged --quiet || git commit -m "Update leaderboard results $(date +%Y-%m-%d)"
           git push

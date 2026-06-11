@@ -960,3 +960,21 @@ class TestMaxTurnsEnding:
             assert cs["state_progress_at_end"].notna().all()
         finally:
             _RUN_TO_MAX_TURNS.clear()
+
+
+class TestEnvironmentCaptureDegradation:
+    """Capture failure must never lose the manifest of a completed run (H3)."""
+
+    def test_capture_failure_degrades_to_marker(self, offline_pipeline, monkeypatch):
+        ctx = offline_pipeline
+
+        def boom(path):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(run_eval, "capture_environment", boom)
+        ctx.run_main(["--models", "GPT-5.5"])
+
+        manifest = json.loads((ctx.results_dir / "run_manifest.json").read_text("utf-8"))
+        # The manifest survives with an honest marker instead of an env block.
+        assert manifest["environment"] == {"capture_failed": "disk full"}
+        assert manifest["models_completed"] == ["GPT-5.5"]

@@ -800,10 +800,31 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
     if df.empty:
         return {"models": [], "updated": "", "domains": []}
 
+    # Persona-stratified robustness table (issue #59 / H4). This is the ONE
+    # surface that legitimately reads non-cooperative rows — it reports how each
+    # model holds up under the behavioral profiles vs cooperative — so it is
+    # computed from the FULL frame here, BEFORE exclude_non_cooperative_profiles
+    # below strips the non-coop rows for the public board. It must still respect
+    # the OTHER two tripwires: null-agent rows are already gone (excluded just
+    # above), and holdout rows must never appear here either (governance §4), so
+    # they are dropped from this snapshot before computing the table. Only emitted
+    # when non-cooperative rows actually exist, mirroring the holdout header
+    # pattern (absent key on a cooperative-only run, so no empty surface ships).
+    robustness_source = df
+    if "holdout" in robustness_source.columns:
+        robustness_source = robustness_source[
+            ~robustness_source["holdout"].fillna(False).astype(bool)
+        ]
+    has_noncooperative = bool((~_cooperative_mask(robustness_source)).any())
+    sim_profile_robustness = (
+        compute_sim_profile_pass_rates(robustness_source) if has_noncooperative else None
+    )
+
     # Strip rows from non-cooperative user-sim profiles (issue #59) before ANY
     # aggregate — including the holdout gap below — so a behavioral-profile run
     # can never move public efficacy. They are published separately via
-    # compute_sim_profile_pass_rates (the persona-stratified robustness table).
+    # compute_sim_profile_pass_rates (the persona-stratified robustness table,
+    # emitted under sim_profile_robustness below).
     df = exclude_non_cooperative_profiles(df)
     if df.empty:
         # A run with only non-cooperative rows has no public leaderboard.
@@ -869,25 +890,19 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
     else:
         overall["premature_end_rate"] = np.nan
 
-    # Compute composite CLEAR score (normalized, equal weight)
-    # Higher is better for efficacy and reliability
-    # Lower is better for cost and latency — invert these
+    # Compute composite CLEAR score (field-relative min-max normalization).
+    # Higher is better for efficacy and reliability; lower is better for cost and
+    # latency (inverted). The point estimate routes through the SAME
+    # _clear_from_means / CLEAR_WEIGHTS path the bootstrap replicates use, so the
+    # published score and its CI cannot silently desynchronize (the weights live
+    # in exactly one place — see CLEAR_WEIGHTS). test_clear_weights_single_source
+    # pins the equality.
     if len(overall) > 1:
-        for col in ["efficacy", "reliability"]:
-            col_min, col_max = overall[col].min(), overall[col].max()
-            rng = col_max - col_min
-            overall[f"{col}_norm"] = (overall[col] - col_min) / rng if rng > 0 else 0.5
-
-        for col in ["cost_per_task", "avg_latency_ms"]:
-            col_min, col_max = overall[col].min(), overall[col].max()
-            rng = col_max - col_min
-            overall[f"{col}_norm"] = 1.0 - ((overall[col] - col_min) / rng) if rng > 0 else 0.5
-
-        overall["clear_score"] = (
-            overall["efficacy_norm"] * 0.35
-            + overall["cost_per_task_norm"] * 0.20
-            + overall["reliability_norm"] * 0.25
-            + overall["avg_latency_ms_norm"] * 0.20
+        overall["clear_score"] = _clear_from_means(
+            overall["efficacy"].to_numpy(dtype=float),
+            overall["reliability"].to_numpy(dtype=float),
+            overall["cost_per_task"].to_numpy(dtype=float),
+            overall["avg_latency_ms"].to_numpy(dtype=float),
         )
     else:
         overall["clear_score"] = overall["efficacy"]
@@ -1031,6 +1046,29 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
         if holdout_gap
         else {"present": False},
     }
+
+    # Persona-stratified robustness table (issue #59 / H4): per-model, per-profile
+    # pass rates with each non-cooperative profile's delta vs the cooperative
+    # condition — the cooperative-only inflation made into a published number.
+    # Computed from the full frame above (before the cooperative exclusion) with
+    # null-agent and holdout rows already removed. Key present ONLY when the run
+    # included non-cooperative rows, so a normal cooperative leaderboard ships no
+    # empty/misleading surface (mirrors the holdout "present" pattern). No profile
+    # name ever appears unless a stratified run actually produced those rows.
+    if sim_profile_robustness:
+        leaderboard["sim_profile_robustness"] = {
+            "cooperative_profile": DEFAULT_SIM_PROFILE,
+            "pass_threshold": PASS_THRESHOLD,
+            "note": (
+                "Per-model pass rate (efficacy >= the pass threshold) under each "
+                "user-sim behavioral profile (issue #59). delta_vs_cooperative = "
+                "cooperative_pass_rate - profile_pass_rate; positive means the "
+                "model does worse under that profile. These rows are EXCLUDED from "
+                "the public efficacy/CLEAR rankings above and reported only here. "
+                "Holdout and null-agent rows are never included."
+            ),
+            "models": sim_profile_robustness,
+        }
 
     for _, row in overall.iterrows():
         cis = bootstrap_cis.get(row["model"], {})
