@@ -53,6 +53,13 @@ FRONTEND_TOPLEVEL_KEYS = {
     # Corpus-health headline appended to the stat note (#71). Conditionally
     # emitted, but always present on a frame with model/scenario/efficacy data.
     "corpus_health",
+    # Diagnostics panel: failure-mode breakdown reads the taxonomy header for
+    # its stable column order (#55/#66).
+    "failure_taxonomy",
+    # Diagnostics panel: persona-stratified robustness table (#59/#70 H4).
+    # Conditionally emitted — only when the run has non-cooperative rows — so
+    # the subset test below uses the stratified fixture.
+    "sim_profile_robustness",
 }
 
 # Keys index.html dereferences off each entry in leaderboard.models.
@@ -85,8 +92,13 @@ FRONTEND_MODEL_KEYS = {
 }
 
 
-def _build_df(with_holdout=True, with_premature=True, with_pass_hat=True):
-    """A realistic results frame exercising every column the leaderboard reads."""
+def _build_df(with_holdout=True, with_premature=True, with_pass_hat=True, with_sim_profiles=False):
+    """A realistic results frame exercising every column the leaderboard reads.
+
+    ``with_sim_profiles`` adds non-cooperative user-sim rows (issue #59) so the
+    aggregate emits ``sim_profile_robustness``; cooperative rows carry no
+    ``sim_profile`` value and count as cooperative via the fillna default.
+    """
     rng = np.random.default_rng(11)
     judges = ["Kimi K2.6", "GLM-4.6", "Claude Opus 4.6"]
     models = {"GPT-5.5": 0.88, "Claude Sonnet 4.6": 0.78, "GPT-4.1 (anchor)": 0.55}
@@ -130,12 +142,23 @@ def _build_df(with_holdout=True, with_premature=True, with_pass_hat=True):
                         row[f"tc_{j}"] = float(np.clip(eff + rng.normal(0, 0.05), 0, 1))
                         row[f"ts_{j}"] = float(np.clip(eff + rng.normal(0, 0.05), 0, 1))
                     rows.append(row)
+                    # Non-cooperative behavioral-profile rows (issue #59): public
+                    # half only, lower efficacy. Excluded from public aggregates;
+                    # surfaced via sim_profile_robustness.
+                    if with_sim_profiles and not holdout and r == 0 and s < 8:
+                        for profile in ("impatient", "technically-confused"):
+                            nrow = dict(row)
+                            nrow["sim_profile"] = profile
+                            nrow["efficacy"] = float(max(0.0, eff - 0.2))
+                            rows.append(nrow)
     return pd.DataFrame(rows)
 
 
 class TestFrontendSchemaCoupling:
     def test_toplevel_keys_are_subset_of_emitted(self):
-        lb = compute_leaderboard(_build_df())
+        # Stratified fixture: sim_profile_robustness is only emitted when the
+        # run has non-cooperative rows, and the frontend reads it when present.
+        lb = compute_leaderboard(_build_df(with_sim_profiles=True))
         missing = FRONTEND_TOPLEVEL_KEYS - set(lb.keys())
         assert not missing, f"frontend reads top-level keys aggregate no longer emits: {missing}"
 
@@ -169,6 +192,30 @@ class TestFrontendSchemaCoupling:
         assert isinstance(band, dict)
         assert band["solid_rate"] <= band["avg_pass_rate"] <= band["best_of_rate"]
         assert isinstance(lb["corpus_health"]["headline"], str)
+
+    def test_sim_profile_robustness_emitted_only_when_stratified(self):
+        # Stratified run: the table is present with the shape the diagnostics
+        # panel renders (per-model per-profile pass rates + delta_vs_cooperative).
+        lb = compute_leaderboard(_build_df(with_sim_profiles=True))
+        spr = lb["sim_profile_robustness"]
+        assert spr["cooperative_profile"] == "cooperative"
+        assert spr["models"], "expected per-model robustness entries"
+        profiles = next(iter(spr["models"].values()))
+        assert {"cooperative", "impatient", "technically-confused"} <= set(profiles)
+        assert profiles["cooperative"]["delta_vs_cooperative"] is None
+        for name in ("impatient", "technically-confused"):
+            entry = profiles[name]
+            assert {
+                "pass_rate",
+                "mean_efficacy",
+                "n_rows",
+                "n_scenarios",
+                "delta_vs_cooperative",
+            } <= set(entry)
+            assert isinstance(entry["delta_vs_cooperative"], float)
+        # Cooperative-only run: the key is absent (no empty surface), and the
+        # frontend hides the robustness section.
+        assert "sim_profile_robustness" not in compute_leaderboard(_build_df())
 
     def test_new_fields_degrade_to_none_on_legacy_data(self):
         # No holdout / premature / pass^k columns (legacy parquet). The frontend
@@ -254,7 +301,10 @@ const registry = {};
 function getEl(id){ if(!registry[id]) registry[id]=new El('div'); return registry[id]; }
 const ids = ['last-updated','version-pill','empty-state','results-view','domain-filter',
   'leaderboard-body','cards-view','holdout-th','stat-note','stat-note-mobile',
-  'scatter-svg','scatter-panel','changelog-body','sc-tooltip'];
+  'scatter-svg','scatter-panel','changelog-body','sc-tooltip',
+  'diagnostics-panel','diag-failure','failure-modes-head','failure-modes-body',
+  'diag-robustness','robustness-head','robustness-body',
+  'diag-corpus','corpus-health-body'];
 ids.forEach(getEl);
 // scatter-svg needs a <title> child so the "keep title" clear logic has something.
 const titleEl = new El('title'); getEl('scatter-svg').appendChild(titleEl);
@@ -279,6 +329,19 @@ _RUNNER_TMPL = r"""
 // --- drive the render paths for the supplied state ---
 const STATE = %(state)s;
 const out = { ok: true, steps: [] };
+function collectDiagnostics(out) {
+  out.diag_panel_display = document.getElementById('diagnostics-panel').style.display;
+  out.diag_failure_display = document.getElementById('diag-failure').style.display;
+  out.diag_robustness_display = document.getElementById('diag-robustness').style.display;
+  out.diag_corpus_display = document.getElementById('diag-corpus').style.display;
+  out.diag_html = [
+    document.getElementById('failure-modes-head').innerHTML,
+    document.getElementById('failure-modes-body').innerHTML,
+    document.getElementById('robustness-head').innerHTML,
+    document.getElementById('robustness-body').innerHTML,
+    document.getElementById('corpus-health-body').innerHTML,
+  ].join('\n');
+}
 try {
   if (STATE === 'empty') {
     leaderboardData = { models: [] };
@@ -287,12 +350,17 @@ try {
     out.empty_shown = document.getElementById('empty-state').style.display === '';
     out.results_hidden = document.getElementById('results-view').style.display === 'none';
   } else {
-    leaderboardData = %(data)s;
-    onDataLoaded();
+    if (STATE === 'demo') {
+      renderDemo();
+    } else {
+      leaderboardData = %(data)s;
+      onDataLoaded();
+    }
     out.body_html = document.getElementById('leaderboard-body').innerHTML;
     out.cards_html = document.getElementById('cards-view').innerHTML;
     out.svg_children = document.getElementById('scatter-svg').children.length;
     out.holdout_th_display = document.getElementById('holdout-th').style.display;
+    collectDiagnostics(out);
     // exercise a re-sort to make sure sortBy + render don't throw
     sortBy('value_per_dollar');
     sortBy('cost_per_task_usd');
@@ -353,7 +421,7 @@ def _run_node(state: str, data: dict | None) -> dict:
 
 def _populated_payload(degraded: bool = False) -> dict:
     """Real aggregate output, optionally stripped to the degraded (null) shape."""
-    lb = compute_leaderboard(_build_df(with_holdout=not degraded))
+    lb = compute_leaderboard(_build_df(with_holdout=not degraded, with_sim_profiles=not degraded))
     if degraded:
         # Degraded data: nulls for CI + holdout, empty pass^k. Mimics a run where
         # bootstrap/holdout didn't produce values. The page must still render.
@@ -410,3 +478,75 @@ class TestHeadlessRender:
         # CI whisker / pass^k detail simply omitted — no "NaN"/"undefined" leak.
         assert "undefined" not in out["body_html"]
         assert "NaN" not in out["body_html"]
+
+    def test_diagnostics_render_on_full_payload(self):
+        # Full payload (failure profiles + stratified sim profiles + corpus
+        # health): all three diagnostic sections render, panel visible.
+        out = _run_node("populated", _populated_payload(degraded=False))
+        assert out["ok"], out.get("error")
+        assert out["diag_panel_display"] == ""
+        assert out["diag_failure_display"] == ""
+        assert out["diag_robustness_display"] == ""
+        assert out["diag_corpus_display"] == ""
+        # Failure table: a taxonomy mode and a percentage rendered.
+        assert "incomplete" in out["diag_html"]
+        assert "%" in out["diag_html"]
+        # Robustness table: non-cooperative profile columns + delta vs coop.
+        assert "impatient" in out["diag_html"]
+        assert "vs coop" in out["diag_html"]
+        # Corpus health: count tiles with the defect/low-signal explanations.
+        assert "never passed" in out["diag_html"]
+        assert "passed by every model" in out["diag_html"]
+        # Nothing un-numeric ever leaks into the diagnostics markup.
+        assert "undefined" not in out["diag_html"]
+        assert "NaN" not in out["diag_html"]
+
+    def test_diagnostics_hidden_on_degraded_payload(self):
+        # Legacy/degraded payload: no failure profiles, no sim_profile_robustness,
+        # no corpus_health — every section and the whole panel stay hidden, and
+        # nothing renders into the diagnostic sinks.
+        out = _run_node("populated", _populated_payload(degraded=True))
+        assert out["ok"], out.get("error")
+        assert out["diag_panel_display"] == "none"
+        assert out["diag_failure_display"] == "none"
+        assert out["diag_robustness_display"] == "none"
+        assert out["diag_corpus_display"] == "none"
+        assert "undefined" not in out["diag_html"]
+        assert "NaN" not in out["diag_html"]
+
+    def test_demo_payload_renders_diagnostics(self):
+        # ?demo=1 fabricated payload must exercise every diagnostics section so
+        # the panel can be worked on without real results.
+        out = _run_node("demo", None)
+        assert out["ok"], out.get("error")
+        assert out["body_html"].count("<tr") == 6
+        assert out["diag_panel_display"] == ""
+        assert out["diag_failure_display"] == ""
+        assert out["diag_robustness_display"] == ""
+        assert out["diag_corpus_display"] == ""
+        assert "adversarial" in out["diag_html"]
+        assert "undefined" not in out["diag_html"]
+        assert "NaN" not in out["diag_html"]
+
+    def test_diagnostics_escape_untrusted_strings(self):
+        # Model names, failure-mode names (taxonomy can grow out-of-vocabulary),
+        # profile names, and the corpus-health headline all flow into innerHTML
+        # sinks in the diagnostics panel; every one must pass through esc().
+        # The payload carries a double quote so ATTRIBUTE-context escaping
+        # (title="..." tooltips) is pinned too, not just element context — a
+        # quote-less payload would pass even if esc() stopped escaping quotes.
+        evil = '<b "x>xss</b>'
+        lb = _populated_payload(degraded=False)
+        victim = lb["models"][0]["name"]
+        lb["models"][0]["name"] = evil
+        lb["models"][0]["failure_profile"]["modes"][evil] = {"count": 3, "rate": 0.05}
+        spr = lb["sim_profile_robustness"]["models"]
+        spr[evil] = spr.pop(victim)
+        profiles = lb["sim_profile_robustness"]["models"][evil]
+        profiles[evil] = dict(profiles["impatient"])
+        lb["corpus_health"]["headline"] = evil
+        out = _run_node("populated", lb)
+        assert out["ok"], out.get("error")
+        assert "<b" not in out["diag_html"]
+        assert '"x' not in out["diag_html"].replace("&quot;x", "")
+        assert "&lt;b &quot;x&gt;xss&lt;/b&gt;" in out["diag_html"]
