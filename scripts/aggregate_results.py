@@ -147,13 +147,17 @@ def compute_recovery_rates(df: pd.DataFrame) -> dict:
 
     A recovery probe injects a deterministic mid-conversation fault and grades —
     via state checking — whether the agent reached the correct end state DESPITE
-    it. ``recovered`` is the boolean verdict on each probe row (None on non-probe
-    rows). This computes, per model::
+    it. ``recovered`` is the boolean verdict on each FIRED probe row; it is None
+    on non-probe rows AND on declared-probe rows whose injection never fired
+    (the conversation ended before ``probe.turn`` — the runner refuses to grade
+    a fault that was never injected; the per-row ``probe_fired`` flag makes
+    those rows auditable). This computes, per model::
 
         {model: {"recovery_rate": .., "n_probe_rows": .., "n_probe_scenarios": ..,
                  "by_kind": {kind: {"recovery_rate": .., "n_rows": ..}}}}
 
-    over ONLY the rows where a probe ran (``recovered`` is non-null). Returns
+    over ONLY the rows where a probe FIRED (``recovered`` is non-null) — so the
+    denominator never mixes in rows where no fault occurred. Returns
     ``{}`` when no probe rows exist — which is every run on the v1 corpus, since
     no published scenario carries a probe (demo probes live in test fixtures
     only). Deterministic: plain group means, no resampling. This is a reporting
@@ -1274,7 +1278,9 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
                 "#57): a deterministic mid-conversation fault is injected at turn "
                 "4-5 and recovery is verified by state grading (correct end state "
                 "reached DESPITE the fault, and the bad entity not acted on). "
-                "recovery_rate is the fraction of probe rows the model recovered, "
+                "recovery_rate is the fraction of FIRED-probe rows the model "
+                "recovered (rows where the probe was declared but never fired "
+                "carry recovered=null and are excluded; see probe_fired per row), "
                 "with a by_kind breakdown. These rows are a SEPARATE dimension — "
                 "they are excluded from the public efficacy/CLEAR rankings above. "
                 "Holdout and null-agent rows are never included."

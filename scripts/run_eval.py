@@ -331,14 +331,19 @@ def build_result_row(
         # holdout and null-agent exclusions). Defaults to cooperative for sim
         # results that predate the field.
         "sim_profile": getattr(sim_result, "sim_profile", DEFAULT_SIM_PROFILE),
-        # Recovery probe (issue #57). ``recovery_probe_kind`` is the probe kind
-        # that ran (None for the non-probe majority — the entire public corpus
-        # today), and ``recovered`` is the deterministic recovery verdict
-        # (None when no probe ran). Aggregation computes a per-model recovery_rate
-        # over probe-carrying rows ONLY and emits it conditionally, so a normal
-        # cooperative run with no probe rows is byte-identical downstream.
+        # Recovery probe (issue #57). ``recovery_probe_kind`` is the DECLARED
+        # probe kind (None for the non-probe majority — the entire public corpus
+        # today); ``probe_fired`` records whether the injection was actually
+        # delivered as a user turn; ``recovered`` is the deterministic recovery
+        # verdict, None unless the probe fired (a conversation that ended before
+        # probe.turn saw no fault, so it must not be graded). Aggregation
+        # computes a per-model recovery_rate over fired-probe rows ONLY
+        # (recovered non-null) and emits it conditionally, so a normal
+        # cooperative run with no probe rows is byte-identical downstream;
+        # probe_fired makes the rate's denominator auditable on the rows.
         "recovery_probe_kind": getattr(sim_result, "recovery_probe_kind", None),
         "recovered": getattr(sim_result, "recovered", None),
+        "probe_fired": bool(getattr(sim_result, "probe_fired", False)),
         "tc_agreement": _round_or_none(tc_result.agreement_rate, 4),
         "ts_agreement": _round_or_none(ts_result.agreement_rate, 4),
         "tc_max_disagreement": _round_or_none(tc_result.max_disagreement, 4),

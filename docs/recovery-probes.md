@@ -89,7 +89,33 @@ Recovery is graded by the **existing** state grader (`eval/scoring/state_check.p
 
 A partial — task done but acted on the wrong entity, or wrong entity avoided but
 task abandoned — counts as a **non-recovery**. `recovered` is `True`/`False` on
-probe rows, `None` everywhere else.
+**fired**-probe rows, `None` everywhere else — including declared-probe rows
+whose injection never fired (below).
+
+### The probe-not-fired case
+
+A probe declared at turn 4-5 only fires if the conversation actually reaches
+that turn. It does NOT fire when the user sim ends the conversation early
+(`CONVERSATION_COMPLETE` before `probe.turn`), when `max_turns` is below the
+probe turn, or when the agent errors out first. In all of those cases the run
+records `probe_fired=false` and `recovered=null` — the run is **not graded for
+recovery at all**, because no fault was ever injected.
+
+Why `None` and not `False`: grading a never-injected fault scores the row by
+base-task state alone. That would count an early-ending run as a non-recovery
+it never had the chance to attempt — or worse, if the base task happened to
+already be satisfied when the conversation ended early, it would **credit the
+agent with recovering from a fault it never saw**. Neither verdict is about
+recovery, so neither belongs in the rate.
+
+What it means for `recovery_rate` denominators: aggregation drops
+`recovered=null` rows, so `recovery_rate` is computed over **fired-probe rows
+only** — `n_probe_rows` counts faults that actually occurred, never declared-
+but-skipped ones. Each row also carries `probe_fired` (on the result row and in
+the artifact's `sim_meta`), so the declared-vs-fired gap is auditable: a probe
+tier whose scenarios routinely end before the probe turn shows up as fired
+counts below declared counts, a signal to move the probe earlier or revisit the
+scenario, not a silent denominator change.
 
 **One small grammar addition: the `not_exists` op.** The wrong-entity recovery
 check needs to assert *absence* — "`accounts.BUS-CHK-999` must never exist". The
@@ -98,7 +124,10 @@ the empty-assertion-list unauthorized-mutation check is whole-world (it would be
 tripped by the legitimate transfer). `not_exists` is the minimal, deterministic
 op that makes the canonical wrong-entity check expressible — it is the one op for
 which an absent path is the *success* case. It's a general assertion, usable in
-`expected_state_changes` too, not probe-only machinery.
+`expected_state_changes` too, not probe-only machinery. One edge worth knowing:
+a path that resolves to `null` is **present**, so `not_exists` FAILS on it —
+`resolve_path` distinguishes present-and-null from absent (pinned by
+`test_present_but_none_value_still_counts_as_exists` in `test_state_check.py`).
 
 ## Scoring semantics & where probe results are published
 

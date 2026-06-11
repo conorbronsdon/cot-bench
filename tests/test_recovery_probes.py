@@ -23,6 +23,7 @@ Pins the guarantees of the recovery-probe mechanism, all fully OFFLINE
 """
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pandas as pd
@@ -31,7 +32,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
-from eval.config import Domain
+from eval.config import DEFAULT_SIMULATION, Domain
 from eval.pre_registration import _scenario_to_canonical_dict, scenario_set_hash
 from eval.providers.registry import ModelSpec
 from eval.simulation.probes import (
@@ -128,8 +129,6 @@ class RecordingUserSim(BaseChatModel):
 
 def _runner_with(user_sim, tool_sim_text="{}"):
     runner = SimulationRunner.__new__(SimulationRunner)
-    from eval.config import DEFAULT_SIMULATION
-
     runner.config = DEFAULT_SIMULATION
     runner._user_sim = user_sim
 
@@ -311,6 +310,7 @@ class TestRecoveryVerdict:
         monkeypatch.setattr("eval.simulation.runner.create_model", lambda spec: ScriptedAgent())
         result = _runner_with(sim).run(_scenario(probe), SPEC)
         assert result.recovery_probe_kind == WRONG_ENTITY
+        assert result.probe_fired is True  # turn 4 reached; the fault was delivered
         assert result.recovered in (True, False)  # graded, not None (has ground_truth)
 
     def test_non_probe_run_has_null_probe_fields(self, monkeypatch):
@@ -319,6 +319,105 @@ class TestRecoveryVerdict:
         result = _runner_with(sim).run(_scenario(None), SPEC)
         assert result.recovery_probe_kind is None
         assert result.recovered is None
+        assert result.probe_fired is False
+
+
+# --------------------------------------------------------------------------- #
+# 3b. Probe firing (review fix): recovered is None when the probe never fired
+# --------------------------------------------------------------------------- #
+class TestProbeFiring:
+    """A declared probe that never FIRES must yield recovered=None.
+
+    A probe declared at turn N only fires if the conversation actually reaches
+    turn N. Before the fix, recovery was graded off probe DECLARATION, so a run
+    that ended early was scored against a fault that was never injected — and
+    when the base task happened to already be satisfied (here: empty
+    expected_state_changes over an unchanged world) the row was falsely
+    credited recovered=True. Both non-firing paths must stamp probe_fired=False
+    and recovered=None, which compute_recovery_rates drops from recovery_rate.
+    """
+
+    INJECTION = "Send it to BUS-CHK-999 instead."
+
+    def _probe(self, turn=4):
+        return RecoveryProbe(turn=turn, kind=WRONG_ENTITY, injection=self.INJECTION)
+
+    def test_early_completion_probe_not_fired(self, monkeypatch):
+        # User sim emits CONVERSATION_COMPLETE on turn 1, probe declared at
+        # turn 4. Empty expected_state_changes pass on the unchanged world —
+        # the pre-fix false-credit case (recovered would have been True).
+        scen = _scenario(self._probe(turn=4), expected_state_changes=[])
+        sim = RecordingUserSim(generated=0, done_after=2)
+        monkeypatch.setattr("eval.simulation.runner.create_model", lambda spec: ScriptedAgent())
+        result = _runner_with(sim).run(scen, SPEC)
+
+        assert result.ended_by == "user_sim"  # ended before the probe turn
+        assert all(self.INJECTION not in t.content for t in result.turns)  # never delivered
+        assert result.probe_fired is False
+        assert result.recovered is None  # NOT True/False — no fault ever occurred
+        assert result.recovery_probe_kind == WRONG_ENTITY  # declaration still auditable
+
+    def test_max_turns_below_probe_turn_not_fired(self, monkeypatch):
+        # max_turns=3 < probe.turn=5: the loop never reaches the staging
+        # iteration, so the probe is never injected at all.
+        scen = _scenario(self._probe(turn=5), expected_state_changes=[])
+        sim = RecordingUserSim(generated=0, done_after=99)  # never self-completes
+        runner = _runner_with(sim)
+        runner.config = replace(DEFAULT_SIMULATION, max_turns=3)
+        monkeypatch.setattr("eval.simulation.runner.create_model", lambda spec: ScriptedAgent())
+        result = runner.run(scen, SPEC)
+
+        assert result.ended_by == "max_turns"
+        assert all(self.INJECTION not in t.content for t in result.turns)
+        assert result.probe_fired is False
+        assert result.recovered is None
+        assert result.recovery_probe_kind == WRONG_ENTITY
+
+    def test_probe_staged_on_final_iteration_not_fired(self, monkeypatch):
+        # Edge between the two cases above: probe.turn == max_turns. The probe
+        # text is STAGED as the next user message at the end of the loop's last
+        # iteration, but the loop ends before it is ever delivered — the agent
+        # never sees the fault, so it must not count as fired.
+        scen = _scenario(self._probe(turn=4), expected_state_changes=[])
+        sim = RecordingUserSim(generated=0, done_after=99)
+        runner = _runner_with(sim)
+        runner.config = replace(DEFAULT_SIMULATION, max_turns=4)
+        monkeypatch.setattr("eval.simulation.runner.create_model", lambda spec: ScriptedAgent())
+        result = runner.run(scen, SPEC)
+
+        assert all(self.INJECTION not in t.content for t in result.turns)
+        assert result.probe_fired is False
+        assert result.recovered is None
+
+    def test_fired_probe_still_grades(self, monkeypatch):
+        # Control: when the conversation DOES reach the probe turn, grading is
+        # unchanged. Unchanged world + the +500 expectation -> deterministic
+        # non-recovery; unchanged world + empty expectations -> recovery.
+        monkeypatch.setattr("eval.simulation.runner.create_model", lambda spec: ScriptedAgent())
+
+        sim = RecordingUserSim(generated=0, done_after=99)
+        res_false = _runner_with(sim).run(_scenario(self._probe(turn=4)), SPEC)
+        assert res_false.probe_fired is True
+        assert res_false.recovered is False  # +500 never happened
+
+        sim = RecordingUserSim(generated=0, done_after=99)
+        scen_pass = _scenario(self._probe(turn=4), expected_state_changes=[])
+        res_true = _runner_with(sim).run(scen_pass, SPEC)
+        assert res_true.probe_fired is True
+        assert res_true.recovered is True  # unchanged world passes the empty contract
+
+    def test_unfired_rows_excluded_from_recovery_rate(self):
+        # The aggregation half of the fix: a declared-but-never-fired row
+        # (recovered=None, probe_fired=False) must not enter recovery_rate's
+        # numerator OR denominator.
+        df = _probe_df({"A": [True, False]})  # 2 scenarios x 2 runs -> rate 0.5
+        df["probe_fired"] = True
+        unfired = df.iloc[[0]].copy()
+        unfired["recovered"] = None
+        unfired["probe_fired"] = False
+        table = compute_recovery_rates(pd.concat([df, unfired], ignore_index=True))
+        assert table["A"]["recovery_rate"] == 0.5  # unchanged by the unfired row
+        assert table["A"]["n_probe_rows"] == 4  # denominator counts fired rows only
 
 
 # --------------------------------------------------------------------------- #
