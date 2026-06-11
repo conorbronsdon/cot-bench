@@ -53,6 +53,7 @@ from eval.scoring.rubrics import (
     compute_reliability,
 )
 from eval.scoring.state_check import score_state_changes
+from eval.simulation.profiles import DEFAULT_SIM_PROFILE, SIM_PROFILES
 from eval.simulation.runner import Scenario, SimulationRunner
 from eval.tracing import (
     get_tracer,
@@ -250,6 +251,12 @@ def build_result_row(
         # AGENT; these cover the simulators.
         "user_sim_model": getattr(sim_result, "user_sim_model", None),
         "tool_sim_model": getattr(sim_result, "tool_sim_model", None),
+        # Behavioral user-sim profile (issue #59 part 1). Stamped per row so
+        # persona-stratified pass rates are computable and so aggregation can
+        # exclude non-cooperative rows from the public leaderboard (mirroring the
+        # holdout and null-agent exclusions). Defaults to cooperative for sim
+        # results that predate the field.
+        "sim_profile": getattr(sim_result, "sim_profile", DEFAULT_SIM_PROFILE),
         "tc_agreement": _round_or_none(tc_result.agreement_rate, 4),
         "ts_agreement": _round_or_none(ts_result.agreement_rate, 4),
         "tc_max_disagreement": _round_or_none(tc_result.max_disagreement, 4),
@@ -816,6 +823,23 @@ def main():
         ),
     )
     parser.add_argument(
+        "--sim-profile",
+        type=str,
+        choices=sorted(SIM_PROFILES),
+        default=DEFAULT_SIM_PROFILE,
+        help=(
+            "Behavioral profile for the USER simulator (issue #59 part 1). The "
+            f"default ('{DEFAULT_SIM_PROFILE}') appends nothing to the sim prompt "
+            "— byte-identical to pre-profile behavior. Non-cooperative profiles "
+            "(impatient / technically-confused / adversarial) layer behavioral "
+            "exemplars onto the same persona and goals. The profile is recorded "
+            "in pre_registration.json, the run manifest, and per result row "
+            "(sim_profile column); rows from non-cooperative profiles are "
+            "EXCLUDED from the public leaderboard aggregates and feed the "
+            "persona-stratified robustness table instead."
+        ),
+    )
+    parser.add_argument(
         "--separate-judge-calls",
         action="store_true",
         help=(
@@ -962,6 +986,7 @@ def main():
             if args.tool_sim_model
             else DEFAULT_SIMULATION.tool_simulator_provider
         ),
+        user_sim_profile=args.sim_profile,
     )
     if args.user_sim_model or args.tool_sim_model:
         logger.info(
@@ -970,6 +995,13 @@ def main():
             sim_config.user_simulator_provider,
             sim_config.tool_simulator_model,
             sim_config.tool_simulator_provider,
+        )
+    if sim_config.user_sim_profile != DEFAULT_SIM_PROFILE:
+        logger.info(
+            "Behavioral sim profile (issue #59): %s — result rows will be tagged "
+            "sim_profile=%s and EXCLUDED from public leaderboard aggregates.",
+            sim_config.user_sim_profile,
+            sim_config.user_sim_profile,
         )
 
     # Pre-registration (issue #38): commit the run's definition to disk BEFORE
@@ -1020,6 +1052,7 @@ def main():
             tool_simulator_temperature=DEFAULT_SIMULATION.tool_simulator_temperature,
             user_simulator_model=sim_config.user_simulator_model,
             tool_simulator_model=sim_config.tool_simulator_model,
+            user_sim_profile=sim_config.user_sim_profile,
             separate_judge_calls=args.separate_judge_calls,
             artifacts_dir=(str(Path(artifacts_root) / run_id) if artifacts_root else None),
             trace_dir=str(trace_dir),
@@ -1184,6 +1217,11 @@ def main():
         # coarse to avoid hinting at its composition).
         "scenario_counts": {d.value: len(scenarios) for d, scenarios in public_by_domain.items()},
         "reliability_runs": args.reliability_runs,
+        # Behavioral user-sim profile for this run (issue #59 part 1). Mirrors the
+        # value pre-registered in seeds_and_temperatures and stamped per row, so
+        # the completion record states which behavioral condition the run was —
+        # a non-cooperative run must never be mistaken for a leaderboard run.
+        "sim_profile": sim_config.user_sim_profile,
         # Cost guard accounting (issue #47): the preflight estimate, the measured
         # actual spend (agent + simulators + judges) and its per-model breakdown,
         # the cap, and whether the run stopped because the cap was hit. Lets a

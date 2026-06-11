@@ -36,6 +36,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from eval.simulation.profiles import DEFAULT_SIM_PROFILE
+
 # Filename for the pre-registration artifact, written next to the results
 # parquet (alongside the post-run run_manifest.json).
 PRE_REGISTRATION_FILENAME = "pre_registration.json"
@@ -157,6 +159,7 @@ def build_pre_registration(
     separate_judge_calls: bool,
     user_simulator_model: str | None = None,
     tool_simulator_model: str | None = None,
+    user_sim_profile: str = DEFAULT_SIM_PROFILE,
     artifacts_dir=None,
     trace_dir=None,
 ) -> dict:
@@ -180,9 +183,10 @@ def build_pre_registration(
       provider + temperature). ``resolved_model`` is intentionally absent: it is
       only knowable at call time and is recorded in the post-run artifacts.
     - ``reliability_runs`` and ``seeds_and_temperatures`` (bootstrap seed, agent
-      temp, simulator temps, AND the requested simulator model ids — issue #50)
-      with an explicit note that the user/tool simulators are unseeded at temp > 0,
-      so runs are not bit-for-bit reproducible.
+      temp, simulator temps, the requested simulator model ids — issue #50 — AND
+      the behavioral user-sim profile — issue #59) with an explicit note that the
+      user/tool simulators are unseeded at temp > 0, so runs are not bit-for-bit
+      reproducible.
     - ``judge_prompt_mode`` — "combined" (default) or "separate".
     """
     corpus_hash, scenario_index = scenario_set_hash(scenarios_by_domain)
@@ -262,6 +266,12 @@ def build_pre_registration(
             # defaults at the call site; they are recorded here as resolved.
             "user_simulator_model": user_simulator_model,
             "tool_simulator_model": tool_simulator_model,
+            # Behavioral user-sim profile (issue #59 part 1) is part of the run
+            # definition exactly like the sim model ids above: a non-cooperative
+            # profile changes the agent's scoring conditions, so the run must
+            # commit to it before any number is known. Rows it produces are
+            # excluded from the public leaderboard aggregates.
+            "user_sim_profile": user_sim_profile,
             "reproducibility_note": (
                 "The agent under test runs at temperature 0.0 and the bootstrap "
                 "uses a fixed seed for reproducible confidence intervals. The "

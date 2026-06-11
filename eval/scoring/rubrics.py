@@ -290,6 +290,12 @@ Rules:
 # --- Reliability Scoring ---
 # Not judge-based — computed from repeated runs.
 
+# A run "passes" when its efficacy reaches this threshold. Single source of the
+# pass definition: reliability (pass@k / pass^k) and the persona-stratified
+# profile pass rates (scripts/aggregate_results.py, issue #59) both use it, so
+# "pass" means the same thing everywhere it is published.
+PASS_THRESHOLD = 0.7
+
 
 def compute_pass_hat_k(n_passes: int, n_runs: int) -> dict:
     """tau-bench style pass^k estimator from a count of passing runs.
@@ -322,7 +328,7 @@ def compute_pass_hat_k(n_passes: int, n_runs: int) -> dict:
     return {k: comb(n_passes, k) / comb(n_runs, k) for k in range(1, n_runs + 1)}
 
 
-def compute_reliability(run_scores: list[float], threshold: float = 0.7) -> dict:
+def compute_reliability(run_scores: list[float], threshold: float = PASS_THRESHOLD) -> dict:
     """Compute reliability metrics from repeated evaluation runs.
 
     Args:

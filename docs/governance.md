@@ -98,17 +98,22 @@ The pre-registration records:
   in advance.
 - **Reliability-run count** and **seeds / temperatures** — the bootstrap seed
   (`BOOTSTRAP_SEED = 42`, `scripts/aggregate_results.py`), the agent temperature
-  (0.0), and the user/tool simulator temperatures. The record states explicitly
-  that the user and tool simulators run **unseeded** and that the user simulator
-  runs at temperature > 0, so runs are **not bit-for-bit reproducible** — the
-  honest caveat is part of the artifact, not a footnote elsewhere.
+  (0.0), the user/tool simulator temperatures, the requested user/tool simulator
+  model ids (overridable per run for the sensitivity test, issue #50), and the
+  behavioral user-sim profile (`user_sim_profile`, issue #59 — `cooperative` by
+  default; a non-cooperative profile changes the agent's scoring conditions, so
+  the run commits to it before any number is known, and its rows are excluded
+  from the public leaderboard aggregates). The record states explicitly that the
+  user and tool simulators run **unseeded** and that the user simulator runs at
+  temperature > 0, so runs are **not bit-for-bit reproducible** — the honest
+  caveat is part of the artifact, not a footnote elsewhere.
 - **Judge-prompt mode** — combined single-prompt (default) or the legacy
   separate-prompt path.
 
 **Completion record.** The existing `run_manifest.json` remains the post-run
 completion record (it records the models requested / completed / failed, domains,
-per-domain scenario counts, the reliability-run count, and the artifact and trace
-directories; the publish gate, `scripts/check_publish_ready.py`, reads its
+per-domain scenario counts, the reliability-run count, the behavioral user-sim
+profile (`sim_profile`, issue #59), and the artifact and trace directories; the publish gate, `scripts/check_publish_ready.py`, reads its
 `models_failed` field to block a leaderboard commit that would silently ship
 missing models). It now carries a `pre_registration` block linking back to the
 pre-registration by **path and sha256** (plus the corpus hash), so the two files

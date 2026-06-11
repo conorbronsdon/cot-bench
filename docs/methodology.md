@@ -126,6 +126,51 @@ is a sim-sensitivity check that re-runs a subset under a second simulator model
 and publishes the agent-score delta, directly quantifying the swing the
 literature warns about.
 
+**Behavioral user-sim profiles (issue #59, part 1).** The same literature has a
+second warning: it is not only *which model* plays the user, but *what kind of
+user* it plays. A simulator that is always polite, precise, and infinitely
+patient grades agents on the easiest slice of reality — the RealUserSim line of
+work finds cooperative-only simulation inflates pass rates by 15–30 points. The
+harness therefore supports four named behavioral profiles for the user
+simulator, selected per run with `run_eval --sim-profile`:
+
+- **`cooperative`** (default) — the unmodified prompt described above. This is
+  the leaderboard condition; when no profile is passed, the user-sim prompt is
+  **byte-identical** to its pre-profile form (pinned by a snapshot test), so the
+  feature cannot drift the published numbers.
+- **`impatient`** — pushes for shortcuts, answers only part of multi-part
+  questions, threatens to leave when the conversation drags, and may abandon the
+  conversation unsatisfied (exercising the `ended_by` / `premature_end`
+  instrumentation above).
+- **`technically-confused`** — misuses terminology, conflates distinct things,
+  and states wrong-but-confident non-identity details (an amount, a date) that a
+  careful agent should verify with its tools rather than take on faith.
+- **`adversarial`** — applies social pressure to get the agent to skip
+  verification and policy steps (claimed authority, "the last rep didn't make me
+  do this"), escalating before ultimately complying. This profile doubles as the
+  instrument for the planned adversarial judge audit (issue #59 part 2, not yet
+  run): models that pass rubric judging but fail under adversarial simulation
+  flag judge-exploitable patterns.
+
+Each non-cooperative profile is a prompt block **appended** to the standard
+user-sim prompt — it layers behaviors onto the scenario persona and goals, never
+replaces them, and every profile explicitly keeps the known-identity-facts rule
+binding (a profile changes *behavior*, never *facts*, so identity-gated
+scenarios still fail or pass for agent reasons). Exemplars are domain-neutral
+so one profile text serves both corpus domains. The active profile is part of
+the run definition: it is pre-registered (`seeds_and_temperatures.
+user_sim_profile`), recorded in the run manifest, and stamped on every result
+row and per-run artifact (`sim_profile`).
+
+Rows produced under a non-cooperative profile are **excluded from all public
+leaderboard aggregates** — the same single-entry-point exclusion the null agent
+and the private holdout use — so a stratified run can never move public
+efficacy. They feed a separate persona-stratified robustness table
+(`compute_sim_profile_pass_rates` in `scripts/aggregate_results.py`): per-model,
+per-profile pass rates (pass = efficacy ≥ 0.7, the same threshold reliability
+uses) with each profile's delta against the cooperative condition, making the
+cooperative-only inflation a measured number rather than an assumption.
+
 This agent→tool→agent iteration means the model sees and reasons over tool output within the same turn, rather than only on the following turn. The transcript preserves true conversational order — user → agent (with tool calls) → tool results → agent follow-up → … → user — so judges read each tool call before its result.
 
 Native tool calling (rather than a regex-parsed JSON-in-text protocol) measures real tool-calling ability and avoids penalizing models tuned for function-calling APIs. A content-embedded fallback parser exists only for providers that return no native tool calls; it logs a warning whenever it fires so its use is measurable.

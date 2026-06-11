@@ -25,6 +25,8 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+from eval.simulation.profiles import DEFAULT_SIM_PROFILE
+
 
 def model_slug(model_name: str) -> str:
     """Filesystem-safe slug for a model name.
@@ -130,6 +132,10 @@ def build_artifact(
             # reconstruct the row faithfully.
             "user_sim_model": getattr(sim_result, "user_sim_model", None),
             "tool_sim_model": getattr(sim_result, "tool_sim_model", None),
+            # Behavioral user-sim profile (issue #59 part 1): which user the
+            # agent actually faced in this transcript. Defaults to cooperative
+            # for sim results that predate the field, matching the row builder.
+            "sim_profile": getattr(sim_result, "sim_profile", DEFAULT_SIM_PROFILE),
             # User-sim completion decoupling (#32). ``completed`` only says the
             # conversation stopped; these three say HOW it stopped and whether
             # the goals were verifiably met when it did, so a premature ending

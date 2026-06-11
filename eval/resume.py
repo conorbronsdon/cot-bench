@@ -31,6 +31,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from eval.scoring.judge import JudgeResult
+from eval.simulation.profiles import DEFAULT_SIM_PROFILE
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +126,9 @@ def _sim_namespace(payload: dict):
         resolved_model=meta.get("resolved_model"),
         user_sim_model=meta.get("user_sim_model"),
         tool_sim_model=meta.get("tool_sim_model"),
+        # Behavioral user-sim profile (issue #59). Older artifacts predate the
+        # field and were all cooperative by construction.
+        sim_profile=meta.get("sim_profile", DEFAULT_SIM_PROFILE),
     )
 
 
