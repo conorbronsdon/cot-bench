@@ -59,6 +59,7 @@ from eval.scoring.rubrics import (
     criteria_for_dimension,
 )
 from eval.scoring.state_check import score_state_changes
+from eval.simulation.dual_control import DualControl
 from eval.simulation.profiles import DEFAULT_SIM_PROFILE, SIM_PROFILES
 from eval.simulation.runner import Scenario, SimulationRunner
 from eval.tracing import (
@@ -145,6 +146,11 @@ def _scenario_from_dict(data: dict, domain: Domain, *, holdout: bool) -> Scenari
         # Atomic rubric criteria (issue #54); None for scenarios without them.
         rubric_criteria=data.get("rubric_criteria"),
         holdout=holdout,
+        # Dual control (issue #58); None for scenarios without one (the entire
+        # public corpus today). DualControl.from_dict validates the user_tools,
+        # the user_actions, and the authorization scope at load time, so a
+        # malformed dual_control block fails before any run.
+        dual_control=DualControl.from_dict(data.get("dual_control")),
     )
 
 
@@ -326,6 +332,24 @@ def build_result_row(
         # holdout and null-agent exclusions). Defaults to cooperative for sim
         # results that predate the field.
         "sim_profile": getattr(sim_result, "sim_profile", DEFAULT_SIM_PROFILE),
+        # Dual control (issue #58). ``dual_control`` flags whether the simulated
+        # user also acted on the shared world this run (None/False for the
+        # single-control majority — the entire public corpus today);
+        # ``user_actions_fired`` counts how many declared user actions fired; and
+        # ``coordination_ok`` is the deterministic coordination verdict, None
+        # unless at least one user action fired (no coordination ever occurred to
+        # grade otherwise). Aggregation computes a per-model coordination rate
+        # over fired-action rows ONLY (coordination_ok non-null) and emits it
+        # conditionally, so a normal single-control run is byte-identical
+        # downstream; user_actions_fired makes the rate's denominator auditable.
+        # ``user_actions_suppressed`` counts trigger-met actions that were NOT
+        # fired because no delivery turn remained (the #74 fired-but-not-
+        # delivered class) — such rows keep coordination_ok=None and the
+        # suppression is auditable here.
+        "dual_control": bool(getattr(sim_result, "dual_control", False)),
+        "user_actions_fired": int(getattr(sim_result, "user_actions_fired", 0) or 0),
+        "user_actions_suppressed": int(getattr(sim_result, "user_actions_suppressed", 0) or 0),
+        "coordination_ok": getattr(sim_result, "coordination_ok", None),
         "tc_agreement": _round_or_none(tc_result.agreement_rate, 4),
         "ts_agreement": _round_or_none(ts_result.agreement_rate, 4),
         "tc_max_disagreement": _round_or_none(tc_result.max_disagreement, 4),

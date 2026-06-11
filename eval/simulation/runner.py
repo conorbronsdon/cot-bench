@@ -24,6 +24,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from eval.config import DEFAULT_SIMULATION, DOMAIN_CONFIGS, Domain, SimulationConfig
 from eval.providers.registry import ModelSpec, create_model
 from eval.scoring.state_check import score_state_changes
+from eval.simulation.dual_control import DualControl, action_fires
 from eval.simulation.profiles import DEFAULT_SIM_PROFILE, profile_instructions
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,39 @@ class SimulationResult:
     # are computable and non-cooperative rows can be excluded from the public
     # leaderboard aggregates. Filled from the runner's SimulationConfig.
     sim_profile: str = DEFAULT_SIM_PROFILE
+    # Dual control (issue #58). True when the scenario declared a ``dual_control``
+    # block — both the agent AND the (scripted) user acted on the shared world
+    # this run. False for the single-control majority (the entire v1 corpus; demo
+    # fixtures live in tests only). When True, ``user_actions_fired`` counts how
+    # many declared user actions actually fired (their trigger was met before the
+    # conversation ended), and ``coordination_ok`` is the deterministic verdict:
+    # did the agent reach the correct end state given the user's concurrent
+    # actions, WITHOUT mutating a user-owned path the user already handled (no
+    # double-apply, correct handoff). Both feed a SEPARATE dual_control table —
+    # they never move public efficacy (no dual-control rows exist in v1).
+    dual_control: bool = False
+    user_actions_fired: int = 0
+    # Deterministic coordination verdict for a dual-control run. None when the
+    # scenario was not dual-control OR no user action fired (no coordination ever
+    # occurred to grade) OR the scenario carries no ground_truth. For a run where
+    # at least one user action fired, True/False is the AND of (a) the scenario's
+    # normal expected_state_changes passing — the agent reached the correct end
+    # state given the user's concurrent actions — and (b) the attribution contract
+    # holding: every path the agent itself mutated was agent-authorized (the agent
+    # did not write a user-owned path the user already handled).
+    # compute_dual_control_rates drops None rows, so non-firing rows are excluded
+    # from the coordination rate.
+    coordination_ok: bool | None = None
+    # Count of user actions whose trigger was met but whose firing was SUPPRESSED
+    # because no delivery turn remained (the trigger was first satisfied on the
+    # loop's final outer turn, so the staged user message could never be delivered
+    # and the agent would get no turn to act on it — the #74 fired-but-not-
+    # delivered class). A suppressed action is treated as NOT fired: its delta is
+    # not applied, it is not counted in ``user_actions_fired``, and it grades no
+    # coordination verdict (coordination_ok stays None when nothing else fired).
+    # Surfaced on rows/artifacts so the trigger-met-but-undeliverable case is
+    # auditable, exactly like the recovery-probe ``probe_fired`` flag.
+    user_actions_suppressed: int = 0
 
 
 @dataclass
@@ -166,6 +200,18 @@ class Scenario:
     # holdout's tamper-evidence comes from its own corpus hash, not from a
     # per-scenario flag that would differ between the public and holdout loaders.
     holdout: bool = False
+    # Dual control (issue #58): OPTIONAL. When present, declares ``user_tools``
+    # (what the user side may touch) and scripted ``user_actions`` (trigger -> a
+    # user tool call with a state delta), so the SIMULATED USER also acts on the
+    # shared world. The runner fires each action deterministically, applies its
+    # delta through the SAME apply_state_delta the agent's tools use (one world),
+    # and records the user-mutated paths so attribution stays sharp. None for the
+    # single-control majority — the entire v1 corpus (demo fixtures live in test
+    # fixtures only; see docs/dual-control.md). Like ``rubric_criteria`` it IS
+    # hashed scenario content when present (it changes what the run does), added
+    # conditionally to the canonical dict so single-control scenarios keep their
+    # existing digests.
+    dual_control: DualControl | None = None
 
 
 def apply_state_delta(world: dict, delta: dict) -> None:
@@ -392,6 +438,63 @@ class SimulationRunner:
             return None
         return None if result is None else result["score"]
 
+    @staticmethod
+    def _coordination_verdict(
+        scenario: Scenario,
+        world: dict | None,
+        agent_mutated_keys: set,
+        user_mutated_keys: set,
+    ) -> bool | None:
+        """Deterministic dual-control coordination verdict (issue #58).
+
+        Returns:
+            - ``None`` when the scenario is not dual-control, has no ground_truth,
+              or no user action fired (no coordination ever occurred to grade —
+              the callers in :meth:`run` only call this when at least one fired).
+            - ``True`` iff the agent COORDINATED correctly: the scenario's normal
+              ``expected_state_changes`` ALL pass (the correct end state was
+              reached given the user's concurrent actions) AND the attribution
+              contract holds — the agent did NOT itself mutate any user-owned
+              top-level key (no double-apply of what the user already did).
+
+        Attribution is the subtle part of issue #58. The shared world is ONE
+        world, but every mutation is tagged at application time: agent-side
+        deltas (via the tool sim) record into ``agent_mutated_keys``, user-side
+        deltas (the scripted user actions) into ``user_mutated_keys``. A key the
+        user owned (it falls in a declared user_tool scope) that the AGENT also
+        wrote is a coordination failure — the canonical "the agent re-applied the
+        approval/update the customer already made" double-apply. Reusing the
+        existing state grader for the end-state half means NO new scoring
+        machinery for that part; the attribution half is a pure set check.
+
+        Never raises: a grader hiccup degrades to None so a dual-control scenario
+        can't sink a run.
+        """
+        dc = scenario.dual_control
+        if dc is None or scenario.ground_truth is None or world is None:
+            return None
+        try:
+            base = score_state_changes(
+                scenario.ground_truth, world, scenario.expected_state_changes
+            )
+            base_ok = base is None or base["score"] >= 1.0
+            # User-owned keys: anything in ANY declared user_tool's scope. The
+            # agent must not have mutated one — that key is the user's to write.
+            # We check against the declared SCOPE (not only what the user actually
+            # touched) so the contract is "the agent stayed out of user territory"
+            # regardless of which user action fired this run.
+            user_owned: set = set()
+            for tool in dc.user_tools.values():
+                user_owned.update(tool.scope)
+            # Defensive: also treat any key a user action actually wrote as owned.
+            user_owned.update(user_mutated_keys)
+            trespass = agent_mutated_keys & user_owned
+            attribution_ok = not trespass
+            return bool(base_ok and attribution_ok)
+        except Exception:
+            logger.exception("Coordination grading failed for %s; recording None", scenario.id)
+            return None
+
     def run(self, scenario: Scenario, agent_spec: ModelSpec) -> SimulationResult:
         """Run a complete multi-turn simulation for one scenario.
 
@@ -441,6 +544,24 @@ class SimulationRunner:
         # from a pristine ground_truth and mutations never leak across runs.
         # None for legacy scenarios -> stateless tool simulation (unchanged).
         world = copy.deepcopy(scenario.ground_truth) if scenario.ground_truth is not None else None
+
+        # Dual control (issue #58). When the scenario declares a dual_control
+        # block, the SIMULATED USER also acts on the shared world: each declared
+        # user_action fires deterministically when its trigger is met, and its
+        # state delta is applied through the SAME apply_state_delta the agent's
+        # tools use (one world, one delta mechanism). Attribution stays sharp by
+        # tagging mutations at application time: agent tool-sim deltas accumulate
+        # into ``self._agent_mutated_keys`` (reset per run), user-action deltas
+        # into ``user_mutated_keys`` below. ``pending`` is the list of not-yet-
+        # fired actions (one-shot each); ``agent_tool_calls_seen`` feeds the
+        # agent_called trigger. All inert for the single-control majority.
+        dc = scenario.dual_control
+        self._agent_mutated_keys: set = set()
+        user_mutated_keys: set = set()
+        user_actions_fired = 0
+        user_actions_suppressed = 0
+        pending_actions = dc.pending_actions() if dc is not None else []
+        agent_tool_calls_seen: set = set()
 
         # System prompt no longer teaches a JSON tool-call convention — the model
         # uses native tool calling via the bound schemas.
@@ -500,6 +621,21 @@ class SimulationRunner:
                         user_sim_model=self.config.user_simulator_model,
                         tool_sim_model=self.config.tool_simulator_model,
                         sim_profile=self.config.user_sim_profile,
+                        # Dual control (issue #58): stamp whether this was a
+                        # dual-control scenario, how many user actions fired
+                        # before the error, and the coordination verdict ONLY if
+                        # at least one fired (else None — no coordination to
+                        # grade). False/0/None for the single-control majority.
+                        dual_control=dc is not None,
+                        user_actions_fired=user_actions_fired,
+                        user_actions_suppressed=user_actions_suppressed,
+                        coordination_ok=(
+                            self._coordination_verdict(
+                                scenario, world, self._agent_mutated_keys, user_mutated_keys
+                            )
+                            if user_actions_fired > 0
+                            else None
+                        ),
                     )
                 agent_latency = (time.perf_counter() - start) * 1000
                 total_latency_ms += agent_latency
@@ -578,6 +714,11 @@ class SimulationRunner:
 
                 # Run each tool, append result to transcript AND agent history.
                 for tc in tool_calls_this_turn:
+                    # Dual control (issue #58): record agent tool-call names so an
+                    # ``agent_called`` user-action trigger can react to them (e.g.
+                    # the user approves the request right after the agent sends
+                    # it). Inert for single-control runs.
+                    agent_tool_calls_seen.add(tc.tool_name)
                     tool_result = self._simulate_tool(tc, scenario.tools, world)
                     tc.result = tool_result
                     turns.append(
@@ -607,6 +748,84 @@ class SimulationRunner:
                     turn_num,
                     agent_spec.name,
                 )
+
+            # Dual control (issue #58): fire any pending user action whose trigger
+            # is now met, BEFORE generating the next user turn. The next user turn
+            # is turn_num + 1. Each action fires at most once (popped from
+            # ``pending``); its state delta is applied through the SAME
+            # apply_state_delta the agent's tools use — one shared world — and
+            # every top-level key it writes is recorded USER-attributed. If the
+            # action carries a ``user_message``, that scripted text becomes the
+            # next user turn (the user voices the coordination signal, e.g. "I
+            # just approved that"), replacing the user-sim's generated turn,
+            # exactly like a recovery-probe injection. A silent action mutates the
+            # world only; the user sim still speaks that turn.
+            #
+            # Delivery gate (the #74 fired-but-not-delivered lesson): an action
+            # may only fire when at least one delivery turn remains (next_turn <
+            # max_turns). On the loop's FINAL iteration the staged user turn would
+            # never be delivered — the agent would never see the coordination
+            # signal and would get no turn to act on it — so firing there would
+            # apply the user's delta and grade coordination_ok for a harness-
+            # timing reason, not an agent failure (e.g. an ``agent_called`` action
+            # whose watched tool is first called on the last outer turn). Such an
+            # action is treated as NOT fired: no delta is applied, it is not
+            # counted in ``user_actions_fired`` (so coordination_ok stays None
+            # when nothing else fired and the coordination-rate denominator stays
+            # honest), and it is counted in ``user_actions_suppressed`` so the
+            # trigger-met-but-undeliverable case is auditable on the row/artifact,
+            # mirroring the recovery-probe ``probe_fired`` gate. ``after_turn``
+            # triggers cannot normally reach this gate (USER_ACTION_TURN_MAX = 9
+            # < the default max_turns = 10); ``agent_called`` can.
+            if pending_actions and world is not None and turn_num + 1 >= self.config.max_turns:
+                for action in pending_actions:
+                    if action_fires(
+                        action,
+                        next_user_turn=turn_num + 1,
+                        agent_tool_calls_so_far=agent_tool_calls_seen,
+                    ):
+                        user_actions_suppressed += 1
+                        logger.info(
+                            "Dual-control user action SUPPRESSED (tool=%s, trigger=%s): "
+                            "trigger met at user turn %d but no delivery turn remains "
+                            "(max_turns=%d) for %s — treated as not fired",
+                            action.tool,
+                            action.trigger,
+                            turn_num + 1,
+                            self.config.max_turns,
+                            scenario.id,
+                        )
+            elif pending_actions and world is not None:
+                next_turn = turn_num + 1
+                fired_message: str | None = None
+                still_pending = []
+                for action in pending_actions:
+                    if fired_message is None and action_fires(
+                        action,
+                        next_user_turn=next_turn,
+                        agent_tool_calls_so_far=agent_tool_calls_seen,
+                    ):
+                        user_actions_fired += 1
+                        if action.state_delta:
+                            apply_state_delta(world, action.state_delta)
+                            for key in action.delta_paths():
+                                user_mutated_keys.add(key)
+                        logger.info(
+                            "Dual-control user action fired (tool=%s, trigger=%s) "
+                            "at user turn %d for %s",
+                            action.tool,
+                            action.trigger,
+                            next_turn,
+                            scenario.id,
+                        )
+                        if action.user_message:
+                            fired_message = action.user_message
+                    else:
+                        still_pending.append(action)
+                pending_actions = still_pending
+                if fired_message is not None:
+                    current_user_message = fired_message
+                    continue
 
             # Generate next user turn (or detect completion).
             user_response = self._simulate_user_turn(scenario, turns, last_agent_content)
@@ -658,6 +877,28 @@ class SimulationRunner:
             user_sim_model=self.config.user_simulator_model,
             tool_sim_model=self.config.tool_simulator_model,
             sim_profile=self.config.user_sim_profile,
+            # Dual control (issue #58): record whether this was a dual-control
+            # scenario, how many user actions fired, and — ONLY when at least one
+            # fired — the deterministic coordination verdict (correct end state
+            # given the user's concurrent actions AND the agent never wrote a
+            # user-owned path). A dual-control scenario where no action fired
+            # (conversation ended before any trigger) keeps coordination_ok=None
+            # so it cannot pollute the coordination rate with a verdict on a
+            # coordination that never happened, and an action whose trigger was
+            # met only on the final outer turn (no delivery turn remaining) is
+            # counted in ``user_actions_suppressed`` instead of fired — see the
+            # delivery gate in the loop. False/0/None for the single-control
+            # majority.
+            dual_control=dc is not None,
+            user_actions_fired=user_actions_fired,
+            user_actions_suppressed=user_actions_suppressed,
+            coordination_ok=(
+                self._coordination_verdict(
+                    scenario, world, self._agent_mutated_keys, user_mutated_keys
+                )
+                if user_actions_fired > 0
+                else None
+            ),
         )
 
     def _extract_tool_calls(self, response, content: str, turn: int) -> tuple[list[ToolCall], bool]:
@@ -823,6 +1064,16 @@ class SimulationRunner:
         delta = parsed.get("state_delta")
         if delta:
             apply_state_delta(world, delta)
+            # Dual-control attribution (issue #58): record the top-level keys this
+            # AGENT tool call mutated, so the coordination verdict can tell whether
+            # the agent wrote into user-owned territory. Single-control runs never
+            # read this set, so the bookkeeping is inert there. ``getattr`` default
+            # keeps a direct _simulate_tool_stateful call (in a unit test) from
+            # crashing when run() never initialized the set.
+            sink = getattr(self, "_agent_mutated_keys", None)
+            if sink is not None and isinstance(delta, dict):
+                for dotted in delta:
+                    sink.add(str(dotted).split(".", 1)[0])
 
         tool_response = parsed.get("response", parsed)
         if isinstance(tool_response, str):
