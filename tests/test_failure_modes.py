@@ -137,6 +137,34 @@ class TestKeywordAssist:
         result = classify_failure(0.3, judge_reasoning="THE AGENT HALLUCINATED A TOOL.")
         assert result["mode"] == HALLUCINATED_CAPABILITY
 
+    @pytest.mark.parametrize(
+        "reasoning",
+        [
+            # Word boundaries: a keyword must not fire inside a longer word.
+            "The policyholder asked twice and the agent never resolved it.",
+            "The customer made up their mind to close the account; agent stalled.",
+            "An unauthorizedlike-looking but actually fine flow, per the transcript.",
+        ],
+    )
+    def test_keyword_boundary_false_positives_do_not_fire(self, reasoning):
+        result = classify_failure(0.3, judge_reasoning=reasoning)
+        assert result == {"mode": INCOMPLETE_TASK, "source": SOURCE_FALLBACK}
+
+    @pytest.mark.parametrize(
+        ("reasoning", "expected"),
+        [
+            # Stems deliberately match inflections.
+            ("A clear violation of the verification policy here.", POLICY_VIOLATION),
+            ("The agent violated the disclosure rules.", POLICY_VIOLATION),
+            ("It hallucinating a confirmation number was decisive.", HALLUCINATED_CAPABILITY),
+            # "made up" as fabrication still fires.
+            ("The agent made up a transaction reference.", HALLUCINATED_CAPABILITY),
+        ],
+    )
+    def test_keyword_stems_and_fabrication_still_fire(self, reasoning, expected):
+        result = classify_failure(0.3, judge_reasoning=reasoning)
+        assert result == {"mode": expected, "source": SOURCE_JUDGE_KEYWORD}
+
     def test_priority_hallucination_beats_tool_selection(self):
         # Both signals present: the more specific mode (earlier priority) wins.
         reasoning = "The agent used the wrong tool and hallucinated a capability."

@@ -34,6 +34,8 @@ Each classification records its ``source`` so the provenance of every published
 failure count is auditable.
 """
 
+import re
+
 from eval.scoring.rubrics import PASS_THRESHOLD
 from eval.scoring.state_check import UNAUTHORIZED_MUTATION_DETAIL
 
@@ -65,7 +67,11 @@ SOURCE_FALLBACK = "fallback"
 # Scanned against the lowercased concatenation of all VALID judges' reasoning
 # (both rubric dimensions). Priority order is most-specific-first so a rare,
 # sharp signal ("hallucinated") is not swallowed by a generic one ("wrong
-# tool"). Substring matching keeps this trivially deterministic and auditable.
+# tool"). Keywords match at word boundaries (so "policy" cannot fire inside
+# "policyholder"); the entries in _STEM_TOKENS are deliberate prefixes that
+# match their inflections ("violat" -> violated/violation). Sense-level false
+# positives remain possible — keyword hits are assist-only, behind every
+# deterministic signal, and auditable via failure_mode_source.
 _KEYWORD_PRIORITY: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         HALLUCINATED_CAPABILITY,
@@ -162,13 +168,34 @@ def judge_reasoning_text(*consensus_results) -> str:
     return "\n".join(parts)
 
 
+# Deliberate prefix stems: no trailing boundary, so inflections match.
+_STEM_TOKENS = frozenset({"hallucinat", "fabricat", "violat"})
+
+# "made up" as a verb of fabrication, not the idiom "made up their mind".
+_MIND_IDIOM_GUARD = r"(?! (?:their|his|her|its|my|your|our) mind)"
+
+
+def _compile_keyword(keyword: str) -> re.Pattern[str]:
+    pattern = r"\b" + re.escape(keyword)
+    if keyword == "made up":
+        pattern += _MIND_IDIOM_GUARD
+    if keyword not in _STEM_TOKENS and keyword[-1].isalnum():
+        pattern += r"\b"
+    return re.compile(pattern)
+
+
+_KEYWORD_PATTERNS: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = tuple(
+    (mode, tuple(_compile_keyword(k) for k in keywords)) for mode, keywords in _KEYWORD_PRIORITY
+)
+
+
 def _keyword_mode(judge_reasoning: str) -> str | None:
     """First failure mode (in fixed priority order) with a keyword hit."""
     if not judge_reasoning:
         return None
     low = judge_reasoning.lower()
-    for mode, keywords in _KEYWORD_PRIORITY:
-        if any(k in low for k in keywords):
+    for mode, patterns in _KEYWORD_PATTERNS:
+        if any(p.search(low) for p in patterns):
             return mode
     return None
 
