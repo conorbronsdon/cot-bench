@@ -21,7 +21,7 @@ placeholder (red in the PDF); grep the sources for `\TODO` to find them all.
 | 4 Statistical Methodology | Drafted |
 | 5 Governance & Reproducibility | Drafted |
 | 6 Experiments | Skeleton: every table/figure stub names its data source + generator; all cells bracketed (needs run) |
-| 7 Limitations | Drafted, incl. author-concentration, cooperative-sim, ten-turn-horizon limits + Future Work (issues #54-#60) |
+| 7 Limitations | Drafted, incl. author-concentration, cooperative-sim, ten-turn-horizon limits + Future Work (issues #57-#60; #54 atomic rubrics, #55 macro/taxonomy, and #59 pt 1 sim profiles adopted) |
 | 8 Related Work | Drafted with verified citations (incl. rubric-grading, user-sim realism, cost-Pareto, game-world lines) |
 
 ## Layout

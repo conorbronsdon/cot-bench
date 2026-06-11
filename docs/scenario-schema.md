@@ -111,11 +111,11 @@ For judgment cases (e.g. fee waivers), grade the **action**, not the **outcome**
 assert that a `request_fee_waiver` record was *submitted*, not that the waiver was
 approved (approval is the bank's decision, not the agent's).
 
-## Staged: `rubric_criteria` (issue #54, pending decision)
+## `rubric_criteria` (issue #54, adopted)
 
-> **Status: staged, not adopted.** Harness support is complete on the
-> `judges-atomic-rubrics` branch; no in-repo scenario carries criteria yet.
-> See `docs/atomic-rubrics.md` for the decision doc.
+> **Status: adopted (PR #67).** Every public scenario carries criteria (4–6
+> per scenario; the schema floor is 3), as do the private holdout scenarios.
+> See `docs/atomic-rubrics.md` for the decision record.
 
 A scenario MAY carry 3–6 atomic, checkable, instance-specific criteria that
 inform the **judge** dimensions only (`task_completion` / `tool_selection` —

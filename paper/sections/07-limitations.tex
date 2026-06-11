@@ -35,8 +35,12 @@ evidence is that off-the-shelf LLM user simulators skew over-cooperative and
 stylistically uniform relative to real users regardless of persona
 instructions~\cite{lostinsim2026,sim2real2026,realusersim2026}, which inflates
 measured agent performance and hides failure modes that only impatient, confused,
-or adversarial users trigger. Behavioral simulator profiles with
-persona-stratified reporting are planned (see Future Work below).
+or adversarial users trigger. Behavioral simulator profiles (impatient,
+technically-confused, adversarial) with persona-stratified reporting are
+implemented in the harness; the published leaderboard still scores every model
+under the cooperative default, with profile-stratified robustness tables
+reported separately, and the adversarial-simulator judge audit remains future
+work (see below).
 
 \paragraph{Single-session, ten-turn horizon.} Every scenario is one conversation
 capped at ten user turns. The benchmark therefore measures within-conversation
@@ -48,7 +52,8 @@ read as evidence about long-horizon autonomy.
 
 \paragraph{LLM-as-judge for the soft dimensions.} Two thirds of efficacy is judge
 scored, and judge quality is bounded by the judge models' capabilities. The
-multi-judge panel, median consensus, published per-judge deltas, length-bias
+multi-judge panel, median consensus, per-scenario atomic rubric criteria,
+published per-judge deltas, length-bias
 regression, and calibration protocol mitigate this, but they do not remove the
 underlying dependence. State verification, the judge-independent third, is the
 direct hedge.
@@ -88,24 +93,19 @@ larger benchmarks have.
 \subsection*{Future work}
 
 Several of the limitations above have committed mitigations, tracked as open
-issues in the repository (\#54--\#60) so the roadmap is itself auditable. Each
+issues in the repository (\#57--\#60) so the roadmap is itself auditable. Each
 would be a version bump under the policy of Section~\ref{sec:versioning}.
-\emph{Per-scenario atomic rubric criteria} (\#54) replace the generic judge
-rubric templates with 3--6 named criteria per scenario, each judged
-independently, following the instance-specific-rubric result of
-HealthBench~\cite{healthbench2025}. \emph{Per-category macro-averaged reporting
-with a failure-mode taxonomy} (\#55) prevents frequent-and-easy scenario types
-from swamping rare-but-hard ones and turns failures into diagnostic signal.
 \emph{A recovery-probe scenario tier} (\#57) injects a deliberate error or
 ambiguity mid-conversation and verifies recovery deterministically, bringing the
 goal-maintenance question inside the ten-turn
 horizon~\cite{vendingbench2025}. \emph{Dual-control scenarios} (\#58) let the
 simulated user also act on the shared world, the
 $\tau^2$-bench pattern~\cite{tau2bench2025}, which is the dominant real-world
-complexity the single-control design misses. \emph{Behavioral simulator profiles
-plus an adversarial-simulator audit pass} (\#59) address the cooperative-simulation
-limitation with persona-stratified reporting~\cite{realusersim2026}.
-\emph{Parameterized scenario templates} (\#60) resample surface entities (names,
-amounts, dates) per run so a model that has seen the public corpus cannot lean on
-memorized surface features. None of these are v1 claims; they are listed so the
-gap between what is measured now and what should be measured next is explicit.
+complexity the single-control design misses. \emph{An adversarial-simulator
+audit pass} (\#59) runs a subset under the implemented adversarial profile and
+uses rubric-versus-adversarial divergence as a judge-refinement
+signal~\cite{realusersim2026}. \emph{Parameterized scenario templates} (\#60)
+resample surface entities (names, amounts, dates) per run so a model that has
+seen the public corpus cannot lean on memorized surface features. None of these
+are v1 claims; they are listed so the gap between what is measured now and what
+should be measured next is explicit.
