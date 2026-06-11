@@ -153,5 +153,41 @@
      "goal": "Get a meeting set up to plan how the program continues once funding is sorted"},
     {"assert": "discounts_applied", "op": "equals", "value": [],
      "goal": "Get the billing-relief request routed to whoever actually owns that decision rather than handled informally"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "log_funding_loss_note",
+      "text": "Agent logged an internal note capturing the nonprofit's grant loss as the reason for the relief request.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "route_relief_to_owner",
+      "text": "Agent routed the billing-relief decision to the team that owns it (e.g. via a billing ticket) rather than promising or granting the pause itself.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "reassure_data_intact",
+      "text": "Agent reassured the customer that the account and its data stay intact during any pause so tutors do not lose access.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "no_unauthorized_discount",
+      "text": "Agent did NOT call apply_discount, since discounts/credits require sales authorization the customer did not provide.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "billing_ticket_created",
+      "text": "Agent used create_ticket with a billing category to formally raise the hardship request.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

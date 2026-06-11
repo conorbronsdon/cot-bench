@@ -170,5 +170,41 @@
      "goal": "Check the current balance of her personal checking account"},
     {"assert": "accounts.PERS-CHK-220.status", "op": "equals", "value": "active",
      "goal": "Make sure nothing is wrong with her account that would explain a verification problem"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "recovered_failed_verification",
+      "text": "Agent recovered from the initial failed identity verification (e.g. trying an alternate method) and ultimately got the customer verified.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "confirmed_paycheck_deposit",
+      "text": "Agent checked pending deposits and confirmed her paycheck deposit landed in the correct account.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "updated_phone_to_new_number",
+      "text": "Agent updated the phone number on file to +1-555-0199 so future verification codes reach her new phone.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "confirmation_account_good_standing",
+      "text": "Agent generated a confirmation document on PERS-CHK-220 showing the account is active and in good standing.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "reported_data_mismatch",
+      "text": "Agent flagged the underlying data-integrity mismatch (the cause of the verification problem) rather than only working around it.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

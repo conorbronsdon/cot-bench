@@ -65,6 +65,16 @@ def _serialize_judges(consensus_result) -> list[dict]:
             "reasoning": jr.reasoning,
             "parse_failed": jr.parse_failed,
             "resolved_model": getattr(jr, "resolved_model", ""),
+            # Atomic rubric criteria (issue #54). When the scenario carried
+            # criteria for this dimension: overall_score above is the
+            # criterion-informed score, holistic_score is the judge's template
+            # dimension score, and criteria_verdicts holds the per-criterion
+            # {id, met, evidence} verdicts — persisted so the criterion-based vs
+            # holistic (halo-effect) comparison is analyzable from artifacts.
+            # Defaults (None/False/None) for criteria-less scenarios.
+            "holistic_score": getattr(jr, "holistic_score", None),
+            "criterion_informed": getattr(jr, "criterion_informed", False),
+            "criteria_verdicts": getattr(jr, "criteria_verdicts", None),
             "raw_response": jr.raw_response,
         }
         for jr in consensus_result.judge_results

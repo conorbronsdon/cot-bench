@@ -99,6 +99,11 @@ def _consensus_from_artifact(judges_block: list, scenario_id: str, rubric_type: 
             latency_ms=0.0,
             parse_failed=bool(j.get("parse_failed", False)),
             resolved_model=j.get("resolved_model", "") or "",
+            # Atomic-rubric fields (issue #54); .get defaults cover artifacts
+            # written before these fields existed.
+            holistic_score=j.get("holistic_score"),
+            criterion_informed=bool(j.get("criterion_informed", False)),
+            criteria_verdicts=j.get("criteria_verdicts"),
         )
         for j in judges_block
     ]

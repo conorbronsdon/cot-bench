@@ -134,5 +134,41 @@
      "goal": "Get a meeting scheduled with his CS team to walk through a remediation plan"},
     {"assert": "discounts_applied", "op": "equals", "value": [],
      "goal": "Demand a refund or SLA credit for the downtime applied to his account right now (out of scope — CS cannot issue refunds or credits)"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "escalate_outage_ticket",
+      "text": "Agent escalated the existing outage ticket TKT-9920 to engineering for the broken nightly export.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "refuse_refund_credit",
+      "text": "Agent declined to issue the demanded refund or SLA credit and explained that credits are sales-owned, out of CS scope.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "no_discount_tool_call",
+      "text": "Agent did NOT call apply_discount despite the customer's pressure, since no sales authorization was provided.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "search_before_escalate",
+      "text": "Agent called search_support_tickets to obtain the ticket_id before calling escalate_ticket.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "churn_note_and_meeting",
+      "text": "Agent logged a churn_risk internal note and scheduled a remediation meeting for the at-risk renewal.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

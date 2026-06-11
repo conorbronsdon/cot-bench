@@ -150,6 +150,14 @@ class Scenario:
     # deterministic post-conversation assertions. Both None for legacy scenarios.
     ground_truth: dict | None = None
     expected_state_changes: list | None = None
+    # Atomic rubric criteria (issue #54): 3-6 instance-specific, checkable
+    # criteria informing the JUDGE dimensions only (task_completion /
+    # tool_selection). None for scenarios without criteria, whose judge prompts
+    # and scoring stay byte-identical to the templates. Unlike ``holdout`` below,
+    # criteria ARE hashed scenario content when present (they change scoring
+    # semantics); see _scenario_to_canonical_dict, which includes them
+    # conditionally so criteria-less scenarios keep their existing digests.
+    rubric_criteria: list | None = None
     # Private-holdout flag (issue #31). True when the scenario was loaded from the
     # external holdout directory rather than the public corpus. It tags result
     # rows so aggregation can compute a public-vs-holdout gap, and it gates

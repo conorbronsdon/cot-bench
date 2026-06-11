@@ -158,5 +158,41 @@
      "goal": "Confirm the $58,000 he set aside for his down payment is actually still there"},
     {"assert": "transfers_executed", "op": "equals", "value": [],
      "goal": "Make sure his funds are available in time for the closing on Friday"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "investigated_balance_drop",
+      "text": "Agent checked the balance and reviewed transactions to find why the checking balance dropped to almost nothing before the closing.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "identified_posting_error",
+      "text": "Agent identified the erroneous posting (TXN-6601) that wiped out the down-payment funds rather than treating it as fraud or a loan issue.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "opened_ledger_correction_for_error",
+      "text": "Agent opened a ledger-correction case to restore the $58,300 posted in error to PERS-CHK-880.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "proof_of_funds_letter",
+      "text": "Agent generated an official balance_confirmation (proof-of-funds) letter on PERS-CHK-880 for the title company.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "no_loan_application",
+      "text": "Agent did NOT submit a loan application; the funds were already the customer's, so no new credit product was created.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

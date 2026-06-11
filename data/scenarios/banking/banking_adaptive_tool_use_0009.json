@@ -176,5 +176,41 @@
     {"assert": "fee_waiver_requests", "op": "contains",
      "match": {"account_id": "RNT-CHK-801", "fee_transaction_id": "FEE-440"},
      "goal": "Submit a request to waive the $35 wire fee from June 4th, arguing it was the bank's processing mistake"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "verify_before_account_access",
+      "text": "Agent verified identity before disclosing the rental checking balance.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "birch_lane_corrected_amount",
+      "text": "Agent set up the Birch Lane recurring transfer at the corrected $1,650 (not the initially-stated $1,500).",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "three_distinct_recurring",
+      "text": "Agent created three separate monthly recurring transfers (Maple $1,800, Oak $2,100, Birch $1,650) from rental checking to property-reserve savings.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "onetime_birch_prepay",
+      "text": "Agent sent a one-time $1,650 transfer via initiate_transfer for the Birch Lane prepayment, distinct from the recurring schedule.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "fee_waiver_wire",
+      "text": "Agent submitted a fee-waiver request for the $35 wire fee (FEE-440) via request_fee_waiver after pulling fee history.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

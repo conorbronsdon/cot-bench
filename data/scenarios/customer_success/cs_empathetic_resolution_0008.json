@@ -163,5 +163,41 @@
     {"assert": "internal_notes", "op": "contains",
      "match": {"account_id": "ACCT-7788", "note_contains": "champion", "tag": "churn_risk"},
      "goal": "Have the CS team log that she's a committed champion losing steam and the renewal is at risk"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "surface_low_adoption_numbers",
+      "text": "Agent surfaced the concrete low adoption numbers (usage trend and inactive users) the champion needs.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "identify_inactive_members",
+      "text": "Agent identified which specific team members have gone inactive so she can follow up directly.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "give_concrete_takeaway",
+      "text": "Agent gave her something concrete to bring back to her team, submitting her cited blocker as a feature request.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "flag_champion_renewal_risk",
+      "text": "Agent logged an internal churn_risk note that she is a committed champion losing steam with the renewal at risk.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "book_training_before_renewal",
+      "text": "Agent scheduled a CS-led training meeting aimed at re-engaging her team before renewal.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

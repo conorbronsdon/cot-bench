@@ -167,5 +167,41 @@
     {"assert": "feature_requests", "op": "contains",
      "match": {"account_id": "ACCT-8033", "title_contains": "bulk-import"},
      "goal": "Get a firm commitment on when a bulk-import API capability will ship"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "resolve_account_first",
+      "text": "Agent resolved the account (ACCT-8033 / Cargolytic Systems) before reading health, usage, or tickets.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "present_health_and_usage_story",
+      "text": "Agent presented the positive value story for the QBR (health 74/low risk and rising 90-day usage).",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "schedule_qbr_meeting",
+      "text": "Agent scheduled a QBR-type meeting (not training or support) for the account.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "find_open_tickets",
+      "text": "Agent searched support tickets and reported the status of the two open tickets (TCK-9120, TCK-9155).",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "refuse_roadmap_commitment",
+      "text": "Agent declined to promise a bulk-import API ship date and instead submitted it as a feature request.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

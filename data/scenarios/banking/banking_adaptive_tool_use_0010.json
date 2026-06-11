@@ -163,5 +163,41 @@
      "match": {"account_id": "CON-CHK-901", "alert_type": "large_transaction", "threshold": 1000, "notification_method": "sms"},
      "goal": "Set a large-transaction alert by text for anything over $1,000 so a double-tap warns him next time"},
     {"assert": "fraud_cases", "op": "equals", "value": []}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "verify_before_account_access",
+      "text": "Agent verified identity before disclosing the contracting checking balance.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "transfer_5000_supplier",
+      "text": "Agent moved $5,000 from savings CON-SAV-902 into checking CON-CHK-901 for the lumber supplier payment.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "reverse_duplicate_1200",
+      "text": "Agent corrected the accidental duplicate by sending $1,200 from savings back into checking via initiate_transfer (not by reporting fraud).",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "confirm_final_balance",
+      "text": "Agent re-checked the checking balance after the correction and confirmed it back to Frank.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "large_txn_alert_sms_1000",
+      "text": "Agent set a large_transaction alert on checking CON-CHK-901 at a $1,000 threshold delivered by SMS/text.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

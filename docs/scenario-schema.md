@@ -111,6 +111,47 @@ For judgment cases (e.g. fee waivers), grade the **action**, not the **outcome**
 assert that a `request_fee_waiver` record was *submitted*, not that the waiver was
 approved (approval is the bank's decision, not the agent's).
 
+## Staged: `rubric_criteria` (issue #54, pending decision)
+
+> **Status: staged, not adopted.** Harness support is complete on the
+> `judges-atomic-rubrics` branch; no in-repo scenario carries criteria yet.
+> See `docs/atomic-rubrics.md` for the decision doc.
+
+A scenario MAY carry 3–6 atomic, checkable, instance-specific criteria that
+inform the **judge** dimensions only (`task_completion` / `tool_selection` —
+Cost/Latency/Reliability and the deterministic state check are measured, not
+judged). When present, the judge evaluates each criterion as met/unmet with
+brief evidence, and that dimension's judge score becomes the weighted fraction
+of met criteria (the holistic template score is still recorded in artifacts).
+Scenarios without criteria are evaluated byte-identically to today.
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `rubric_criteria` | object[] | no | 3–6 items when present |
+| `rubric_criteria[].id` | string | yes | unique within the scenario; short snake_case slug |
+| `rubric_criteria[].text` | string | yes | atomic + checkable; ≥15 chars; ONE behavior per criterion |
+| `rubric_criteria[].dimension` | string | yes | `task_completion` \| `tool_selection` |
+| `rubric_criteria[].weight` | number | no | in `(0, 10]`, default `1.0` |
+| `criteria_authorship` | object | with criteria | must include `criteria_author_model` |
+
+### `criteria_authorship`
+
+```jsonc
+{
+  "criteria_author_model": "anthropic/claude-opus-4.8", // required; the model that ACTUALLY wrote the criteria
+  "criteria_author_run": "2026-06-12-claude-opus-criteria-batch", // optional batch id
+  "human_reviewed_by": "Conor Bronsdon",  // optional
+  "review_date": "2026-06-20"             // optional
+}
+```
+
+Criteria are usually authored later (and by a different model) than the
+scenario, so they carry their own provenance stamp rather than overloading
+`authorship`. The same contamination rule applies, family-aware: a model under
+test must not write the grading criteria for its own exam. Authoring agents
+should stamp via `scripts/generate_data.stamp_criteria()`, which enforces the
+guard and re-validates the scenario.
+
 ## Banking example
 
 ```jsonc

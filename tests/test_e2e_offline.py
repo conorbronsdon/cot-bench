@@ -60,6 +60,8 @@ the real v0.2 schema; no real holdout content appears in this repo.
 """
 
 import json
+import re
+import zlib
 from pathlib import Path
 
 import pandas as pd
@@ -407,6 +409,22 @@ def _make_fake_judge(recorder: _Recorder):
                 "overall_reasoning": "fake",
             },
         }
+        # The real scenarios carry rubric_criteria (#54), so the strict parser
+        # requires a verdict block whose id set matches the prompt's criteria
+        # EXACTLY — pull the ids from the appended criteria section. met varies
+        # deterministically by judge+criterion (crc32, not salted hash()) so the
+        # criterion-informed scores stay non-degenerate across the panel.
+        _, _, criteria_section = rubric_prompt.partition("# Scenario-Specific Rubric Criteria")
+        crit_ids = re.findall(r"^- \[([^\]]+)\]", criteria_section, flags=re.MULTILINE)
+        if crit_ids:
+            body["rubric_criteria"] = [
+                {
+                    "id": cid,
+                    "met": zlib.crc32(f"{judge.name}:{cid}".encode()) % 10 < 7,
+                    "evidence": "fake",
+                }
+                for cid in crit_ids
+            ]
         return (json.dumps(body), judge.model_id, usage)
 
     return fake_call_judge_api
@@ -802,11 +820,15 @@ class TestEndToEndOffline:
         for m in self.leaderboard["models"]:
             expected = public[public["model"] == m["name"]]["efficacy"].mean()
             leaked = df[df["model"] == m["name"]]["efficacy"].mean()
-            assert abs(expected - leaked) > 1e-9, (
+            # The board publishes efficacy rounded to 4 decimals, so the
+            # tripwire must stay sharp AT THAT PRECISION: a leak that rounding
+            # would hide is a leak this test cannot see.
+            assert round(expected, 4) != round(leaked, 4), (
                 "test setup lost its tripwire: public-only and public+holdout "
-                "means must differ for this check to mean anything"
+                "means must differ at published precision for this check to "
+                "mean anything"
             )
-            assert abs(m["efficacy"] - expected) < 1e-9
+            assert m["efficacy"] == round(expected, 4)
 
     def test_failure_modes_and_macro_published(self):
         # Failure taxonomy (#55), end to end. Every PUBLIC run here fails (the

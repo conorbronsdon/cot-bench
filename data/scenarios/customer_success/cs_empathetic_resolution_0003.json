@@ -147,5 +147,47 @@
     {"assert": "internal_notes", "op": "contains",
      "match": {"account_id": "ACCT-7104", "note_contains": "reported", "tag": "support_needed"},
      "goal": "Have the CS team log internally that she reported this immediately and is mid-crisis, so she isn't treated as careless"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "lookup_account_first",
+      "text": "Agent resolved the account (ACCT-7104 / Pathlight Remote) before opening or escalating tickets.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "surface_recovery_kb",
+      "text": "Agent searched the knowledge base and surfaced the bulk-import rollback guidance (KB-441).",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "open_urgent_bug_ticket",
+      "text": "Agent opened a bug ticket at urgent priority for the data corruption.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "escalate_citing_demo",
+      "text": "Agent escalated the ticket to engineering, citing the board demo deadline as the reason.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "log_reported_immediately_note",
+      "text": "Agent logged a support_needed note recording that Holly reported the issue immediately and is mid-crisis.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "reassure_not_careless",
+      "text": "Agent reassured Holly without blame and gave a realistic read on what she can show if data isn't restored in time.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

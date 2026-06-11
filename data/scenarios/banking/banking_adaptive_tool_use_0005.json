@@ -203,5 +203,41 @@
     {"assert": "loan_applications", "op": "contains",
      "match": {"loan_type": "home_equity", "amount": 40000, "term_months": 120},
      "goal": "Submit a home-equity loan application for $40,000 over 120 months on his stated income"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "verify_before_account_access",
+      "text": "Agent verified identity before disclosing balances or transactions.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "fraud_report_northgate_wire",
+      "text": "Agent reported the unauthorized $3,400 NORTHGATE HOLDINGS wire (TXN-6605) as suspicious.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "freeze_after_fraud",
+      "text": "Agent placed a security freeze on checking PER-CHK-401 via freeze_account after the unauthorized wire was identified.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "transfer_15000",
+      "text": "Agent moved $15,000 from savings PER-SAV-402 into checking PER-CHK-401 via initiate_transfer.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "loan_application_terms",
+      "text": "Agent submitted a home_equity loan application for $40,000 over 120 months via submit_loan_application.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

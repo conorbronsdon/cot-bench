@@ -107,5 +107,47 @@
     {"assert": "statements_generated", "op": "contains",
      "match": {"account_id": "PERS-CHK-220", "statement_type_contains": "confirmation"},
      "goal": "Get a written confirmation of the restriction he can keep for his records"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "verify_first",
+      "text": "Agent verified identity before reviewing transactions or changing account settings.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "block_gambling_merchants",
+      "text": "Agent placed the self-imposed gambling/betting merchant restriction on checking PERS-CHK-220 as a customer-requested block.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "low_balance_alert",
+      "text": "Agent set up a low_balance alert on the checking account via setup_account_alerts.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "check_existing_gambling_charges",
+      "text": "Agent used get_transaction_history to confirm whether any gambling-related charges had already posted this month.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "written_confirmation",
+      "text": "Agent generated a written confirmation of the restriction for the customer's records.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "frame_as_self_chosen",
+      "text": "Agent reassured the customer the restriction is something he asked for, not a penalty.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

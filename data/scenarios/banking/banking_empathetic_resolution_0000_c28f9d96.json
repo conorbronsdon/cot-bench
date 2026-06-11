@@ -524,5 +524,47 @@
       },
       "goal": "Set up a low balance alert on my checking account when it drops below $150."
     }
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "verify_before_account_access",
+      "text": "Agent verified Eleanor's identity before disclosing balances or transactions.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "pension_clearing_date",
+      "text": "Agent used get_pending_deposits to tell Eleanor when the teacher's pension check will clear.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "transfer_200_to_cover_overdraft",
+      "text": "Agent moved $200 from savings SAV-7392-02 into checking CHK-7392-01 to clear the overdraft.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "overdraft_fee_waiver",
+      "text": "Agent submitted a fee-waiver request for the $45 overdraft fee (FEE-8842-01) via request_fee_waiver.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "recurring_300_and_alert_150",
+      "text": "Agent set up the monthly $300 savings-to-checking recurring transfer and a low_balance alert at $150 on checking.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "explain_unfamiliar_charges",
+      "text": "Agent reviewed transactions and explained the unfamiliar $39.99 and $45 charges to Eleanor.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

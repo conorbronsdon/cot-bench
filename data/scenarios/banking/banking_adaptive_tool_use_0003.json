@@ -162,5 +162,41 @@
      "goal": "Set a low-balance alert by email on the checking account that warns him whenever it drops below $2,000 so the auto-transfers never overdraw him"},
     {"assert": "customer.verified", "op": "equals", "value": true,
      "goal": "Check how much is sitting in his freelance checking account right now"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "verify_before_account_access",
+      "text": "Agent verified identity before disclosing the freelance checking balance.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "monthly_tax_transfer",
+      "text": "Agent set up a monthly recurring $1,100 transfer from checking PER-CHK-201 into the tax savings PER-SAV-202.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "apy_lookup",
+      "text": "Agent used get_interest_rates to report the personal savings APY rather than stating a rate from memory.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "low_balance_alert_email_2000",
+      "text": "Agent created a low_balance alert on checking PER-CHK-201 at a $2,000 threshold with email notification.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "pulled_last_three_transactions",
+      "text": "Agent retrieved the last three checking transactions for the customer's bookkeeping.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

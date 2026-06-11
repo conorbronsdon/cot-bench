@@ -185,5 +185,41 @@
     {"assert": "meetings", "op": "contains",
      "match": {"account_id": "ACCT-9471", "meeting_type": "executive_review"},
      "goal": "Get an executive review scheduled to align both sides on the conversion plan"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "resolve_account_first",
+      "text": "Agent resolved the account (ACCT-9471 / Northgate Telecom, Trial plan) before pulling usage or subscription detail.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "explain_enterprise_vs_trial",
+      "text": "Agent explained what Enterprise unlocks over the trial (e.g. SSO, audit logs, custom reporting, priority support).",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "route_security_questionnaire_ticket",
+      "text": "Agent opened a ticket to route the vendor security questionnaire to the security/trust team for completion.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "schedule_exec_review",
+      "text": "Agent scheduled an executive_review meeting to align both sides on the conversion plan.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "route_conversion_to_sales",
+      "text": "Agent did not flip the trial to paid Enterprise itself, routing the contract/billing change to sales authorization.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

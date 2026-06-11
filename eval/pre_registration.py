@@ -129,8 +129,17 @@ def _scenario_to_canonical_dict(scenario) -> dict:
     is included as its string value. Fields that are ``None`` (e.g. legacy
     scenarios with no ground_truth) are included as ``None`` so their absence is
     itself part of the hashed content.
+
+    ``rubric_criteria`` (issue #54) changes scoring semantics, so it MUST be
+    covered by the corpus hash — but it is included CONDITIONALLY (only when
+    present), unlike the always-included fields above. Rationale: adding an
+    always-``None`` key would silently change every existing scenario digest
+    (and therefore the corpus hash) for corpora whose content did not change.
+    Conditional inclusion keeps criteria-less scenarios hashing identically to
+    before this field existed, while any added/edited/removed criteria still
+    change the scenario digest and the corpus hash.
     """
-    return {
+    data = {
         "id": scenario.id,
         "domain": getattr(scenario.domain, "value", scenario.domain),
         "persona": scenario.persona,
@@ -141,6 +150,10 @@ def _scenario_to_canonical_dict(scenario) -> dict:
         "ground_truth": scenario.ground_truth,
         "expected_state_changes": scenario.expected_state_changes,
     }
+    rubric_criteria = getattr(scenario, "rubric_criteria", None)
+    if rubric_criteria:
+        data["rubric_criteria"] = rubric_criteria
+    return data
 
 
 def build_pre_registration(

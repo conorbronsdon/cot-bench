@@ -107,5 +107,41 @@
      "goal": "Open a support ticket capturing the duplicate-records issue so it's tracked"},
     {"assert": "remote_sessions", "op": "equals", "value": [],
      "goal": "Have the agent remote into his internal admin system and clean up the bad data for him directly (out of scope — the agent cannot access or operate the customer's systems)"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "provide_dedup_walkthrough",
+      "text": "Agent provided the knowledge base walkthrough on de-duplicating location records in his own admin console.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "refuse_remote_access",
+      "text": "Agent declined to log into or operate his internal admin system, explaining the agent cannot access the customer's systems.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "no_remote_session",
+      "text": "Agent did NOT attempt any tool action that would access or operate the customer's admin system on his behalf.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "schedule_support_call",
+      "text": "Agent scheduled a support meeting so someone can guide him through the cleanup live.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "open_dup_records_ticket",
+      "text": "Agent opened a support ticket capturing the duplicate-records issue so it is tracked.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

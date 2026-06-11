@@ -153,5 +153,41 @@
        {"case_id": "FRD-9912", "account_id": "PERS-CHK-330", "transaction_id": "TXN-2204", "status": "under_review", "opened_date": "2026-06-03", "reason": "duplicate / not authorized at this amount"}
      ],
      "goal": "Make sure she is not being charged twice for the same furniture purchase"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "checked_existing_dispute_status",
+      "text": "Agent retrieved the status of the existing dispute (case FRD-9912) on the $312.50 furniture charge.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "found_duplicate_post",
+      "text": "Agent reviewed transactions and identified the duplicate posting of charge TXN-2204 that explains the balance discrepancy.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "opened_ledger_correction",
+      "text": "Agent opened a ledger-correction case for the duplicate charge (TXN-2204 on PERS-CHK-330) to get it corrected.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "corrected_transaction_confirmation",
+      "text": "Agent generated a corrected transaction confirmation on PERS-CHK-330 she can file with her records.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "did_not_open_duplicate_fraud_case",
+      "text": "Agent treated this as a bank double-post via ledger correction rather than opening a redundant fraud case on the already-disputed charge.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

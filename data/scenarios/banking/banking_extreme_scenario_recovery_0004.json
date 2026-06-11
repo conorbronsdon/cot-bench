@@ -176,5 +176,41 @@
      "goal": "Get a record of how this was sorted out so he can keep it for his accountant"},
     {"assert": "fraud_cases", "op": "equals", "value": [],
      "goal": "Confirm whether the manual transfer he tried this morning went through correctly"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "diagnosed_stopped_recurring",
+      "text": "Agent reviewed transactions to determine why the monthly $600 savings transfer stopped happening.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "refunded_duplicate_transfer",
+      "text": "Agent issued a billing adjustment refunding the $600 duplicate transfer (TXN-8820) back into BIZ-CHK-510.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "reestablished_recurring_transfer",
+      "text": "Agent set up the recurring monthly $600 transfer from BIZ-CHK-510 to BIZ-SAV-511 so it works again going forward.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "no_unwarranted_fraud_case",
+      "text": "Agent confirmed the manual transfer without opening a fraud case, since this was a duplicate/billing issue not fraud.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "record_for_accountant",
+      "text": "Agent generated a transaction record on BIZ-CHK-510 he can keep for his accountant.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

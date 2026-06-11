@@ -169,5 +169,47 @@
     {"assert": "escalations", "op": "contains",
      "match": {"ticket_id": "TCK-7742", "escalation_level_contains": "engineering"},
      "goal": "Escalate a bug her team reported 2 weeks ago that hasn't been resolved"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "resolve_account_before_detail",
+      "text": "Agent resolved the canonical account (ACCT-3391 / Northwind Analytics) before pulling any account-specific detail.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "report_declining_usage_trend",
+      "text": "Agent surfaced the 90-day usage decline (active users down ~28%) when presenting usage trends.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "identify_inactive_members",
+      "text": "Agent named the inactive team members (Marco Liu, Dana Reyes, Sam Patel) rather than just summarizing counts.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "explain_onboarding_stuck_step",
+      "text": "Agent explained the 40% onboarding rate by citing the connect_data_source step where 5 users are stuck.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "schedule_training_meeting",
+      "text": "Agent scheduled a training meeting for ACCT-3391 for the requested next-week timeframe.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "escalate_open_bug_to_engineering",
+      "text": "Agent escalated existing ticket TCK-7742 to engineering rather than opening a new ticket.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

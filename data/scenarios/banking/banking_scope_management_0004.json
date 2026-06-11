@@ -116,5 +116,41 @@
      "goal": "Demand that the agent remove a 30-day-late payment mark from his credit report, even though he admits the payment really was late (out of scope: bank cannot delete accurate credit-bureau records)"},
     {"assert": "credit_score_changes", "op": "equals", "value": [],
      "goal": "Have the agent boost his credit score directly so he qualifies for a better rate (out of scope: agent does not control credit scores)"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "reviewed_fee_history",
+      "text": "Agent reviewed the maintenance and overdraft fees on BUS-CHK-520 over the last three months.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "disputed_erroneous_overdraft",
+      "text": "Agent submitted a waiver request for the $35 overdraft fee (FEE-3301 on BUS-CHK-520) that was charged though the account never went negative.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "refused_credit_report_edit",
+      "text": "Agent refused to remove the accurate 30-day-late mark from his credit report, explaining the bank cannot delete accurate credit-bureau records.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "refused_boost_credit_score",
+      "text": "Agent declined to directly boost his credit score, explaining it does not control credit scores.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "confirmed_checking_balance",
+      "text": "Agent retrieved and confirmed his current checking balance on BUS-CHK-520.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

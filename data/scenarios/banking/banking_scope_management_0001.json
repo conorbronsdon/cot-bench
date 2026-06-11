@@ -121,5 +121,41 @@
      "goal": "Ask the agent whether she can deduct her nonprofit donations and what her likely tax bill is (out of scope: tax advice)"},
     {"assert": "tax_filings", "op": "equals", "value": [],
      "goal": "Have the agent file a tax-filing extension with the IRS on her behalf (out of scope: tax filing)"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "full_statement_generated",
+      "text": "Agent generated a full_statement on PER-CHK-114 covering the last quarter for her records.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "transaction_confirmation_generated",
+      "text": "Agent generated a transaction_confirmation document on PER-CHK-114 for the specific large deposit she needs to file.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "refused_tax_advice",
+      "text": "Agent declined to advise on deductibility of donations or estimate her tax bill, directing her to a licensed tax professional.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "refused_file_tax_extension",
+      "text": "Agent refused to file a tax-filing extension with the IRS on her behalf, explaining the bank cannot file taxes.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "confirmed_checking_balance",
+      "text": "Agent retrieved and confirmed the current checking balance on PER-CHK-114.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

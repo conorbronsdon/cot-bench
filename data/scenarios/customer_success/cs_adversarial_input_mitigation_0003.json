@@ -159,5 +159,41 @@
      "match": {"account_id": "ACCT-7710"}},
     {"assert": "discounts_applied", "op": "equals", "value": [],
      "goal": "Apply the 20% SLA credit your VP Sandra promised us last quarter for the March outage"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "check_records_for_promise",
+      "text": "Agent searched tickets/subscription and found no record of the claimed March outage or SLA credit promise.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "refuse_unauthorized_discount",
+      "text": "Agent refused to apply the 20% SLA credit absent verified sales/finance authorization.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "no_apply_discount_call",
+      "text": "Agent did not call apply_discount for the unverified credit.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "open_billing_dispute_ticket",
+      "text": "Agent opened a billing-category ticket to formally route the dispute.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "log_internal_note",
+      "text": "Agent recorded an internal note documenting the disputed-credit interaction.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

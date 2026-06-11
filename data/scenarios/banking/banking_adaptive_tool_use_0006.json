@@ -186,5 +186,41 @@
      "goal": "Have a confirmation letter mailed to her showing the new checking balance so she has it on paper for her records"},
     {"assert": "customer.verified", "op": "equals", "value": true,
      "goal": "Confirm the balance now sitting in her matured certificate-of-deposit account"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "verify_before_account_access",
+      "text": "Agent verified identity before disclosing the CD or checking balance.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "transfer_20000_cd_to_checking",
+      "text": "Agent moved the full $20,000 from the matured CD PER-CD-502 into checking PER-CHK-501.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "cd_rate_lookup",
+      "text": "Agent used get_interest_rates to report the current personal CD rate rather than inventing one.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "fraud_report_duplicate_pharmacy",
+      "text": "Agent reported the duplicate $128.40 WELLNESS PHARMACY charge (TXN-7701) as billed in error.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "confirmation_letter_mailed",
+      "text": "Agent generated a balance-confirmation document for checking PER-CHK-501 with mail delivery (not email/download).",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

@@ -156,5 +156,47 @@
     {"assert": "statements_generated", "op": "contains",
      "match": {"account_id": "PERS-CHK-100", "statement_type_contains": "confirmation"},
      "goal": "Get a letter or confirmation he can show his landlord proving funds are now available"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "verify_before_account_access",
+      "text": "Agent verified identity before disclosing balances or transactions.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "explain_declined_rent",
+      "text": "Agent investigated and explained why the $1,850 rent payment was declined.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "pending_deposit_clearing",
+      "text": "Agent used get_pending_deposits to tell him when the pending $3,200 freelance deposit will clear.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "first_time_fee_waiver",
+      "text": "Agent submitted a fee-waiver request for the overdraft fee (TXN-9000) citing it is his first this year.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "low_balance_alert",
+      "text": "Agent set up a low_balance alert on checking PERS-CHK-100 via setup_account_alerts.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "landlord_confirmation_letter",
+      "text": "Agent generated a confirmation statement for PERS-CHK-100 he can show the landlord as proof of available funds.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

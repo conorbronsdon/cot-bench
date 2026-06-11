@@ -583,6 +583,46 @@ def _stamp_scenario(
     return scenario_data
 
 
+def stamp_criteria(
+    scenario_data: dict,
+    rubric_criteria: list[dict],
+    *,
+    criteria_author_model: str,
+    criteria_author_run: str | None = None,
+    human_reviewed_by: str | None = None,
+) -> dict:
+    """Attach atomic rubric criteria + their provenance stamp in place (issue #54).
+
+    The criteria-authoring counterpart of ``_stamp_scenario``: criteria are
+    typically written LATER than the scenario, by a different model/agent, so
+    they get their own ``criteria_authorship`` block instead of overloading the
+    scenario's ``authorship``. The stamp records the model that ACTUALLY wrote
+    the criteria — provenance must be honest, never inherited from the scenario
+    author or omitted.
+
+    The contestant guard applies the same way as for scenario authors: a model
+    under test must not write the grading criteria for its own exam
+    (``assert_author_allowed`` raises). "human-handwritten" is allowed (it
+    matches no contestant). The stamped scenario is re-validated in full;
+    a ValueError carries the validator's exact error strings.
+    """
+    assert_author_allowed(criteria_author_model)
+
+    scenario_data["rubric_criteria"] = rubric_criteria
+    stamp: dict[str, str] = {"criteria_author_model": criteria_author_model}
+    if criteria_author_run:
+        stamp["criteria_author_run"] = criteria_author_run
+    if human_reviewed_by:
+        stamp["human_reviewed_by"] = human_reviewed_by
+        stamp["review_date"] = date.today().isoformat()
+    scenario_data["criteria_authorship"] = stamp
+
+    errors = validate_scenario_dict(scenario_data)
+    if errors:
+        raise ValueError("stamp_criteria produced an invalid scenario: " + "; ".join(errors))
+    return scenario_data
+
+
 def generate_scenario(
     domain: str,
     category: str,

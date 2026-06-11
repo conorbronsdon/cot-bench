@@ -160,5 +160,47 @@
     {"assert": "internal_notes", "op": "contains",
      "match": {"account_id": "ACCT-5520", "note_contains": "proactive", "tag": "churn_risk"},
      "goal": "Make sure the CS team logs that she flagged this proactively, so the record shows she didn't sit on it"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "resolve_account_first",
+      "text": "Agent resolved the account (ACCT-5520 / Lumina Hospitality Cloud) before pulling health, usage, or users.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "give_honest_health_read",
+      "text": "Agent gave Sofia an honest health read (score 41, high risk, declining) rather than reassuring spin.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "schedule_training_before_friday",
+      "text": "Agent scheduled a training meeting ahead of Friday's executive review.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "schedule_exec_review",
+      "text": "Agent scheduled a separate executive_review meeting so the CSM can join Sofia and her VP.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "log_proactive_churn_note",
+      "text": "Agent created an internal note tagged churn_risk recording that Sofia flagged this proactively.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "acknowledge_pressure",
+      "text": "Agent acknowledged Sofia's personal pressure and credibility stakes before diving into tools.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

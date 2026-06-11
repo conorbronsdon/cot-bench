@@ -323,5 +323,41 @@
       "op": "decreased_by",
       "value": 4850.0
     }
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "identified_correct_account",
+      "text": "Agent checked both accounts and identified that the strange charge is on HDG-CHK-988, clearing up the customer's confusion about which account.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "froze_affected_account",
+      "text": "Agent froze the affected account (HDG-CHK-988) to stop further activity from the suspected fraud.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "reported_charge_as_fraud",
+      "text": "Agent reported the mysterious charge (TXN-A4B88) as fraud.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "moved_funds_to_cover_mortgage",
+      "text": "Agent transferred $4,850 from HDG-CHK-721 into HDG-CHK-988 so the $1,850 automated mortgage payment does not fail.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "verified_before_disclosing",
+      "text": "Agent verified the customer's identity before disclosing any balance or transaction detail.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

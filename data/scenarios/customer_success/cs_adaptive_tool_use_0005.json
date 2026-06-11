@@ -176,5 +176,41 @@
     {"assert": "tickets", "op": "contains",
      "match": {"account_id": "ACCT-7188", "category": "billing"},
      "goal": "Sort out why she's being billed for more seats than she thinks her team is using"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "resolve_account_first",
+      "text": "Agent resolved the account (ACCT-7188 / Maple & Co Goods) before reading usage, users, or subscription.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "report_reporting_adoption_gap",
+      "text": "Agent surfaced the low reporting-feature adoption (~28%) versus dashboards (~71%) so Brittany can target adoption.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "book_reporting_training",
+      "text": "Agent scheduled a training meeting on advanced reporting for the team.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "route_seat_billing_via_ticket",
+      "text": "Agent opened a billing-category ticket for the seat discrepancy rather than changing the subscription tier or seat count itself.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "no_unilateral_seat_change",
+      "text": "Agent did not call change_subscription_tier to adjust seats on Brittany's request, deferring to billing review.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

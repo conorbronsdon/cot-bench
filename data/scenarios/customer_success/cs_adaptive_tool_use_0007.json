@@ -164,5 +164,41 @@
     {"assert": "meetings", "op": "contains",
      "match": {"account_id": "ACCT-2207", "meeting_type": "qbr"},
      "goal": "Get a renewal-planning meeting scheduled with her CSM"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "resolve_account_first",
+      "text": "Agent resolved the account (ACCT-2207 / Meridian Fintech) before pulling health, usage, or subscription detail.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "report_unused_seats",
+      "text": "Agent identified the unused paid seats (120 seats, 94 used) when reviewing the subscription.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "log_shadow_account_internally",
+      "text": "Agent recorded the shadow account (ACCT-2261) as an internal note for the CS team to consolidate.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "use_internal_note_not_email",
+      "text": "Agent flagged the shadow account via create_internal_note rather than emailing the customer about it.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "schedule_renewal_meeting",
+      "text": "Agent scheduled a renewal-planning (QBR) meeting with the CSM.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

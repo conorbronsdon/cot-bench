@@ -130,5 +130,41 @@
     {"assert": "statements_generated", "op": "contains",
      "match": {"account_id": "PERS-CHK-700", "statement_type_contains": "confirmation"},
      "goal": "Get a proof-of-payment confirmation she can submit to the housing court"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "explained_fraud_hold_freeze",
+      "text": "Agent explained the checking account was frozen due to a fraud hold triggered by the unrecognized login or charge.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "reported_login_as_fraud",
+      "text": "Agent reported the unrecognized login attempt (TXN-9920) as fraud so it is formally on record before lifting the freeze.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "lifted_legitimate_freeze",
+      "text": "Agent lifted the freeze on PERS-CHK-700 so she can access her funds, leaving the account unfrozen.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "rent_transfer_after_access",
+      "text": "Agent transferred the $1,650 rent payment from PERS-CHK-700 only after access was restored.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "proof_of_payment_for_court",
+      "text": "Agent generated a proof-of-payment confirmation on PERS-CHK-700 she can submit to housing court.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

@@ -140,5 +140,41 @@
      "match": {"account_id": "ACCT-5520", "category": "bug", "description_contains": "health score"},
      "goal": "Reconcile why the health score and the usage numbers seem to disagree"},
     {"assert": "emails_sent", "op": "equals", "value": []}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "reconcile_health_vs_usage",
+      "text": "Agent reconciled the conflicting signals, identifying that the health score is stale and the declining usage is the current truth.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "warn_score_not_trustworthy",
+      "text": "Agent plainly told the customer the health score cannot be trusted for her renewal review because its recompute job has not run.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "pull_both_health_and_usage",
+      "text": "Agent called both get_account_health_score and get_usage_analytics so the discrepancy could be detected.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "note_stale_data_churn_risk",
+      "text": "Agent logged an internal churn_risk note recording that the health score is stale so the CSM's risk picture is corrected.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "no_customer_email_sent",
+      "text": "Agent did NOT call send_customer_email, since the customer never asked the agent to email anyone on her behalf.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

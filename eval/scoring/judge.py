@@ -17,6 +17,7 @@ import anthropic
 from openai import OpenAI
 
 from eval.config import JUDGES, JudgeConfig
+from eval.scoring.rubrics import aggregate_criterion_score, criteria_for_dimension
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,16 @@ class JudgeResult:
     # evaluate_scenario).
     input_tokens: int = 0
     output_tokens: int = 0
+    # Atomic rubric criteria (issue #54). When the scenario carries criteria for
+    # this dimension, ``overall_score`` is the CRITERION-INFORMED score (weighted
+    # fraction of met criteria), ``criterion_informed`` is True, ``holistic_score``
+    # preserves the judge's template dimension score for the halo-effect
+    # comparison, and ``criteria_verdicts`` holds the per-criterion
+    # {id, met, evidence} verdicts for THIS dimension's criteria. All defaults
+    # (None/False) for criteria-less scenarios — byte-identical legacy behavior.
+    holistic_score: float | None = None
+    criterion_informed: bool = False
+    criteria_verdicts: list[dict] | None = None
 
 
 @dataclass
@@ -166,6 +177,73 @@ def _extract_combined_dimension(parsed: dict, rubric_type: str) -> dict | None:
     return dim
 
 
+def _extract_criteria_verdicts(parsed: dict, rubric_criteria: list[dict]) -> list[dict] | None:
+    """Validate + normalize the judge's ``rubric_criteria`` verdict block (issue #54).
+
+    Strict by design — mirrors the existing whole-judge parse rule: a judge that
+    was asked for per-criterion verdicts and returned a missing, partial,
+    duplicated, or mistyped block gives us no reason to trust a recovered
+    subset, so the WHOLE response is treated as a parse failure (``None`` here),
+    which triggers the standard one-retry-then-exclude path. Requirements:
+
+    - top-level ``rubric_criteria`` is a list of dicts,
+    - each entry carries a string ``id`` and a strict-bool ``met``,
+    - the id set matches the scenario's criterion ids EXACTLY (each id once).
+
+    On success returns the verdicts normalized to ``{id, met, evidence}`` in the
+    scenario's criterion order (evidence coerced to str, "" when absent).
+    """
+    if not isinstance(parsed, dict):
+        return None
+    raw = parsed.get("rubric_criteria")
+    if not isinstance(raw, list):
+        return None
+    by_id: dict[str, dict] = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            return None
+        cid = item.get("id")
+        met = item.get("met")
+        if not isinstance(cid, str) or not isinstance(met, bool):
+            return None
+        if cid in by_id:
+            return None
+        by_id[cid] = {"id": cid, "met": met, "evidence": str(item.get("evidence", ""))}
+    expected = [c["id"] for c in rubric_criteria]
+    if set(by_id) != set(expected):
+        return None
+    return [by_id[cid] for cid in expected]
+
+
+def _criterion_informed_fields(
+    rubric_criteria: list[dict] | None,
+    verdicts: list[dict] | None,
+    rubric_type: str,
+    holistic: float,
+) -> dict:
+    """JudgeResult field overrides for one dimension's criterion-informed score.
+
+    With criteria mapped to ``rubric_type``: overall_score becomes the weighted
+    fraction of met criteria, the template score moves to ``holistic_score``
+    (recorded for the halo-effect comparison), and the dimension's own verdicts
+    are attached. Without criteria for this dimension (or no criteria at all):
+    the holistic score stands and every new field keeps its legacy default.
+    """
+    if not rubric_criteria or verdicts is None:
+        return {"overall_score": holistic}
+    met_by_id = {v["id"]: v["met"] for v in verdicts}
+    crit_score = aggregate_criterion_score(rubric_criteria, met_by_id, rubric_type)
+    if crit_score is None:
+        return {"overall_score": holistic}
+    dim_ids = {c["id"] for c in criteria_for_dimension(rubric_criteria, rubric_type)}
+    return {
+        "overall_score": crit_score,
+        "holistic_score": holistic,
+        "criterion_informed": True,
+        "criteria_verdicts": [v for v in verdicts if v["id"] in dim_ids],
+    }
+
+
 def _call_judge_api(
     judge: JudgeConfig,
     system_prompt: str,
@@ -231,6 +309,7 @@ def score_with_judge(
     system_prompt: str,
     rubric_prompt: str,
     rubric_type: str,
+    rubric_criteria: list[dict] | None = None,
 ) -> JudgeResult:
     """Score a scenario using a single judge.
 
@@ -245,6 +324,12 @@ def score_with_judge(
         system_prompt: The judge system prompt.
         rubric_prompt: The filled-in rubric with transcript and context.
         rubric_type: "task_completion" or "tool_selection".
+        rubric_criteria: Atomic criteria for THIS dimension only (issue #54) —
+            the caller pre-filters with ``criteria_for_dimension`` to match what
+            the prompt showed the judge. When non-empty, a valid per-criterion
+            verdict block is REQUIRED for the response to parse, and the
+            returned overall_score is criterion-informed (holistic preserved on
+            ``holistic_score``). None/empty keeps legacy behavior exactly.
 
     Returns:
         JudgeResult with score and reasoning, or a parse_failed placeholder.
@@ -252,6 +337,7 @@ def score_with_judge(
     start = time.perf_counter()
 
     parsed = None
+    verdicts: list[dict] | None = None
     resolved_model = ""
     input_tokens = 0
     output_tokens = 0
@@ -264,7 +350,14 @@ def score_with_judge(
         # across attempts rather than overwriting (issue #47).
         input_tokens += in_t
         output_tokens += out_t
-        parsed = _parse_judge_response(content)
+        candidate = _parse_judge_response(content)
+        if candidate is not None and rubric_criteria:
+            # Criteria were requested: a response without a valid verdict block
+            # is a parse failure (same strict rule as the combined path).
+            verdicts = _extract_criteria_verdicts(candidate, rubric_criteria)
+            if verdicts is None:
+                candidate = None
+        parsed = candidate
         if parsed is not None:
             break
         if attempt + 1 < attempts:
@@ -295,13 +388,17 @@ def score_with_judge(
     return JudgeResult(
         judge_name=judge.name,
         rubric_type=rubric_type,
-        overall_score=float(parsed.get("overall_score", 0.0)),
         reasoning=parsed.get("overall_reasoning", ""),
         raw_response=parsed,
         latency_ms=latency_ms,
         resolved_model=resolved_model,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
+        # Criterion-informed overrides (issue #54); plain holistic score (and
+        # default-valued new fields) when no criteria apply to this dimension.
+        **_criterion_informed_fields(
+            rubric_criteria, verdicts, rubric_type, float(parsed.get("overall_score", 0.0))
+        ),
     )
 
 
@@ -309,6 +406,7 @@ def score_with_judge_combined(
     judge: JudgeConfig,
     system_prompt: str,
     combined_prompt: str,
+    rubric_criteria: list[dict] | None = None,
 ) -> tuple[JudgeResult, JudgeResult]:
     """Score BOTH rubric dimensions with a single judge in one API call.
 
@@ -334,10 +432,18 @@ def score_with_judge_combined(
 
     Retry semantics match the two-call path: on a parse failure the judge is
     called ONCE more (a fresh API call) before giving up.
+
+    ``rubric_criteria`` (issue #54) is the scenario's FULL criteria list (both
+    dimensions — the combined prompt showed them all). When non-empty, a valid
+    per-criterion verdict block is required for the whole response to count as
+    parsed (same strictness as the two-dimension rule above), and each
+    dimension's JudgeResult carries a criterion-informed overall_score with the
+    holistic template score preserved on ``holistic_score``.
     """
     start = time.perf_counter()
 
     parsed = None
+    verdicts: list[dict] | None = None
     resolved_model = ""
     input_tokens = 0
     output_tokens = 0
@@ -354,8 +460,14 @@ def score_with_judge_combined(
         if candidate is not None and all(
             _extract_combined_dimension(candidate, rt) is not None for rt in COMBINED_RUBRIC_TYPES
         ):
-            parsed = candidate
-            break
+            if rubric_criteria:
+                # Criteria were requested: the verdict block must validate too.
+                verdicts = _extract_criteria_verdicts(candidate, rubric_criteria)
+                if verdicts is None:
+                    candidate = None
+            if candidate is not None:
+                parsed = candidate
+                break
         if attempt + 1 < attempts:
             logger.warning(
                 "Judge %s combined parse failed (attempt %d/%d) — retrying",
@@ -400,13 +512,20 @@ def score_with_judge_combined(
         JudgeResult(
             judge_name=judge.name,
             rubric_type=rt,
-            overall_score=float(_extract_combined_dimension(parsed, rt)["overall_score"]),
             reasoning=_extract_combined_dimension(parsed, rt).get("overall_reasoning", ""),
             raw_response=_extract_combined_dimension(parsed, rt),
             latency_ms=latency_ms,
             resolved_model=resolved_model,
             input_tokens=input_tokens if i == 0 else 0,
             output_tokens=output_tokens if i == 0 else 0,
+            # Criterion-informed overrides (issue #54); plain holistic score for
+            # a dimension with no mapped criteria (or no criteria at all).
+            **_criterion_informed_fields(
+                rubric_criteria,
+                verdicts,
+                rt,
+                float(_extract_combined_dimension(parsed, rt)["overall_score"]),
+            ),
         )
         for i, rt in enumerate(COMBINED_RUBRIC_TYPES)
     )
@@ -419,6 +538,7 @@ def score_with_all_judges(
     rubric_type: str,
     scenario_id: str,
     judge_keys: list[str] | None = None,
+    rubric_criteria: list[dict] | None = None,
 ) -> ConsensusResult:
     """Score a scenario with all judges concurrently and compute consensus.
 
@@ -428,6 +548,8 @@ def score_with_all_judges(
         rubric_type: "task_completion" or "tool_selection".
         scenario_id: Unique identifier for the scenario being judged.
         judge_keys: Which judges to use (defaults to all).
+        rubric_criteria: This DIMENSION's atomic criteria (issue #54), passed
+            through to each judge; None/empty keeps legacy behavior.
 
     Returns:
         ConsensusResult with individual and aggregated scores.
@@ -437,11 +559,20 @@ def score_with_all_judges(
     results: list[JudgeResult] = []
     api_failures: list[str] = []
 
+    # Criteria are passed ONLY when present so the criteria-less call shape
+    # (and any code stubbing score_with_judge) stays exactly as before.
+    extra = (rubric_criteria,) if rubric_criteria else ()
+
     # Run judges concurrently — they're independent API calls
     with ThreadPoolExecutor(max_workers=len(keys)) as executor:
         futures = {
             executor.submit(
-                score_with_judge, JUDGES[key], system_prompt, rubric_prompt, rubric_type
+                score_with_judge,
+                JUDGES[key],
+                system_prompt,
+                rubric_prompt,
+                rubric_type,
+                *extra,
             ): key
             for key in keys
         }
@@ -555,6 +686,7 @@ def score_with_all_judges_combined(
     combined_prompt: str,
     scenario_id: str,
     judge_keys: list[str] | None = None,
+    rubric_criteria: list[dict] | None = None,
 ) -> tuple[ConsensusResult, ConsensusResult]:
     """Score both rubrics with all judges via ONE combined call per judge.
 
@@ -569,6 +701,9 @@ def score_with_all_judges_combined(
     parse-fails or api-fails fails for BOTH dimensions (see
     ``score_with_judge_combined`` for the failure-coupling rationale), so it is
     counted as a parse/api failure in each of the two returned consensus results.
+
+    ``rubric_criteria`` (issue #54) is the scenario's full criteria list, passed
+    through to each combined judge call; None/empty keeps legacy behavior.
     """
     keys = judge_keys or list(JUDGES.keys())
     n_requested = len(keys)
@@ -576,12 +711,20 @@ def score_with_all_judges_combined(
     results_by_rubric: dict[str, list[JudgeResult]] = {rt: [] for rt in COMBINED_RUBRIC_TYPES}
     api_failures: list[str] = []
 
+    # Criteria are passed ONLY when present so the criteria-less call shape
+    # (and any code stubbing score_with_judge_combined) stays exactly as before.
+    extra = (rubric_criteria,) if rubric_criteria else ()
+
     # Run judges concurrently — they're independent API calls. One call per
     # judge now produces BOTH dimensions.
     with ThreadPoolExecutor(max_workers=len(keys)) as executor:
         futures = {
             executor.submit(
-                score_with_judge_combined, JUDGES[key], system_prompt, combined_prompt
+                score_with_judge_combined,
+                JUDGES[key],
+                system_prompt,
+                combined_prompt,
+                *extra,
             ): key
             for key in keys
         }

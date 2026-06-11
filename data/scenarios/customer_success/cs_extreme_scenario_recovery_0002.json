@@ -129,5 +129,41 @@
      "match": {"account_id": "ACCT-7188", "tag": "support_needed", "note_contains": "ROUTER_TIMEOUT"},
      "goal": "Make sure the SLA clock on the incident is being honored"},
     {"assert": "emails_sent", "op": "equals", "value": []}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "find_wedged_escalation",
+      "text": "Agent found the existing outage ticket and identified that its prior escalation failed (stuck on a ROUTER_TIMEOUT, never reached engineering).",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "give_real_status_not_canned",
+      "text": "Agent gave the customer the real escalation status rather than repeating the portal's misleading 'escalating' reassurance.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "lookup_before_escalate",
+      "text": "Agent called search_support_tickets to obtain the ticket_id before calling escalate_ticket.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "re_escalate_to_engineering",
+      "text": "Agent called escalate_ticket on TCK-9043 to the engineering level to complete the failed escalation.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "note_sla_breach",
+      "text": "Agent logged an internal note recording the SLA breach and the ROUTER_TIMEOUT failure.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

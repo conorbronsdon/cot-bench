@@ -136,5 +136,41 @@
     {"assert": "alerts.PERS-CHK-410", "op": "contains",
      "match": {"alert_type": "deposit"},
      "goal": "Set up a deposit alert so she knows the moment money lands or is pulled back"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "explained_reversal_caused_negative",
+      "text": "Agent explained that the account is negative because the gig deposit was reversed, not because of the customer's own spending.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "checked_fee_history",
+      "text": "Agent called get_fee_history to confirm an overdraft fee was actually charged before submitting any waiver.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "waiver_with_reversal_reason",
+      "text": "Agent submitted a fee waiver request for fee TXN-5520 on PERS-CHK-410 citing the deposit reversal as the reason.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "next_deposit_clearing_date",
+      "text": "Agent retrieved pending deposits and told her when her next gig deposit will actually clear.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "deposit_alert_setup",
+      "text": "Agent set up a deposit alert on PERS-CHK-410 so she is notified when money lands or is pulled back.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }
