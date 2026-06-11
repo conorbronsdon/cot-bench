@@ -1281,8 +1281,14 @@ def main():
     models_requested = [m["name"] for m in models]
     models_completed = sorted({r["model"] for r in all_results})
     # Capture the resolved environment (H3): full package list to a sibling file,
-    # summary (python version + sha256 + count) into the manifest below.
-    environment = capture_environment(output_path.parent / ENV_FREEZE_FILENAME)
+    # summary (python version + sha256 + count) into the manifest below. Capture
+    # failure must never lose the manifest of a completed (paid) run — degrade
+    # to an honest marker instead.
+    try:
+        environment = capture_environment(output_path.parent / ENV_FREEZE_FILENAME)
+    except Exception as exc:
+        logger.warning("Environment capture failed: %s", exc)
+        environment = {"capture_failed": str(exc)}
     manifest = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "run_id": run_id,

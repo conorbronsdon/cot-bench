@@ -1,6 +1,6 @@
 # Expert Scenario Review — v0.2 Corpus
 
-Review protocol for the 80-scenario corpus (methodology: review **100% of hard scenarios** plus a **25% seeded random sample** of easy/medium — seed 42, reproducible via the snippet at the bottom). One reviewer per scenario; route any scenario any reviewer flags to a second reviewer. Record outcomes in each scenario's `authorship` block (`human_reviewed_by`, `review_date`).
+Review protocol for the 92-scenario corpus (methodology: review **100% of hard scenarios** plus a **25% seeded random sample** of easy/medium — seed 42, reproducible via the snippet at the bottom). One reviewer per scenario; route any scenario any reviewer flags to a second reviewer. Record outcomes in each scenario's `authorship` block (`human_reviewed_by`, `review_date`).
 
 ## Reviewer checklist (≤10 items)
 
