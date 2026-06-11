@@ -117,8 +117,9 @@ Notes on this number:
 - The estimate is conservative by construction (the rehearsal's job is to
   confirm that with a measured ratio). Set `--max-cost` with headroom anyway:
   ~$480 (1.5x the estimate) is a sane cap that still stops a runaway.
-- Wall clock: the rehearsal's single model took 5 to 12 hours for 306
-  evaluations. `run_eval` evaluates models concurrently
+- Wall clock: the runbook budgets 5 to 12 hours for the rehearsal's single
+  model over 306 evaluations (a prior, not a measurement; replace with the
+  rehearsal's actual time once it has run). `run_eval` evaluates models concurrently
   (`--parallel-models`, default 2), so plan for the full run to span days at
   the default, not hours. It must be **one run**, resumed across sessions with
   `--resume` if needed, never stitched from separate runs: the
@@ -224,8 +225,10 @@ run results, not the already-spent repo-hardening story.
   as the episode. Not a listicle of leaderboard rows.
 - [ ] Content fact-check note for any script or post: do not cite
   Terminal-Bench 2.0 "milestone rewards" as a partial-credit precedent. Its
-  grader is binary pass/fail; the milestone-rewards claim circulating in
-  early research notes is wrong (verified against TB2.0's grader, issue #34).
+  scoring is binary pass/fail per third-party analysis of the TB2.0 harness
+  (research notes, confirmed as a non-recommendation in issue #34). Nobody on
+  this project has read the grader code itself, which is one more reason the
+  claim never goes in a script, post, or the application.
 
 ### 2.2 Developer channel
 
