@@ -72,6 +72,10 @@ FRONTEND_MODEL_KEYS = {
     "reliability_pass_hat_k",
     # Visual overhaul (#56): inline efficacy CI whisker reads efficacy_ci.
     "efficacy_ci",
+    # Macro-averaged efficacy sub-readout + failure-profile card line (#55).
+    "efficacy_macro_category",
+    "efficacy_macro_category_ci",
+    "failure_profile",
 }
 
 
@@ -110,6 +114,8 @@ def _build_df(with_holdout=True, with_premature=True, with_pass_hat=True):
                     }
                     if with_premature:
                         row["premature_end"] = r == 0 and model == "GPT-4.1 (anchor)"
+                    # Failure-mode column (#55): below-threshold rows fail.
+                    row["failure_mode"] = None if eff >= 0.7 else "incomplete-task"
                     if with_pass_hat:
                         row["reliability_pass_hat_1"] = base
                         row["reliability_pass_hat_2"] = base * 0.9
@@ -145,6 +151,13 @@ class TestFrontendSchemaCoupling:
         assert isinstance(entry["premature_end_rate"], float)
         assert isinstance(entry["reliability_pass_hat_k"], dict)
         assert entry["reliability_pass_hat_k"], "expected per-k pass^k values"
+        # Macro efficacy + failure profile (#55): float, [lo, hi], and a profile
+        # dict with the full mode vocabulary.
+        assert isinstance(entry["efficacy_macro_category"], float)
+        ci = entry["efficacy_macro_category_ci"]
+        assert isinstance(ci, list) and len(ci) == 2 and all(isinstance(v, float) for v in ci)
+        assert isinstance(entry["failure_profile"], dict)
+        assert set(entry["failure_profile"]) == {"n_rows", "n_failures", "failure_rate", "modes"}
 
     def test_new_fields_degrade_to_none_on_legacy_data(self):
         # No holdout / premature / pass^k columns (legacy parquet). The frontend
@@ -341,6 +354,10 @@ def _populated_payload(degraded: bool = False) -> dict:
             mdl["reliability_pass_hat_k"] = {}
             mdl["premature_end_rate"] = None
             mdl["rank_band"] = None
+            # Macro + failure profile absent on legacy parquets (#55).
+            mdl["efficacy_macro_category"] = None
+            mdl["efficacy_macro_category_ci"] = [None, None]
+            mdl["failure_profile"] = None
         lb["statistical_note"] = None
     return lb
 

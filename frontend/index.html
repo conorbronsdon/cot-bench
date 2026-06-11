@@ -818,6 +818,30 @@
             return `<span class="${cls}" title="${title}">${sign}${gap.toFixed(3)}</span>`;
         }
 
+        // Macro-averaged efficacy (#55): equal weight per scenario category, so
+        // frequent-easy categories can't drown rare-hard ones. Rendered as a
+        // small sub-readout under the (micro) efficacy value; omitted when the
+        // aggregate has no category data (legacy runs).
+        function macroDetail(m) {
+            if (m.efficacy_macro_category == null) return '';
+            const ci = m.efficacy_macro_category_ci;
+            const ciTxt = (Array.isArray(ci) && ci[0] != null && ci[1] != null)
+                ? ` 95% CI [${ci[0].toFixed(3)}, ${ci[1].toFixed(3)}]` : '';
+            return `<span class="rel-detail"><span title="Macro-averaged efficacy: each scenario category weighted equally (the headline value is the micro average over scenarios).${ciTxt}">macro ${m.efficacy_macro_category.toFixed(3)}</span></span>`;
+        }
+
+        // Most frequent failure mode from the per-model failure profile (#55).
+        // Returns null when the profile is absent (legacy data) or all-pass.
+        function topFailure(m) {
+            const fp = m.failure_profile;
+            if (!fp || !fp.modes || !fp.n_failures) return null;
+            let best = null;
+            for (const [mode, v] of Object.entries(fp.modes)) {
+                if (v && v.count > 0 && (!best || v.count > best.count)) best = { mode, count: v.count };
+            }
+            return best;
+        }
+
         function relDetail(m) {
             const parts = [];
             const phk = m.reliability_pass_hat_k;
@@ -889,7 +913,7 @@
                     <td class="col-band">${bandCell}</td>
                     <td class="col-left col-model"><span class="model-name">${esc(m.name)}${tied}</span></td>
                     <td class="col-clear">${clearCell(m)}</td>
-                    <td class="col-efficacy"><span class="eff-row"><span class="eff-val">${m.efficacy.toFixed(3)}</span>${ciWhisker(m)}</span></td>
+                    <td class="col-efficacy"><span class="eff-row"><span class="eff-val">${m.efficacy.toFixed(3)}</span>${ciWhisker(m)}</span>${macroDetail(m)}</td>
                     <td>${valueCell(m)}</td>
                     <td>$${m.cost_per_task_usd.toFixed(4)}</td>
                     <td>${m.reliability.toFixed(3)}${relDetail(m)}</td>
@@ -915,6 +939,9 @@
                 const ciTxt = (Array.isArray(ci) && ci[0] != null) ? ` [${ci[0].toFixed(3)}, ${ci[1].toFixed(3)}]` : '';
                 const holdoutLine = (sh && m.holdout_gap != null)
                     ? `<div><span class="k">Holdout Δ</span><div class="v">${m.holdout_gap > 0 ? '+' : ''}${m.holdout_gap.toFixed(3)}</div></div>` : '';
+                const tf = topFailure(m);
+                const failLine = tf
+                    ? `<div><span class="k">Top failure</span><div class="v">${esc(tf.mode)} ×${tf.count}</div></div>` : '';
                 return `<div class="card ${bandParity[m._band] ? 'band-even' : ''}">
                     <div class="card-head">
                         <span class="card-rank">#${i + 1}${m._bandTied ? ' (tie)' : ''}</span>
@@ -929,6 +956,7 @@
                         <div><span class="k">Latency</span><div class="v">${(m.avg_latency_ms / 1000).toFixed(1)}s</div></div>
                         <div><span class="k">Agreement</span><div class="v">${agree == null ? 'n/a' : (agree*100).toFixed(0) + '%'}</div></div>
                         ${holdoutLine}
+                        ${failLine}
                     </div>
                 </div>`;
             }).join('');

@@ -114,6 +114,14 @@ $\binom{c}{k}/\binom{n}{k}$ for $c$ passing runs out of $n$. Each model publishe
 $\text{pass}^k$ alongside, not replacing, the pass@3 reliability. With three runs,
 $k \in \{1,2,3\}$; more repeats extend the autonomy horizon.
 
+\paragraph{Failure-mode taxonomy.} Every run below the 0.7 pass threshold is
+additionally classified into one of six failure modes (tool-selection-error,
+policy-violation, incomplete-task, premature-end, wrong-parameters,
+hallucinated-capability), deterministic-first: state-grader evidence and the
+premature-end instrumentation take precedence over keyword matching on the
+judges' already-written reasoning, with no additional LLM calls; each model
+publishes a per-mode failure profile, the diagnostic practitioners act on.
+
 \subsection{CLEAR composite}
 
 The composite adopts four of CLEAR's five dimensions~\cite{clear2025}: Cost,
