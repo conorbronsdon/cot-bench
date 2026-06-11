@@ -156,6 +156,16 @@ class SimulationResult:
     # compute_dual_control_rates drops None rows, so non-firing rows are excluded
     # from the coordination rate.
     coordination_ok: bool | None = None
+    # Count of user actions whose trigger was met but whose firing was SUPPRESSED
+    # because no delivery turn remained (the trigger was first satisfied on the
+    # loop's final outer turn, so the staged user message could never be delivered
+    # and the agent would get no turn to act on it — the #74 fired-but-not-
+    # delivered class). A suppressed action is treated as NOT fired: its delta is
+    # not applied, it is not counted in ``user_actions_fired``, and it grades no
+    # coordination verdict (coordination_ok stays None when nothing else fired).
+    # Surfaced on rows/artifacts so the trigger-met-but-undeliverable case is
+    # auditable, exactly like the recovery-probe ``probe_fired`` flag.
+    user_actions_suppressed: int = 0
 
 
 @dataclass
@@ -549,6 +559,7 @@ class SimulationRunner:
         self._agent_mutated_keys: set = set()
         user_mutated_keys: set = set()
         user_actions_fired = 0
+        user_actions_suppressed = 0
         pending_actions = dc.pending_actions() if dc is not None else []
         agent_tool_calls_seen: set = set()
 
@@ -617,6 +628,7 @@ class SimulationRunner:
                         # grade). False/0/None for the single-control majority.
                         dual_control=dc is not None,
                         user_actions_fired=user_actions_fired,
+                        user_actions_suppressed=user_actions_suppressed,
                         coordination_ok=(
                             self._coordination_verdict(
                                 scenario, world, self._agent_mutated_keys, user_mutated_keys
@@ -748,7 +760,42 @@ class SimulationRunner:
             # just approved that"), replacing the user-sim's generated turn,
             # exactly like a recovery-probe injection. A silent action mutates the
             # world only; the user sim still speaks that turn.
-            if pending_actions and world is not None:
+            #
+            # Delivery gate (the #74 fired-but-not-delivered lesson): an action
+            # may only fire when at least one delivery turn remains (next_turn <
+            # max_turns). On the loop's FINAL iteration the staged user turn would
+            # never be delivered — the agent would never see the coordination
+            # signal and would get no turn to act on it — so firing there would
+            # apply the user's delta and grade coordination_ok for a harness-
+            # timing reason, not an agent failure (e.g. an ``agent_called`` action
+            # whose watched tool is first called on the last outer turn). Such an
+            # action is treated as NOT fired: no delta is applied, it is not
+            # counted in ``user_actions_fired`` (so coordination_ok stays None
+            # when nothing else fired and the coordination-rate denominator stays
+            # honest), and it is counted in ``user_actions_suppressed`` so the
+            # trigger-met-but-undeliverable case is auditable on the row/artifact,
+            # mirroring the recovery-probe ``probe_fired`` gate. ``after_turn``
+            # triggers cannot normally reach this gate (USER_ACTION_TURN_MAX = 9
+            # < the default max_turns = 10); ``agent_called`` can.
+            if pending_actions and world is not None and turn_num + 1 >= self.config.max_turns:
+                for action in pending_actions:
+                    if action_fires(
+                        action,
+                        next_user_turn=turn_num + 1,
+                        agent_tool_calls_so_far=agent_tool_calls_seen,
+                    ):
+                        user_actions_suppressed += 1
+                        logger.info(
+                            "Dual-control user action SUPPRESSED (tool=%s, trigger=%s): "
+                            "trigger met at user turn %d but no delivery turn remains "
+                            "(max_turns=%d) for %s — treated as not fired",
+                            action.tool,
+                            action.trigger,
+                            turn_num + 1,
+                            self.config.max_turns,
+                            scenario.id,
+                        )
+            elif pending_actions and world is not None:
                 next_turn = turn_num + 1
                 fired_message: str | None = None
                 still_pending = []
@@ -837,10 +884,14 @@ class SimulationRunner:
             # user-owned path). A dual-control scenario where no action fired
             # (conversation ended before any trigger) keeps coordination_ok=None
             # so it cannot pollute the coordination rate with a verdict on a
-            # coordination that never happened. False/0/None for the
-            # single-control majority.
+            # coordination that never happened, and an action whose trigger was
+            # met only on the final outer turn (no delivery turn remaining) is
+            # counted in ``user_actions_suppressed`` instead of fired — see the
+            # delivery gate in the loop. False/0/None for the single-control
+            # majority.
             dual_control=dc is not None,
             user_actions_fired=user_actions_fired,
+            user_actions_suppressed=user_actions_suppressed,
             coordination_ok=(
                 self._coordination_verdict(
                     scenario, world, self._agent_mutated_keys, user_mutated_keys

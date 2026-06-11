@@ -338,11 +338,14 @@ def _validate_dual_control(scenario: ScenarioSchema) -> list[str]:
     """Validate a dual_control block when present (issue #58).
 
     Presence-gated on any schema version: a scenario without ``dual_control`` is
-    untouched. With a block: at least one user_tool (each with a non-empty name
-    and a declared ``scope`` list of top-level keys it may mutate) and at least
-    one user_action; and — the authorization boundary, the subtle part of #58 —
-    every action must name a DECLARED user_tool and write ONLY within that tool's
-    declared scope. The trigger vocabulary and turn bounds mirror
+    untouched. With a block: non-empty ``expected_state_changes`` (the empty-
+    assertions no-unauthorized-mutation contract is incompatible with a user who
+    legitimately mutates the world); at least one user_tool (each with a
+    non-empty name and a declared ``scope`` list of top-level keys it may
+    mutate) and at least one user_action; and — the authorization boundary, the
+    subtle part of #58 — every action must name a DECLARED user_tool and write
+    ONLY within that tool's declared scope. The trigger vocabulary and turn
+    bounds mirror
     ``DualControl``/``UserAction`` so the on-disk validator and the runtime
     object agree on what a valid block is.
     """
@@ -353,6 +356,24 @@ def _validate_dual_control(scenario: ScenarioSchema) -> list[str]:
     errors: list[str] = []
     if not isinstance(block, dict):
         return ["dual_control must be an object"]
+
+    # A dual-control scenario MUST declare non-empty expected_state_changes.
+    # With empty assertions ([] or absent) the state grader evaluates the
+    # no-unauthorized-mutation contract instead (final world == initial world,
+    # see score_state_changes) — and in a dual-control scenario the USER always
+    # mutates the world, so the agent would be charged with an unauthorized
+    # mutation for the user's own legitimate self-serve (coordination_ok
+    # permanently False and the efficacy grade failing with the user's key
+    # named). The two contracts are incompatible by construction, so this is a
+    # validation failure, caught before any run.
+    if not scenario.expected_state_changes:
+        errors.append(
+            "dual_control requires non-empty 'expected_state_changes': with empty "
+            "assertions the state grader enforces the no-unauthorized-mutation "
+            "contract (final world == initial world), which the user's own scripted "
+            "mutations always violate — the agent would be charged for the user's "
+            "legitimate actions"
+        )
 
     tools_raw = block.get("user_tools")
     if not isinstance(tools_raw, list) or not tools_raw:

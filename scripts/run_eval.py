@@ -342,8 +342,13 @@ def build_result_row(
         # over fired-action rows ONLY (coordination_ok non-null) and emits it
         # conditionally, so a normal single-control run is byte-identical
         # downstream; user_actions_fired makes the rate's denominator auditable.
+        # ``user_actions_suppressed`` counts trigger-met actions that were NOT
+        # fired because no delivery turn remained (the #74 fired-but-not-
+        # delivered class) — such rows keep coordination_ok=None and the
+        # suppression is auditable here.
         "dual_control": bool(getattr(sim_result, "dual_control", False)),
         "user_actions_fired": int(getattr(sim_result, "user_actions_fired", 0) or 0),
+        "user_actions_suppressed": int(getattr(sim_result, "user_actions_suppressed", 0) or 0),
         "coordination_ok": getattr(sim_result, "coordination_ok", None),
         "tc_agreement": _round_or_none(tc_result.agreement_rate, 4),
         "ts_agreement": _round_or_none(ts_result.agreement_rate, 4),

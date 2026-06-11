@@ -166,6 +166,41 @@ the base task happened to already match. `user_actions_fired` is recorded per ro
 so the declared-vs-fired gap is auditable, exactly like the recovery-probe
 `probe_fired` flag.
 
+**The delivery gate (the #74 fired-but-not-delivered lesson):** an action only
+fires when at least one delivery turn remains. An `agent_called` action whose
+watched tool is first called on the loop's **final** outer turn would stage a
+user message that is never delivered — the agent would never see the
+coordination signal and would get no turn to act on it — so firing there would
+apply the user's delta and grade `coordination_ok` for a harness-timing reason,
+not an agent failure. Such an action is treated as **not fired**: no delta, not
+counted in `user_actions_fired`, no verdict (`coordination_ok` stays `None` when
+nothing else fired, keeping the coordination-rate denominator honest). It is
+counted in `user_actions_suppressed` on the row/artifact so the
+trigger-met-but-undeliverable case is auditable. `after_turn` triggers cannot
+normally reach the gate (`USER_ACTION_TURN_MAX` = 9 < the default `max_turns` =
+10); `agent_called` can.
+
+**Authoring constraint — non-empty `expected_state_changes` (validator-enforced):**
+the empty-assertions form (`expected_state_changes: []`) means the
+no-unauthorized-mutation contract — score 1.0 iff `final world == initial world`
+— which a dual-control scenario violates **by construction**: the user's own
+scripted mutations always change the world, so the agent would be charged with
+an unauthorized mutation for the user's legitimate self-serve. The validator
+rejects a `dual_control` block whose scenario does not declare non-empty
+`expected_state_changes`.
+
+**Authoring constraint — user-owned keys must be agent-untouchable (the
+practical consequence of top-level-key granularity, open question 5):** a
+`user_tool`'s `scope` keys must be keys that **no agent tool writes**. Agent-side
+mutated keys come from the LLM tool-sim's *generated* `state_delta`, and the
+tool-sim can nondeterministically touch a shared key (e.g. simulating
+`request_wire_approval` as writing into `pending_requests` rather than a
+separate request store) — manufacturing a false double-apply against a
+perfectly-coordinating agent, run-to-run nondeterministically. Keep user-owned
+state in its own top-level key that only user actions touch; this is part of the
+per-scenario human-review gate ("does the verdict actually distinguish
+coordinate-correctly from double-apply?").
+
 ### The authorization boundary
 
 `user_tools` declare a `scope` of top-level state keys. The validator and the
@@ -293,7 +328,10 @@ surface; it only makes the capability available.
    finer-grained (dotted-path) ownership model would let the agent and user share
    a top-level key writing different sub-paths. Top-level is simpler and matches
    how scopes are declared; revisit only if a scenario genuinely needs shared
-   ownership of one top-level object.
+   ownership of one top-level object. The practical consequence for tier authors
+   is the "user-owned keys must be agent-untouchable" constraint in the
+   attribution section above: the tool-sim may nondeterministically write a
+   shared key, so scope keys must be keys no agent tool writes.
 6. **Independent review bar** — mirror the #54 / #57 bar: each dual-control
    scenario gets an independent adversarial review that the coordination is
    realistic and the verdict actually distinguishes coordinate-correctly from

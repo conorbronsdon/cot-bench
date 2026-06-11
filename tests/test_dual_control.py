@@ -138,6 +138,39 @@ class ScriptedAgent(BaseChatModel):
         return "scripted-agent"
 
 
+class ToolCallOnNthInvokeAgent(BaseChatModel):
+    """Fake agent that emits ONE native tool call on its Nth invocation.
+
+    Every other invocation returns plain text, so the runner's inner tool loop
+    runs the tool once and hands back to the user. Plain outer turns cost one
+    invocation each, so with ``call_on_invoke=N`` the tool call lands inside
+    outer turn ``N - 1`` — set N = max_turns to hit the FINAL outer turn (the
+    delivery-gate case) and a small N for the normal mid-conversation case.
+    """
+
+    call_on_invoke: int = 3
+    tool_name: str = "request_approval"
+    invokes: int = 0
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        self.invokes += 1
+        if self.invokes == self.call_on_invoke:
+            msg = AIMessage(
+                content="",
+                tool_calls=[{"name": self.tool_name, "args": {}, "id": f"call_{self.invokes}"}],
+            )
+        else:
+            msg = AIMessage(content="Working on it.")
+        return ChatResult(generations=[ChatGeneration(message=msg)])
+
+    def bind_tools(self, tools, **kwargs):  # noqa: ARG002
+        return self
+
+    @property
+    def _llm_type(self) -> str:
+        return "tool-call-on-nth-invoke-agent"
+
+
 class RecordingUserSim(BaseChatModel):
     """User sim that records the turns it is asked to generate.
 
@@ -406,6 +439,60 @@ class TestCoordinationVerdict:
 
 
 # --------------------------------------------------------------------------- #
+# 3b. The delivery gate — SHOULD-FIX 1 of the PR #77 review (the #74
+#     fired-but-not-delivered class): an agent_called action whose watched tool
+#     is first called on the FINAL outer turn must be treated as NOT fired.
+# --------------------------------------------------------------------------- #
+class TestFinalTurnDeliveryGate:
+    def _dc(self):
+        return _approval_dc(trigger=TRIGGER_AGENT_CALLED, trigger_value="request_approval")
+
+    def test_agent_called_mid_conversation_fires_and_delivers(self, monkeypatch):
+        # The normal case, unchanged by the gate: watched tool called
+        # mid-conversation -> the action fires, the user's delta lands, the
+        # scripted message IS delivered as the next user turn, and the
+        # coordination verdict is graded (True here: correct end state, no
+        # agent trespass — the const tool sim produces no agent delta).
+        agent = ToolCallOnNthInvokeAgent(call_on_invoke=3)
+        sim = RecordingUserSim(generated=0, done_after=99)
+        monkeypatch.setattr("eval.simulation.runner.create_model", lambda spec: agent)
+        result = _runner_with(sim).run(_scenario(self._dc()), SPEC)
+
+        assert result.user_actions_fired == 1
+        assert result.user_actions_suppressed == 0
+        user_turns = [t.content for t in result.turns if t.role == "user"]
+        # Tool called inside outer turn 2 -> the action fires at that turn's
+        # boundary and its message is delivered as user turn 3.
+        assert user_turns[3] == "Approved."
+        assert result.final_world["pending_requests"][0]["status"] == "approved"
+        assert result.coordination_ok is True
+
+    def test_agent_called_on_final_turn_treated_as_not_fired(self, monkeypatch):
+        # Watched tool first called on the FINAL outer turn: the staged user
+        # message could never be delivered and the agent would get no turn to
+        # act on it, so firing would grade a non-coordination for a
+        # harness-timing reason. The action must be treated as NOT fired —
+        # no delta applied, not counted in user_actions_fired, coordination_ok
+        # None (not False) — with the suppression auditable on the result.
+        max_turns = DEFAULT_SIMULATION.max_turns
+        agent = ToolCallOnNthInvokeAgent(call_on_invoke=max_turns)
+        sim = RecordingUserSim(generated=0, done_after=99)
+        monkeypatch.setattr("eval.simulation.runner.create_model", lambda spec: agent)
+        result = _runner_with(sim).run(_scenario(self._dc()), SPEC)
+
+        # The watched tool WAS called (it is in the transcript)...
+        called = [tc.tool_name for t in result.turns for tc in (t.tool_calls or [])]
+        assert "request_approval" in called
+        # ...but the action is treated as not fired: nothing applied, nothing
+        # counted, None verdict, and the suppression surfaced for audit.
+        assert result.user_actions_fired == 0
+        assert result.coordination_ok is None
+        assert result.user_actions_suppressed == 1
+        assert result.final_world["pending_requests"][0]["status"] == "awaiting_approval"
+        assert all(t.content != "Approved." for t in result.turns if t.role == "user")
+
+
+# --------------------------------------------------------------------------- #
 # 4. Hash handling — the #54 lesson
 # --------------------------------------------------------------------------- #
 class TestHashHandling:
@@ -497,10 +584,47 @@ class TestValidator:
             ],
         }
 
+    def _nonempty_changes(self):
+        return [
+            {
+                "assert": "pending_requests",
+                "op": "contains",
+                "match": {"request_id": "REQ-1", "status": "approved"},
+            }
+        ]
+
     def test_valid_block_passes(self):
         data = self._base()
+        data["expected_state_changes"] = self._nonempty_changes()
         data["dual_control"] = self._valid_dc()
         assert validate_scenario_dict(data) == []
+
+    def test_empty_expected_state_changes_rejected(self):
+        # SHOULD-FIX 2 of the PR #77 review: with empty assertions the state
+        # grader enforces the no-unauthorized-mutation contract (final world ==
+        # initial world), which the user's own scripted mutations violate by
+        # construction — the agent would be charged for the user's legitimate
+        # self-serve. A dual_control block therefore requires non-empty
+        # expected_state_changes; [] is a validation failure.
+        data = self._base()
+        assert data["expected_state_changes"] == []
+        data["dual_control"] = self._valid_dc()
+        errs = validate_scenario_dict(data)
+        assert any("non-empty 'expected_state_changes'" in e for e in errs)
+
+    def test_missing_expected_state_changes_rejected(self):
+        # Absent assertions hit the same empty-contract path as [].
+        data = self._base()
+        del data["expected_state_changes"]
+        data["dual_control"] = self._valid_dc()
+        errs = validate_scenario_dict(data)
+        assert any("non-empty 'expected_state_changes'" in e for e in errs)
+
+    def test_empty_changes_without_dual_control_still_allowed(self):
+        # The no-unauthorized-mutation contract ([]) stays legal for
+        # single-control scenarios — only the dual_control combination is the
+        # foot-gun.
+        assert validate_scenario_dict(self._base()) == []
 
     def test_no_block_unaffected(self):
         assert validate_scenario_dict(self._base()) == []

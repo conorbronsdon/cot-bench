@@ -158,11 +158,15 @@ def build_artifact(
             # the shared world this run, how many user actions fired, and the
             # deterministic coordination verdict (None unless an action fired).
             # ``user_actions_fired`` makes the coordination_rate denominator
-            # (fired-action rows only) auditable. False/0/None for the
-            # single-control majority and for artifacts that predate the fields,
-            # so a resume reconstructs the row identically.
+            # (fired-action rows only) auditable, and ``user_actions_suppressed``
+            # records trigger-met actions NOT fired because no delivery turn
+            # remained (the #74 fired-but-not-delivered class; such runs keep
+            # coordination_ok=None). False/0/None for the single-control
+            # majority and for artifacts that predate the fields, so a resume
+            # reconstructs the row identically.
             "dual_control": bool(getattr(sim_result, "dual_control", False)),
             "user_actions_fired": int(getattr(sim_result, "user_actions_fired", 0) or 0),
+            "user_actions_suppressed": int(getattr(sim_result, "user_actions_suppressed", 0) or 0),
             "coordination_ok": getattr(sim_result, "coordination_ok", None),
         },
     }
