@@ -376,6 +376,24 @@ def _validate_template(data: dict) -> list[str]:
     for dead in sorted(declared - referenced):
         errors.append(f"slot '{dead}' declared in {TEMPLATE_SLOTS_KEY} but never referenced")
 
+    # Stable-identifier guard: slots rotate surface VALUES only. The scenario id,
+    # criteria ids, and authorship records are stable keys — file/board identity,
+    # judge verdict round-trip keys, and the contamination audit trail — so a
+    # placeholder in any of them would silently rotate the key per seed.
+    if find_placeholders(data.get("id")):
+        errors.append("placeholders are not allowed in 'id' (stable scenario identifier)")
+    criteria = data.get("rubric_criteria")
+    if isinstance(criteria, list):
+        for i, crit in enumerate(criteria):
+            if isinstance(crit, dict) and find_placeholders(crit.get("id")):
+                errors.append(
+                    f"rubric_criteria[{i}]: placeholders are not allowed in criterion "
+                    "ids (stable scoring keys)"
+                )
+    for block in ("authorship", "criteria_authorship"):
+        if find_placeholders(data.get(block)):
+            errors.append(f"placeholders are not allowed in '{block}' (audit trail)")
+
     return errors
 
 

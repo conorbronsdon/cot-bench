@@ -297,6 +297,36 @@ def test_instantiated_scenario_builds_a_scenario_object(demo_template):
             {"template_slots": {"x": {"type": "choice"}}, "initial_message": "{{x}}"},
             "requires a non-empty 'options'",
         ),
+        # Stable-identifier guards (review on PR #69): slots may rotate surface
+        # values only — never the scenario id, criterion ids, or authorship.
+        (
+            {"template_slots": {"x": {"type": "digits"}}, "id": "banking_{{x}}_tmpl"},
+            "not allowed in 'id'",
+        ),
+        (
+            {
+                "template_slots": {"x": {"type": "digits"}},
+                "initial_message": "{{x}}",
+                "rubric_criteria": [{"id": "transfer_{{x}}", "text": "t", "dimension": "d"}],
+            },
+            "not allowed in criterion ids",
+        ),
+        (
+            {
+                "template_slots": {"x": {"type": "digits"}},
+                "initial_message": "{{x}}",
+                "authorship": {"author_model": "{{x}}"},
+            },
+            "not allowed in 'authorship'",
+        ),
+        (
+            {
+                "template_slots": {"x": {"type": "digits"}},
+                "initial_message": "{{x}}",
+                "criteria_authorship": {"criteria_author_model": "{{x}}"},
+            },
+            "not allowed in 'criteria_authorship'",
+        ),
     ],
 )
 def test_template_validation_errors(broken, expected_fragment):

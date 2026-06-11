@@ -30,6 +30,14 @@ recurring, fraud-report, and statement-generation skills under test. This is
 idea 1 from the game-benchmarks research (clembench, EcoGym logic-mutation):
 randomize surface features, keep the skill test identical.
 
+Scope the claim precisely: the logical task is byte-identical across seeds, so
+templating defends against *surface recall* (verbatim scenario/transcript
+memorization) and nothing more. A model that learned the *solution shape* of a
+published scenario — which tools to call, in what order, with what
+verification — still benefits at any seed. Procedural memorization is what the
+private holdout defends against; templating and the holdout are complements,
+not substitutes.
+
 ## The design
 
 A scenario opts in by adding a `template_slots` block and replacing surface
