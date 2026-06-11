@@ -14,22 +14,22 @@ placeholder (red in the PDF); grep the sources for `\TODO` to find them all.
 
 | Section | State |
 |---------|-------|
-| Abstract | Drafted; headline numbers bracketed |
+| Abstract | Drafted; corpus counts + roster filled; headline finding bracketed (needs run) |
 | 1 Introduction | Drafted |
-| 2 Benchmark Design | Drafted (corpus counts bracketed) |
+| 2 Benchmark Design | Drafted; corpus counts verified against the committed corpus (`validate_scenarios.py`, 92/92 valid) |
 | 3 Scoring | Drafted |
 | 4 Statistical Methodology | Drafted |
 | 5 Governance & Reproducibility | Drafted |
-| 6 Experiments | Skeleton: every table/figure stub names its data source + generator |
-| 7 Limitations | Drafted |
-| 8 Related Work | Drafted with real citations |
+| 6 Experiments | Skeleton: every table/figure stub names its data source + generator; all cells bracketed (needs run) |
+| 7 Limitations | Drafted, incl. author-concentration, cooperative-sim, ten-turn-horizon limits + Future Work (issues #54-#60) |
+| 8 Related Work | Drafted with verified citations (incl. rubric-grading, user-sim realism, cost-Pareto, game-world lines) |
 
 ## Layout
 
 ```
 paper/
 ├── main.tex            # document root (article + common packages)
-├── references.bib      # citations; each entry marked VERIFIED or TODO
+├── references.bib      # citations; each entry carries a VERIFIED status comment
 ├── sections/           # one .tex per section, \input from main.tex
 ├── figures/            # figures plan (README.md); generated PDFs land here
 └── README.md           # this file
@@ -52,12 +52,15 @@ automatically.
 
 ## Before submission
 
-- Replace every `\TODO{...}` with the real value from the eval run.
-- Regenerate the corpus counts in Table 1 with `scripts/validate_scenarios.py` and
-  remove the placeholder brackets.
-- Resolve the `TODO`-marked entries in `references.bib` (mostly future-dated arXiv
-  ids that appear in the 2026-context research reports, plus a few author lists not
-  individually confirmed).
+- Replace every remaining `\TODO{...}` with the real value from the eval run. The
+  only remaining placeholders are run-dependent: the abstract's headline finding
+  and the Experiments leaderboard cells.
+- If the corpus changes, regenerate the Table 1 counts with
+  `scripts/validate_scenarios.py` (current values verified 2026-06-11, 92/92
+  schema-valid).
+- `references.bib`: all entries verified against the arXiv abstract page or
+  publisher page as of 2026-06-11 (status comments per entry). Only the
+  Krippendorff book entry still asks for an edition/page check.
 - Build the `scripts/paper/` figure generators described in `figures/README.md`.
 - Authorship/affiliation: independent / Chain of Thought. Do **not** position the
   author's Modular role as benchmark credibility (compliance boundary), and add no
