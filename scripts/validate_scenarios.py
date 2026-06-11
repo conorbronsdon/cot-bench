@@ -19,6 +19,7 @@ from pathlib import Path
 from pydantic import BaseModel, ValidationError
 
 from eval.config import MODELS_UNDER_TEST
+from eval.simulation.probes import PROBE_KINDS, PROBE_TURN_MAX, PROBE_TURN_MIN
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ VALID_CATEGORIES = {
     "adversarial_input_mitigation",
 }
 
-VALID_OPS = {"equals", "increased_by", "decreased_by", "contains"}
+VALID_OPS = {"equals", "increased_by", "decreased_by", "contains", "not_exists"}
 
 # Dedup thresholds (difflib SequenceMatcher ratio, 0-1).
 DEDUP_HARD_THRESHOLD = 0.85
@@ -138,6 +139,11 @@ class ScenarioSchema(BaseModel):
     # present, criteria_authorship is required (see _validate_criteria).
     rubric_criteria: list[RubricCriterion] | None = None
     criteria_authorship: CriteriaAuthorship | None = None
+    # Recovery probe (issue #57) — optional deterministic mid-conversation
+    # perturbation. Kept as a raw dict (its ``recovery_assertions`` use the
+    # ``assert`` key, a Python keyword) and validated by hand in
+    # _validate_recovery_probe.
+    recovery_probe: dict | None = None
 
 
 def _author_blocklist() -> set[str]:
@@ -322,6 +328,95 @@ def _validate_criteria(scenario: ScenarioSchema) -> list[str]:
     return errors
 
 
+def _validate_assertion_block(assertions, ground_truth: dict | None, loc_prefix: str) -> list[str]:
+    """Validate a list of state assertions against ground_truth (issue #57).
+
+    Factored out of _validate_v02_blocks' expected_state_changes loop so the
+    recovery-probe's ``recovery_assertions`` are held to EXACTLY the same op /
+    path-resolution / contains-match rules as the scenario's own assertions —
+    one grammar, one validator. ``goal`` fuzzy-matching is deliberately NOT
+    applied here: a probe assertion (e.g. "the wrong account never came into
+    existence") need not correspond to a user_goal.
+    """
+    errors: list[str] = []
+    if not isinstance(assertions, list):
+        return [f"{loc_prefix}: must be a list of assertions"]
+    for i, raw in enumerate(assertions):
+        loc = f"{loc_prefix}[{i}]"
+        if not isinstance(raw, dict):
+            errors.append(f"{loc}: assertion must be an object")
+            continue
+        path = raw.get("assert")
+        op = raw.get("op")
+        if not path:
+            errors.append(f"{loc}: missing 'assert' path")
+            continue
+        if op not in VALID_OPS:
+            errors.append(f"{loc}: unknown op '{op}' (allowed: {sorted(VALID_OPS)})")
+            continue
+        # Path resolution against ground_truth. An ``equals`` assertion MAY name a
+        # path absent from ground_truth on purpose — the canonical "the bad entity
+        # the probe introduced must NOT exist / be acted on" check (e.g. assert a
+        # wrong account id equals null). So absent paths are only an error for the
+        # delta ops, which require a resolvable initial value to diff against.
+        found, value = _resolve_path(ground_truth, path) if ground_truth else (False, None)
+        if op in {"increased_by", "decreased_by"} and not found:
+            errors.append(f"{loc}: assert path '{path}' does not resolve in ground_truth")
+        elif op == "contains":
+            if found and not isinstance(value, list):
+                errors.append(
+                    f"{loc}: op 'contains' requires '{path}' to be a list in ground_truth"
+                )
+            if not isinstance(raw.get("match"), dict):
+                errors.append(f"{loc}: op 'contains' requires a 'match' partial dict")
+    return errors
+
+
+def _validate_recovery_probe(scenario: ScenarioSchema) -> list[str]:
+    """Validate a recovery_probe block when present (issue #57).
+
+    Presence-gated on any schema version: a scenario without ``recovery_probe``
+    is untouched. With a probe: a valid kind (the small enum), a turn in
+    [4, 5], a non-empty injection string, and — if recovery_assertions are
+    present — assertions held to the same grammar as expected_state_changes.
+    Mirrors RecoveryProbe.__init__ so the on-disk validator and the runtime
+    object agree on what a valid probe is.
+    """
+    probe = scenario.recovery_probe
+    if probe is None:
+        return []
+
+    errors: list[str] = []
+    if not isinstance(probe, dict):
+        return ["recovery_probe must be an object"]
+
+    kind = probe.get("kind")
+    if kind not in PROBE_KINDS:
+        errors.append(f"recovery_probe.kind '{kind}' not in {sorted(PROBE_KINDS)}")
+
+    turn = probe.get("turn")
+    if not isinstance(turn, int) or isinstance(turn, bool):
+        errors.append("recovery_probe.turn must be an integer")
+    elif not (PROBE_TURN_MIN <= turn <= PROBE_TURN_MAX):
+        errors.append(
+            f"recovery_probe.turn {turn} out of range [{PROBE_TURN_MIN}, {PROBE_TURN_MAX}]"
+        )
+
+    injection = probe.get("injection")
+    if not isinstance(injection, str) or not injection.strip():
+        errors.append("recovery_probe.injection must be a non-empty string")
+
+    recovery_assertions = probe.get("recovery_assertions")
+    if recovery_assertions:
+        errors.extend(
+            _validate_assertion_block(
+                recovery_assertions, scenario.ground_truth, "recovery_probe.recovery_assertions"
+            )
+        )
+
+    return errors
+
+
 def validate_scenario_dict(data: dict) -> list[str]:
     """Validate an in-memory scenario dict. Returns list of error messages.
 
@@ -369,6 +464,9 @@ def validate_scenario_dict(data: dict) -> list[str]:
 
     # Atomic rubric criteria (issue #54) — presence-gated, any schema version.
     errors.extend(_validate_criteria(scenario))
+
+    # Recovery probe (issue #57) — presence-gated, any schema version.
+    errors.extend(_validate_recovery_probe(scenario))
 
     return errors
 

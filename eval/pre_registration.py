@@ -153,7 +153,42 @@ def _scenario_to_canonical_dict(scenario) -> dict:
     rubric_criteria = getattr(scenario, "rubric_criteria", None)
     if rubric_criteria:
         data["rubric_criteria"] = rubric_criteria
+    # Recovery probe (issue #57) changes what a run DOES (it injects a scripted
+    # perturbation and grades recovery), so it MUST be covered by the corpus hash
+    # when present — but included CONDITIONALLY, exactly like rubric_criteria
+    # above, so probe-less scenarios (the entire public corpus today) hash
+    # identically to before this field existed. Serialized back to the same plain
+    # dict shape the scenario JSON carries (turn/kind/injection/recovery_assertions)
+    # so the canonical bytes match the on-disk content regardless of whether the
+    # Scenario holds a RecoveryProbe object or the loader passed a raw dict.
+    recovery_probe = getattr(scenario, "recovery_probe", None)
+    if recovery_probe is not None:
+        data["recovery_probe"] = _recovery_probe_to_dict(recovery_probe)
     return data
+
+
+def _recovery_probe_to_dict(probe) -> dict:
+    """Canonical plain-dict form of a recovery probe for hashing (issue #57).
+
+    Accepts either a ``RecoveryProbe`` object (the loaded form) or an already-raw
+    dict (defensive), and returns the four content fields. ``recovery_assertions``
+    defaults to ``[]`` to match RecoveryProbe's own normalization, so a probe with
+    no extra assertions hashes the same whether it was authored with an empty
+    list or with the key omitted.
+    """
+    if isinstance(probe, dict):
+        return {
+            "turn": probe.get("turn"),
+            "kind": probe.get("kind"),
+            "injection": probe.get("injection"),
+            "recovery_assertions": probe.get("recovery_assertions") or [],
+        }
+    return {
+        "turn": probe.turn,
+        "kind": probe.kind,
+        "injection": probe.injection,
+        "recovery_assertions": probe.recovery_assertions,
+    }
 
 
 def build_pre_registration(

@@ -146,6 +146,12 @@ def build_artifact(
             # agent actually faced in this transcript. Defaults to cooperative
             # for sim results that predate the field, matching the row builder.
             "sim_profile": getattr(sim_result, "sim_profile", DEFAULT_SIM_PROFILE),
+            # Recovery probe (issue #57): which probe kind (if any) perturbed this
+            # transcript and whether the agent recovered. Both None for the
+            # non-probe majority and for artifacts that predate the field, so a
+            # resume reconstructs the row identically.
+            "recovery_probe_kind": getattr(sim_result, "recovery_probe_kind", None),
+            "recovered": getattr(sim_result, "recovered", None),
             # User-sim completion decoupling (#32). ``completed`` only says the
             # conversation stopped; these three say HOW it stopped and whether
             # the goals were verifiably met when it did, so a premature ending

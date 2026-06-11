@@ -24,6 +24,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from eval.config import DEFAULT_SIMULATION, DOMAIN_CONFIGS, Domain, SimulationConfig
 from eval.providers.registry import ModelSpec, create_model
 from eval.scoring.state_check import score_state_changes
+from eval.simulation.probes import RecoveryProbe
 from eval.simulation.profiles import DEFAULT_SIM_PROFILE, profile_instructions
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,21 @@ class SimulationResult:
     # are computable and non-cooperative rows can be excluded from the public
     # leaderboard aggregates. Filled from the runner's SimulationConfig.
     sim_profile: str = DEFAULT_SIM_PROFILE
+    # Recovery probe (issue #57). When the scenario carried a recovery_probe, this
+    # is its kind (contradictory_reference / wrong_entity / incomplete_action_claim)
+    # and ``recovered`` is the deterministic verdict: did the agent reach the
+    # correct end state DESPITE the injected fault. Both None for the vast
+    # majority of rows — only probe-carrying scenarios populate them — so a
+    # per-model recovery_rate is computed over probe rows ONLY and the public
+    # aggregates (which see no probe rows in v1) are untouched.
+    recovery_probe_kind: str | None = None
+    # True iff a probe was injected AND recovery was verified. ``recovered`` is
+    # the AND of (a) the scenario's normal expected_state_changes passing — the
+    # task still got done despite the fault — and (b) the probe's own
+    # recovery_assertions passing (typically the "did NOT act on the bad entity"
+    # check). None when no probe ran or the scenario carries no ground_truth to
+    # grade against.
+    recovered: bool | None = None
 
 
 @dataclass
@@ -166,6 +182,16 @@ class Scenario:
     # holdout's tamper-evidence comes from its own corpus hash, not from a
     # per-scenario flag that would differ between the public and holdout loaders.
     holdout: bool = False
+    # Recovery probe (issue #57): an OPTIONAL deterministic mid-conversation
+    # perturbation. When present, the runner injects ``probe.injection`` verbatim
+    # at ``probe.turn`` (replacing the user sim's generated message that turn) and
+    # grades recovery at end via state checking. None for every scenario without a
+    # probe — which is the entire v1 corpus (demo probes live in test fixtures
+    # only; see docs/recovery-probes.md). Like ``rubric_criteria`` it IS hashed
+    # scenario content when present (it changes what the run does), and is added
+    # conditionally to the canonical dict so probe-less scenarios keep their
+    # existing digests.
+    recovery_probe: RecoveryProbe | None = None
 
 
 def apply_state_delta(world: dict, delta: dict) -> None:
@@ -392,6 +418,44 @@ class SimulationRunner:
             return None
         return None if result is None else result["score"]
 
+    @staticmethod
+    def _recovery_verdict(scenario: Scenario, world: dict | None) -> bool | None:
+        """Deterministic recovery verdict for a probe-carrying scenario (#57).
+
+        Returns:
+            - ``None`` when the scenario has no recovery probe, or no
+              ground_truth to grade against (recovery is unverifiable without a
+              world).
+            - ``True`` iff the agent recovered: the scenario's normal
+              ``expected_state_changes`` ALL pass (the task got done despite the
+              injected fault) AND the probe's ``recovery_assertions`` ALL pass
+              (the agent did not act on the bad entity / contradiction the probe
+              introduced). Both halves use the existing state grader — no new
+              machinery.
+
+        The two halves are graded separately and AND-ed so a partial — task done
+        but acted on the wrong entity, or wrong entity avoided but task abandoned
+        — counts as a NON-recovery. Never raises: a grader hiccup degrades to
+        None so a probe can't sink a run.
+        """
+        probe = scenario.recovery_probe
+        if probe is None or scenario.ground_truth is None or world is None:
+            return None
+        try:
+            base = score_state_changes(
+                scenario.ground_truth, world, scenario.expected_state_changes
+            )
+            base_ok = base is None or base["score"] >= 1.0
+            if probe.recovery_assertions:
+                extra = score_state_changes(scenario.ground_truth, world, probe.recovery_assertions)
+                extra_ok = extra is not None and extra["score"] >= 1.0
+            else:
+                extra_ok = True
+            return bool(base_ok and extra_ok)
+        except Exception:
+            logger.exception("Recovery grading failed for %s; recording None", scenario.id)
+            return None
+
     def run(self, scenario: Scenario, agent_spec: ModelSpec) -> SimulationResult:
         """Run a complete multi-turn simulation for one scenario.
 
@@ -500,6 +564,10 @@ class SimulationRunner:
                         user_sim_model=self.config.user_simulator_model,
                         tool_sim_model=self.config.tool_simulator_model,
                         sim_profile=self.config.user_sim_profile,
+                        recovery_probe_kind=(
+                            scenario.recovery_probe.kind if scenario.recovery_probe else None
+                        ),
+                        recovered=self._recovery_verdict(scenario, world),
                     )
                 agent_latency = (time.perf_counter() - start) * 1000
                 total_latency_ms += agent_latency
@@ -608,6 +676,24 @@ class SimulationRunner:
                     agent_spec.name,
                 )
 
+            # Recovery probe (issue #57): if this scenario carries a probe whose
+            # turn is the NEXT user turn, inject the scripted perturbation verbatim
+            # instead of asking the user simulator to generate it. The probe text
+            # is identical for every model on every run — that determinism is the
+            # point of a controlled fault. The user sim still drives every other
+            # turn; only the probe turn is overridden. (turn_num is the index of
+            # the turn just completed; the next user turn is turn_num + 1.)
+            probe = scenario.recovery_probe
+            if probe is not None and probe.turn == turn_num + 1:
+                logger.info(
+                    "Injecting recovery probe (kind=%s) as user turn %d for %s",
+                    probe.kind,
+                    probe.turn,
+                    scenario.id,
+                )
+                current_user_message = probe.injected_message()
+                continue
+
             # Generate next user turn (or detect completion).
             user_response = self._simulate_user_turn(scenario, turns, last_agent_content)
             if CONVERSATION_COMPLETE in user_response:
@@ -658,6 +744,11 @@ class SimulationRunner:
             user_sim_model=self.config.user_simulator_model,
             tool_sim_model=self.config.tool_simulator_model,
             sim_profile=self.config.user_sim_profile,
+            # Recovery probe (issue #57): record the kind that ran and the
+            # deterministic recovery verdict against the final world. Both None
+            # for the (overwhelming) non-probe majority.
+            recovery_probe_kind=(scenario.recovery_probe.kind if scenario.recovery_probe else None),
+            recovered=self._recovery_verdict(scenario, world),
         )
 
     def _extract_tool_calls(self, response, content: str, turn: int) -> tuple[list[ToolCall], bool]:
