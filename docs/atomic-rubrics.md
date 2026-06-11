@@ -4,7 +4,8 @@
 run.** All 92 public scenarios carry authored criteria (4–6 per scenario,
 stamped `criteria_authorship`: `anthropic/claude-opus-4.8`, run
 `2026-06-11-atomic-rubrics-batch`), and the 10 private holdout scenarios carry
-criteria with the same schema and stamp in the private repo. The sections
+criteria with the same schema and author stamp (under their own run id,
+`2026-06-11-atomic-rubrics-holdout-batch`) in the private repo. The sections
 below are preserved as the decision record; the adopted behavior is documented
 in [methodology.md](methodology.md) §3 and
 [scenario-schema.md](scenario-schema.md).
