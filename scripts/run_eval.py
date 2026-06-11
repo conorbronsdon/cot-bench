@@ -46,12 +46,13 @@ from eval.resume import (
 from eval.scoring.failure_modes import classify_failure, judge_reasoning_text
 from eval.scoring.judge import score_with_all_judges, score_with_all_judges_combined
 from eval.scoring.rubrics import (
-    COMBINED_RUBRIC,
     JUDGE_SYSTEM_PROMPT,
-    TASK_COMPLETION_RUBRIC,
-    TOOL_SELECTION_RUBRIC,
+    build_combined_prompt,
+    build_task_completion_prompt,
+    build_tool_selection_prompt,
     compute_efficacy,
     compute_reliability,
+    criteria_for_dimension,
 )
 from eval.scoring.state_check import score_state_changes
 from eval.simulation.profiles import DEFAULT_SIM_PROFILE, SIM_PROFILES
@@ -94,6 +95,8 @@ def _scenario_from_dict(data: dict, domain: Domain, *, holdout: bool) -> Scenari
         initial_message=data["initial_message"],
         ground_truth=data.get("ground_truth"),
         expected_state_changes=data.get("expected_state_changes"),
+        # Atomic rubric criteria (issue #54); None for scenarios without them.
+        rubric_criteria=data.get("rubric_criteria"),
         holdout=holdout,
     )
 
@@ -370,14 +373,22 @@ def evaluate_scenario(
     )
     user_goals = "\n".join(f"- {g}" for g in scenario.user_goals)
 
+    # Atomic rubric criteria (issue #54). None for scenarios without them, in
+    # which case every prompt below is byte-identical to the bare template
+    # (asserted by tests) and the judges run exactly as before.
+    rubric_criteria = getattr(scenario, "rubric_criteria", None)
+
     if separate_judge_calls:
         # Legacy two-call path (A/B validation). Context + transcript are sent
-        # twice — once per dimension.
-        tc_prompt = TASK_COMPLETION_RUBRIC.format(
+        # twice — once per dimension. Each prompt carries only ITS dimension's
+        # criteria, and the same filtered list is passed to the judges so the
+        # verdict block is validated against exactly what the prompt showed.
+        tc_prompt = build_task_completion_prompt(
             domain=scenario.domain.value,
             user_goals=user_goals,
             available_tools=tools_desc,
             transcript=transcript,
+            rubric_criteria=rubric_criteria,
         )
         tc_result = score_with_all_judges(
             JUDGE_SYSTEM_PROMPT,
@@ -385,12 +396,15 @@ def evaluate_scenario(
             "task_completion",
             scenario.id,
             judge_keys=judge_keys,
+            rubric_criteria=criteria_for_dimension(rubric_criteria or [], "task_completion")
+            or None,
         )
 
-        ts_prompt = TOOL_SELECTION_RUBRIC.format(
+        ts_prompt = build_tool_selection_prompt(
             domain=scenario.domain.value,
             available_tools=tools_desc,
             transcript=transcript,
+            rubric_criteria=rubric_criteria,
         )
         ts_result = score_with_all_judges(
             JUDGE_SYSTEM_PROMPT,
@@ -398,21 +412,26 @@ def evaluate_scenario(
             "tool_selection",
             scenario.id,
             judge_keys=judge_keys,
+            rubric_criteria=criteria_for_dimension(rubric_criteria or [], "tool_selection") or None,
         )
     else:
         # Combined path (default): one judge call scores both dimensions, with
         # the context + transcript sent once. Returns the same (tc, ts) pair.
-        combined_prompt = COMBINED_RUBRIC.format(
+        # The combined prompt carries ALL criteria; the verdicts are split by
+        # dimension inside score_with_judge_combined.
+        combined_prompt = build_combined_prompt(
             domain=scenario.domain.value,
             user_goals=user_goals,
             available_tools=tools_desc,
             transcript=transcript,
+            rubric_criteria=rubric_criteria,
         )
         tc_result, ts_result = score_with_all_judges_combined(
             JUDGE_SYSTEM_PROMPT,
             combined_prompt,
             scenario.id,
             judge_keys=judge_keys,
+            rubric_criteria=rubric_criteria,
         )
 
     # Trace judge evaluations

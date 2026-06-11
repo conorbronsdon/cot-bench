@@ -223,6 +223,170 @@ independently against its own criteria above:
 """
 
 
+# --- Atomic rubric criteria (issue #54) ---
+# HealthBench-style instance-specific criteria. A scenario MAY carry a
+# ``rubric_criteria`` array of 3-6 atomic, checkable criteria, each mapped to
+# one of the two JUDGE-scored dimensions ("task_completion" / "tool_selection").
+# Only those two are valid targets: the other CLEAR dimensions (Cost, Latency,
+# Reliability) and the deterministic state check are measured, not judged, so a
+# criterion cannot inform them.
+#
+# When criteria are present, the judge prompt gains the per-criterion section
+# below and the judge must return a per-criterion met/unmet verdict with brief
+# evidence ALONGSIDE the existing holistic dimension scores. The criterion
+# verdicts then produce a criterion-informed dimension score (weighted fraction
+# of met criteria, see aggregate_criterion_score); the holistic score is still
+# recorded for halo-effect comparison. Scenarios WITHOUT criteria are entirely
+# unaffected: the builders below return the template prompts byte-identically.
+
+# The judge-scored dimensions a criterion may inform. Order matters only for
+# display; matches COMBINED_RUBRIC_TYPES in eval/scoring/judge.py.
+CRITERIA_DIMENSIONS = ("task_completion", "tool_selection")
+
+# Appended AFTER the fully-formatted template prompt (never spliced into it) so
+# the criteria-less prompt stays byte-identical to the published template. The
+# criteria are listed WITHOUT their dimension or weight: the judge's job is a
+# pure met/unmet check per criterion; the dimension mapping and weighting are
+# aggregation details that could only bias the verdicts.
+CRITERIA_SECTION = """\
+
+
+---
+
+# Scenario-Specific Rubric Criteria
+
+This scenario also carries atomic, instance-specific criteria. Evaluate EACH \
+criterion independently and strictly on its own text: a criterion is met ONLY \
+if the transcript contains direct evidence for it. Do not let overall \
+impressions of tone, verbosity, or fluency influence per-criterion verdicts.
+
+{criteria_lines}
+
+## Additional Response Field
+
+ADD this top-level key to the SAME JSON object described in the Response Format \
+above, with exactly one entry per criterion id listed (no ids added or omitted):
+{{
+    "rubric_criteria": [
+        {{"id": "<criterion id>", "met": true|false, "evidence": "<brief evidence: cite the turn/quote that satisfies it, or why it is unmet>"}},
+        ...
+    ]
+}}\
+"""
+
+
+def criteria_for_dimension(rubric_criteria: list[dict], dimension: str) -> list[dict]:
+    """Subset of criteria mapped to one judge dimension (order preserved)."""
+    return [c for c in rubric_criteria if c.get("dimension") == dimension]
+
+
+def _format_criteria_lines(rubric_criteria: list[dict]) -> str:
+    return "\n".join(f"- [{c['id']}] {c['text']}" for c in rubric_criteria)
+
+
+def build_criteria_section(rubric_criteria: list[dict]) -> str:
+    """Render the per-criterion prompt section for a non-empty criteria list."""
+    return CRITERIA_SECTION.format(criteria_lines=_format_criteria_lines(rubric_criteria))
+
+
+def build_combined_prompt(
+    *,
+    domain: str,
+    user_goals: str,
+    available_tools: str,
+    transcript: str,
+    rubric_criteria: list[dict] | None = None,
+) -> str:
+    """Build the combined judge prompt, with the criteria section when present.
+
+    Backwards compatibility is load-bearing: with no criteria (None or empty)
+    the return value is BYTE-IDENTICAL to ``COMBINED_RUBRIC.format(...)`` — the
+    section is appended after the formatted template, never spliced into it.
+    Asserted by tests/test_rubric_criteria.py.
+    """
+    base = COMBINED_RUBRIC.format(
+        domain=domain,
+        user_goals=user_goals,
+        available_tools=available_tools,
+        transcript=transcript,
+    )
+    if not rubric_criteria:
+        return base
+    return base + build_criteria_section(rubric_criteria)
+
+
+def build_task_completion_prompt(
+    *,
+    domain: str,
+    user_goals: str,
+    available_tools: str,
+    transcript: str,
+    rubric_criteria: list[dict] | None = None,
+) -> str:
+    """Task-completion prompt (legacy separate-call path), criteria-aware.
+
+    Only the criteria mapped to "task_completion" are shown — the separate
+    prompt scores one dimension, so it should only carry that dimension's
+    criteria. Byte-identical to the bare template when none apply.
+    """
+    base = TASK_COMPLETION_RUBRIC.format(
+        domain=domain,
+        user_goals=user_goals,
+        available_tools=available_tools,
+        transcript=transcript,
+    )
+    relevant = criteria_for_dimension(rubric_criteria or [], "task_completion")
+    if not relevant:
+        return base
+    return base + build_criteria_section(relevant)
+
+
+def build_tool_selection_prompt(
+    *,
+    domain: str,
+    available_tools: str,
+    transcript: str,
+    rubric_criteria: list[dict] | None = None,
+) -> str:
+    """Tool-selection prompt (legacy separate-call path), criteria-aware.
+
+    Mirrors build_task_completion_prompt for the "tool_selection" dimension.
+    """
+    base = TOOL_SELECTION_RUBRIC.format(
+        domain=domain,
+        available_tools=available_tools,
+        transcript=transcript,
+    )
+    relevant = criteria_for_dimension(rubric_criteria or [], "tool_selection")
+    if not relevant:
+        return base
+    return base + build_criteria_section(relevant)
+
+
+def aggregate_criterion_score(
+    rubric_criteria: list[dict],
+    met_by_id: dict[str, bool],
+    dimension: str,
+) -> float | None:
+    """Criterion-informed score for one dimension: weighted fraction of met criteria.
+
+    Returns ``None`` when no criteria map to the dimension — the caller then
+    keeps the judge's holistic template score for that dimension. Weights
+    default to 1.0; the validator guarantees they are positive, so the
+    denominator cannot be zero for a non-empty subset.
+    """
+    relevant = criteria_for_dimension(rubric_criteria, dimension)
+    if not relevant:
+        return None
+    total = sum(float(c.get("weight", 1.0)) for c in relevant)
+    if total <= 0:
+        # Unvalidated input (run_eval loads without validating); fall back to
+        # holistic rather than dividing by zero mid-run.
+        return None
+    met = sum(float(c.get("weight", 1.0)) for c in relevant if met_by_id.get(c["id"], False))
+    return met / total
+
+
 # --- Efficacy: Combined Score ---
 # Hybrid Efficacy (schema v0.2): task completion and tool selection are LLM-judge
 # dimensions; state verification is the deterministic, judge-independent third.

@@ -49,6 +49,18 @@ DIFFICULTY_TOLERANCE = 0.10
 # Persona reuse cap per domain (prevents 1-persona-per-scenario monoculture).
 PERSONA_REUSE_CAP = 5
 
+# Atomic rubric criteria bounds (issue #54). Criteria may only inform the two
+# JUDGE-scored dimensions — Cost/Latency/Reliability and the deterministic state
+# check are measured, not judged, so they are not valid targets. Weights are
+# positive and capped so no single criterion can dominate a dimension by orders
+# of magnitude; the text floor is a cheap guard against placeholder criteria
+# ("good", "ok") — true atomicity is a human/author-review property.
+VALID_CRITERIA_DIMENSIONS = {"task_completion", "tool_selection"}
+CRITERIA_MIN_COUNT = 3
+CRITERIA_MAX_COUNT = 6
+CRITERIA_MIN_TEXT_LEN = 15
+CRITERIA_MAX_WEIGHT = 10.0
+
 
 class ToolParameter(BaseModel):
     name: str
@@ -85,6 +97,29 @@ class Authorship(BaseModel):
     repaired: bool | None = None
 
 
+class RubricCriterion(BaseModel):
+    id: str
+    text: str
+    dimension: str
+    weight: float = 1.0
+
+
+class CriteriaAuthorship(BaseModel):
+    """Provenance for rubric criteria (issue #54).
+
+    Criteria are typically authored LATER than the scenario, by a different
+    model/agent, so they carry their own stamp instead of overloading the
+    scenario's ``authorship`` block. ``criteria_author_model`` follows the same
+    contamination rule as ``author_model``: a contestant must not write the
+    grading criteria for its own exam.
+    """
+
+    criteria_author_model: str
+    criteria_author_run: str | None = None
+    human_reviewed_by: str | None = None
+    review_date: str | None = None
+
+
 class ScenarioSchema(BaseModel):
     id: str
     category: str
@@ -99,6 +134,10 @@ class ScenarioSchema(BaseModel):
     authorship: Authorship | None = None
     ground_truth: dict | None = None
     expected_state_changes: list[dict] | None = None
+    # Atomic rubric criteria (issue #54) — optional on any schema version; when
+    # present, criteria_authorship is required (see _validate_criteria).
+    rubric_criteria: list[RubricCriterion] | None = None
+    criteria_authorship: CriteriaAuthorship | None = None
 
 
 def _author_blocklist() -> set[str]:
@@ -108,6 +147,24 @@ def _author_blocklist() -> set[str]:
         blocked.add(m["model_id"].lower())
         blocked.add(m["name"].lower())
     return blocked
+
+
+def _matching_contestant(author: str) -> str | None:
+    """FAMILY-AWARE contestant match for an author string (lowercased input).
+
+    Returns the matched blocklist entry, or None. Mirrors
+    scripts/generate_data.assert_author_allowed: a different snapshot or
+    display-name of a contestant is still a contestant, so block when either id
+    is a prefix of the other. The "human-handwritten" sentinel never matches.
+    Shared by the scenario-authorship check and the criteria-authorship check
+    (issue #54) so both provenance stamps enforce one rule.
+    """
+    if author == "human-handwritten":
+        return None
+    for blocked in _author_blocklist():
+        if author == blocked or author.startswith(blocked) or blocked.startswith(author):
+            return blocked
+    return None
 
 
 def _resolve_path(state: dict, dotted: str):
@@ -150,15 +207,13 @@ def _validate_v02_blocks(scenario: ScenarioSchema) -> list[str]:
     # like "GPT-4.1 (anchor)".)
     if scenario.authorship is not None:
         author = scenario.authorship.author_model.strip().lower()
-        if author != "human-handwritten":
-            for blocked in _author_blocklist():
-                if author == blocked or author.startswith(blocked) or blocked.startswith(author):
-                    errors.append(
-                        f"authorship.author_model '{scenario.authorship.author_model.strip()}' "
-                        f"matches MODELS_UNDER_TEST entry '{blocked}' "
-                        "(a contestant must not author its own exam)"
-                    )
-                    break
+        blocked = _matching_contestant(author)
+        if blocked is not None:
+            errors.append(
+                f"authorship.author_model '{scenario.authorship.author_model.strip()}' "
+                f"matches MODELS_UNDER_TEST entry '{blocked}' "
+                "(a contestant must not author its own exam)"
+            )
 
     # Assertions resolve against ground_truth + goals fuzzy-match
     if scenario.ground_truth is not None and scenario.expected_state_changes is not None:
@@ -195,6 +250,74 @@ def _validate_v02_blocks(scenario: ScenarioSchema) -> list[str]:
                         f"{loc}: goal '{goal[:50]}...' does not fuzzy-match any user_goal "
                         f"(best ratio {ratio:.2f} < {GOAL_FUZZY_FLOOR})"
                     )
+
+    return errors
+
+
+def _validate_criteria(scenario: ScenarioSchema) -> list[str]:
+    """Validate atomic rubric criteria + their provenance, when present (#54).
+
+    Presence-gated on any schema version: a scenario without ``rubric_criteria``
+    is untouched (the criteria_authorship-without-criteria case is the one
+    error reachable then). With criteria: 3-6 items, unique non-empty ids,
+    non-placeholder text, a valid judge dimension, a sane positive weight, and a
+    required ``criteria_authorship`` stamp whose author is not a contestant.
+    """
+    errors: list[str] = []
+
+    if scenario.rubric_criteria is None:
+        if scenario.criteria_authorship is not None:
+            errors.append("criteria_authorship present without rubric_criteria")
+        return errors
+
+    n = len(scenario.rubric_criteria)
+    if not (CRITERIA_MIN_COUNT <= n <= CRITERIA_MAX_COUNT):
+        errors.append(
+            f"rubric_criteria has {n} item(s) (expected {CRITERIA_MIN_COUNT}-{CRITERIA_MAX_COUNT})"
+        )
+
+    seen_ids: set[str] = set()
+    for i, crit in enumerate(scenario.rubric_criteria):
+        loc = f"rubric_criteria[{i}]"
+        cid = crit.id.strip()
+        if not cid:
+            errors.append(f"{loc}: empty id")
+        elif cid in seen_ids:
+            errors.append(f"{loc}: duplicate id '{cid}'")
+        seen_ids.add(cid)
+
+        if len(crit.text.strip()) < CRITERIA_MIN_TEXT_LEN:
+            errors.append(
+                f"{loc}: text too short (min {CRITERIA_MIN_TEXT_LEN} chars; "
+                "criteria must be atomic AND checkable, not placeholders)"
+            )
+        if crit.dimension not in VALID_CRITERIA_DIMENSIONS:
+            errors.append(
+                f"{loc}: dimension '{crit.dimension}' not in "
+                f"{sorted(VALID_CRITERIA_DIMENSIONS)} (criteria inform the judge "
+                "dimensions only; state grading and the measured CLEAR dimensions "
+                "are not judgeable targets)"
+            )
+        if not (0 < crit.weight <= CRITERIA_MAX_WEIGHT):
+            errors.append(f"{loc}: weight {crit.weight} out of range (0, {CRITERIA_MAX_WEIGHT}]")
+
+    # Provenance: criteria are authored separately from the scenario (often
+    # later, by a different model), so they need their own honest stamp.
+    if scenario.criteria_authorship is None:
+        errors.append("rubric_criteria requires 'criteria_authorship' with criteria_author_model")
+    else:
+        crit_author = scenario.criteria_authorship.criteria_author_model.strip().lower()
+        if not crit_author:
+            errors.append("criteria_authorship.criteria_author_model is empty")
+        else:
+            blocked = _matching_contestant(crit_author)
+            if blocked is not None:
+                errors.append(
+                    "criteria_authorship.criteria_author_model "
+                    f"'{scenario.criteria_authorship.criteria_author_model.strip()}' "
+                    f"matches MODELS_UNDER_TEST entry '{blocked}' "
+                    "(a contestant must not write the grading criteria for its own exam)"
+                )
 
     return errors
 
@@ -243,6 +366,9 @@ def validate_scenario_dict(data: dict) -> list[str]:
         errors.extend(_validate_v02_blocks(scenario))
     elif scenario.schema_version is not None:
         errors.append(f"Unsupported schema_version '{scenario.schema_version}' (expected '0.2')")
+
+    # Atomic rubric criteria (issue #54) — presence-gated, any schema version.
+    errors.extend(_validate_criteria(scenario))
 
     return errors
 
