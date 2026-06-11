@@ -152,5 +152,41 @@
     {"assert": "internal_notes", "op": "contains",
      "match": {"account_id": "ACCT-5512", "note_contains": "predecessor"},
      "goal": "Leave a note for the CS team flagging that her predecessor left and she needs more support"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "lookup_account_first",
+      "text": "Agent looked up the account (ACCT-5512 / Lumiform Labs) before reading onboarding, seats, or users.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "diagnose_onboarding_block",
+      "text": "Agent identified the connect_data_source step (6 of 9 users stuck) as the onboarding blocker.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "flag_seat_shortfall",
+      "text": "Agent confirmed the Starter plan has only 10 seats with 8 used, flagging insufficient capacity for the new wave of hires.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "book_training_next_week",
+      "text": "Agent scheduled a training meeting for the new hires before the offsite.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "note_predecessor_handoff",
+      "text": "Agent created an internal note flagging the predecessor's departure and the need for more support.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

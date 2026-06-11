@@ -135,5 +135,41 @@
     {"assert": "internal_notes", "op": "contains",
      "match": {"account_id": "ACCT-8830", "note_contains": "burnout", "tag": "churn_risk"},
      "goal": "Have the CS team log that she's a single overloaded admin and a real burnout/churn risk"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "surface_migration_runbook",
+      "text": "Agent surfaced the migration runbook (KB-552) as a concrete resource, not as a brush-off.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "book_human_support_session",
+      "text": "Agent scheduled a CS-led support session before Megan's next-week deadline.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "open_migration_blocker_ticket",
+      "text": "Agent opened a support ticket for the recurring migration blocker.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "flag_burnout_churn_risk",
+      "text": "Agent logged a churn_risk note flagging Megan as a single overloaded admin and burnout risk.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "provide_human_reassurance",
+      "text": "Agent reassured Megan that real human help is coming rather than only pointing her to more docs.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

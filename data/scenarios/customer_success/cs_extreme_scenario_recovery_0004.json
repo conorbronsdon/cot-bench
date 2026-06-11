@@ -205,5 +205,41 @@
         "anomaly_note": "Ticket intake API retried on a 504 and created identical copies; same subject/description/timestamp window."
       }
     ]}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "identify_system_duplicates",
+      "text": "Agent identified that the three tickets are system-generated duplicates from a 504 retry, not three separate reports by her.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "reassure_issue_not_lost",
+      "text": "Agent reassured her that her actual reported problem is still being worked and was not lost in the duplicate flood.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "acknowledge_system_error",
+      "text": "Agent acknowledged the duplicates were a system error rather than her mistake.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "search_then_consolidate",
+      "text": "Agent called search_support_tickets to find the duplicate group before acting to consolidate onto the canonical ticket TCK-8801.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "note_dup_group",
+      "text": "Agent logged an internal note referencing the duplicate group (DUPGRP-55) so the notification flood is addressed.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

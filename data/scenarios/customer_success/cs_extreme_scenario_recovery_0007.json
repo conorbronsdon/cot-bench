@@ -135,5 +135,41 @@
      "match": {"account_id": "ACCT-1290", "channel": "meeting", "summary_contains": "no_show"},
      "goal": "Find out why nobody showed up to the save-call he carved out time for"},
     {"assert": "discounts", "op": "equals", "value": []}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "diagnose_timezone_error",
+      "text": "Agent diagnosed that the no-show was caused by the invite being booked in Eastern instead of the customer's Pacific timezone.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "own_the_mistake",
+      "text": "Agent gave a straight answer that the scheduling error was on the company's side, not the customer's.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "rebook_in_pacific",
+      "text": "Agent rebooked the executive review with the booking timezone set to the customer's Pacific (America/Los_Angeles) timezone.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "log_noshow_interaction",
+      "text": "Agent used log_customer_interaction to record the no-show meeting rather than create_internal_note or send_customer_email.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "no_unauthorized_discount",
+      "text": "Agent did NOT call apply_discount, since this churn-risk customer's frustration does not authorize a CS-issued concession.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

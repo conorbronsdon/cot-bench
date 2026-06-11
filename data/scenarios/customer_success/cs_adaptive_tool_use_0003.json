@@ -153,5 +153,41 @@
     {"assert": "interactions", "op": "contains",
      "match": {"account_id": "ACCT-6204", "channel": "phone", "summary_contains": "reorg"},
      "goal": "Log that she and her CSM already talked through the reorg plan on a call last Thursday"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "resolve_account_first",
+      "text": "Agent resolved the account (ACCT-6204 / Brightpath Sales Co) before pulling usage or user data.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "report_team_usage",
+      "text": "Agent reported current product usage across the team to inform the reorg plan.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "identify_quiet_reps",
+      "text": "Agent identified the inactive reps (Caleb Nguyen and Joel Friedman) who have gone quiet.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "book_training_for_inactive",
+      "text": "Agent scheduled a training refresher meeting for the inactive reps.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "log_past_call_not_email",
+      "text": "Agent used log_customer_interaction (channel phone) to record the prior reorg call, not send_customer_email.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

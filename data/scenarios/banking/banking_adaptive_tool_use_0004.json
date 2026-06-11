@@ -167,5 +167,41 @@
     {"assert": "fraud_cases", "op": "contains",
      "match": {"transaction_id": "TXN-4410", "reason_contains": "EURO-CITY ELECTRONICS"},
      "goal": "Report a $640 charge from 'EURO-CITY ELECTRONICS' that she did not make and that she thinks caused her card to get declined"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "verify_before_account_access",
+      "text": "Agent verified identity before disclosing the checking balance.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "transfer_2000_savings_to_checking",
+      "text": "Agent moved $2,000 from savings PER-SAV-302 into checking PER-CHK-301 via initiate_transfer.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "balance_letter_emailed",
+      "text": "Agent generated a balance-confirmation statement and had it delivered by email as proof of funds for the housing office.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "large_transaction_alert_500_email",
+      "text": "Agent created a large_transaction alert on checking PER-CHK-301 at a $500 threshold via email.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "fraud_report_euro_city",
+      "text": "Agent reported the $640 EURO-CITY ELECTRONICS charge (TXN-4410) as fraud.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

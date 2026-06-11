@@ -363,5 +363,41 @@
       },
       "goal": "Request a refund for the overdraft fee"
     }
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "verify_before_account_access",
+      "text": "Agent verified identity before disclosing the checking balance.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "explain_low_balance",
+      "text": "Agent reviewed transactions to explain why the checking balance was so low.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "transfer_1000",
+      "text": "Agent moved $1,000 from savings SAV-002 into checking CHK-001 via initiate_transfer.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "overdraft_fee_waiver",
+      "text": "Agent submitted a fee-waiver request for the overdraft fee (FEE-900) via request_fee_waiver.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "address_automatic_transfers_to_niece",
+      "text": "Agent addressed stopping the automatic transfers to her niece Sarah.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

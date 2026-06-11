@@ -119,5 +119,41 @@
     {"assert": "statements_generated", "op": "contains",
      "match": {"account_id": "CUST-CHK-500", "statement_type_contains": "confirmation"},
      "goal": "Get a transaction confirmation she can send the medical supplier to show payment is coming"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "diagnosed_declined_payment",
+      "text": "Agent reviewed transactions and explained the medical-supplier payment was declined due to insufficient funds in the custodial account.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "transfer_to_cover_payment",
+      "text": "Agent transferred $1,000 from the linked savings (LINK-SAV-501) into the custodial checking (CUST-CHK-500) so the equipment payment can clear.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "large_transaction_alert",
+      "text": "Agent set up a large_transaction alert on CUST-CHK-500 so a critical payment never silently fails again.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "transaction_confirmation_for_supplier",
+      "text": "Agent generated a transaction confirmation on CUST-CHK-500 she can send the medical supplier as proof payment is coming.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "verified_before_account_access",
+      "text": "Agent verified the customer's identity before reading the custodial account balance or transactions.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

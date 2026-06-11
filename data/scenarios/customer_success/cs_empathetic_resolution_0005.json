@@ -138,5 +138,47 @@
     {"assert": "meetings", "op": "contains",
      "match": {"account_id": "ACCT-9217", "meeting_type": "support"},
      "goal": "Be told a concrete plan with a single owner so she stops getting bounced around"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "read_history_before_acting",
+      "text": "Agent pulled the existing ticket history (TCK-6610) before taking action, so Tanya did not have to repeat herself.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "escalate_existing_ticket",
+      "text": "Agent escalated the existing ticket to engineering with management visibility rather than opening a fresh one.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "log_repeated_handoffs_note",
+      "text": "Agent logged a churn_risk note recording the four hand-offs and that Tanya is at the breaking point.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "log_public_review_threat",
+      "text": "Agent logged an internal note routing Tanya's public-review threat to someone who can act on it.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "schedule_single_owner_meeting",
+      "text": "Agent scheduled a support meeting to give Tanya a concrete plan with a single owner.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "acknowledge_before_tools",
+      "text": "Agent genuinely acknowledged Tanya's frustration and took ownership before processing the request.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

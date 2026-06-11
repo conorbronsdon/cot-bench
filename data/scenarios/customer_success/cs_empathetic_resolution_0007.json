@@ -133,5 +133,41 @@
     {"assert": "internal_notes", "op": "contains",
      "match": {"account_id": "ACCT-3015", "note_contains": "new admin", "tag": "support_needed"},
      "goal": "Have the CS team note that he's a brand-new admin who inherited this with no handoff"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "plain_language_account_picture",
+      "text": "Agent gave a plain-language summary of who is active versus inactive on the account without jargon.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "reassure_not_his_fault",
+      "text": "Agent explicitly reassured the new admin that the messy inherited setup is not his fault and basic questions are welcome.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "book_onboarding_session",
+      "text": "Agent scheduled a CS onboarding/training session so a human can walk him through the cleanup.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "resolve_account_then_users",
+      "text": "Agent called get_account to resolve the account_id before calling get_user_list for the user breakdown.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "note_inherited_admin",
+      "text": "Agent logged an internal note (create_internal_note) flagging he is a brand-new admin who inherited the account with no handoff.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

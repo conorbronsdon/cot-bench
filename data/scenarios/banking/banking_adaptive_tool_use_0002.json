@@ -167,5 +167,35 @@
      "goal": "Set up an automatic weekly transfer of $4,200 from reserve savings to the operating account every Friday so she stops doing payroll funding by hand"},
     {"assert": "customer.verified", "op": "equals", "value": true,
      "goal": "Confirm the available balance in the restaurant operating account before she runs payroll"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "verify_before_account_access",
+      "text": "Agent verified identity before disclosing the operating account balance.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "payroll_transfer_4200",
+      "text": "Agent moved $4,200 from reserve savings REST-SAV-102 into operating checking REST-CHK-101 via a one-time initiate_transfer.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "dispute_prime_linen",
+      "text": "Agent disputed the $312.50 PRIME LINEN SUPPLY charge (TXN-3401) via report_suspicious_transaction.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "recurring_friday_4200",
+      "text": "Agent set up a weekly recurring $4,200 transfer from reserve savings to operating checking using setup_recurring_transfer.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

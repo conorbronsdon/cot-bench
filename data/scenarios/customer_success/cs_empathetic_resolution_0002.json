@@ -131,5 +131,47 @@
     {"assert": "internal_notes", "op": "contains",
      "match": {"account_id": "ACCT-6612", "note_contains": "layoff", "tag": "churn_risk"},
      "goal": "Get the layoff cost-pressure flagged to his CSM in case there's any way to help"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "confirm_data_preserved_before_downgrade",
+      "text": "Agent confirmed that downgrading to Starter retains historical data (exports disabled) before any tier change.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "research_retention_policy",
+      "text": "Agent consulted subscription details and/or the knowledge base to verify the data-retention behavior rather than guessing.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "downgrade_to_starter_two_seats",
+      "text": "Agent changed the subscription to the Starter tier with the reduced seat count to cut burn.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "note_preserve_historical_data",
+      "text": "Agent logged an internal note that Owen's historical data must be preserved through the downgrade.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "flag_layoffs_not_churn",
+      "text": "Agent logged a churn_risk note framing the change as layoff-driven cost pressure, not churn.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "acknowledge_layoff_distress",
+      "text": "Agent acknowledged the difficulty of the layoffs before moving to the transactional steps.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

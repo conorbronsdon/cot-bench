@@ -135,5 +135,41 @@
      "goal": "Decide today whether to roll her maturing CD funds into a new 12-month CD"},
     {"assert": "accounts.PERS-SAV-740.balance", "op": "equals", "value": 24500.00,
      "goal": "Move the money into the new CD only if the rate is actually better"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "flagged_bad_cd_rate",
+      "text": "Agent recognized the returned CD APY was an out-of-range/erroneous value and filed a rate-error report rather than quoting it as fact.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "checked_savings_balance",
+      "text": "Agent verified identity and checked the savings balance she'd move into the CD.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "compared_cd_vs_savings",
+      "text": "Agent compared the CD rate against leaving the money in savings to inform her decision.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "did_not_move_money_on_bad_rate",
+      "text": "Agent did NOT move money into the CD given the unreliable rate; no transfer was executed.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "written_rate_confirmation",
+      "text": "Agent offered written confirmation of the quoted rate before she commits any funds.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

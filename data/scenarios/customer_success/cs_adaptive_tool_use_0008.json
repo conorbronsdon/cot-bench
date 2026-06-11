@@ -169,5 +169,41 @@
     {"assert": "emails_sent", "op": "contains",
      "match": {"account_id": "ACCT-3915", "to_contains": "cedarvalehealth.org"},
      "goal": "Have the CS team email his admin contact a status update so his team knows it's being worked"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "resolve_account_first",
+      "text": "Agent resolved the account (ACCT-3915 / Cedarvale Health Network) before reading usage, users, or tickets.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "surface_usage_drop",
+      "text": "Agent surfaced the sharp 7-day usage drop (active users down ~61%) and which users went dark.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "find_existing_sso_ticket",
+      "text": "Agent searched tickets and found the existing open SSO ticket (TCK-6601) rather than opening a new one.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "escalate_sso_to_engineering",
+      "text": "Agent escalated TCK-6601 to engineering, citing that clinicians are blocked from logging in.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "email_admin_at_account_domain",
+      "text": "Agent emailed the status update to Raj at his cedarvalehealth.org address, the verified account contact.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

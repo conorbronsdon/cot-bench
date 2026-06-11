@@ -170,5 +170,41 @@
      "goal": "Send an immediate $750 catch-up transfer from operating checking to program savings to cover the month the disbursement failed to run"},
     {"assert": "accounts.NPO-CHK-601.balance", "op": "decreased_by", "value": 750.00,
      "goal": "Send an immediate $750 catch-up transfer from operating checking to program savings to cover the month the disbursement failed to run"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "verify_before_account_access",
+      "text": "Agent verified identity before disclosing the nonprofit operating account balance.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "transaction_confirmation_emailed",
+      "text": "Agent generated a transaction_confirmation document for NPO-CHK-601 delivered by email for the board records.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "reestablish_monthly_750",
+      "text": "Agent re-established the monthly recurring $750 transfer from operating checking NPO-CHK-601 to program savings NPO-SAV-602.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "catchup_one_time_750",
+      "text": "Agent sent a separate one-time $750 catch-up transfer via initiate_transfer, distinct from the recurring schedule.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "program_apy_lookup",
+      "text": "Agent used get_interest_rates to report the program savings APY for the board.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

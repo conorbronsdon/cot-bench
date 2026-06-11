@@ -140,5 +140,41 @@
      "match": {"account_id": "ACCT-4407", "note_contains": "MIG-2026-06"},
      "goal": "Avoid making her team redo onboarding steps they already finished"},
     {"assert": "meetings", "op": "equals", "value": []}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "explain_migration_reset",
+      "text": "Agent explained the zeroed onboarding was caused by a platform migration reset, not by her team's actual progress being lost.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "reassure_data_recoverable",
+      "text": "Agent reassured her the completed steps still exist in the migration backup and her team will not have to redo onboarding.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "check_onboarding_status",
+      "text": "Agent called get_onboarding_status to investigate before drawing any conclusion about lost progress.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "raise_restore_bug_ticket",
+      "text": "Agent opened a bug ticket referencing the system_migration reset to get the onboarding status restored.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "note_migration_ref",
+      "text": "Agent logged an internal note referencing the migration (MIG-2026-06) so the cause is documented.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

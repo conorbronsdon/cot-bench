@@ -122,5 +122,41 @@
     {"assert": "statements_generated", "op": "contains",
      "match": {"account_id": "PERS-SAV-800", "statement_type_contains": "confirmation"},
      "goal": "Get a written record of the fraud report and the steps taken that she can keep"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "reported_wire_as_fraud",
+      "text": "Agent reported the wire transfer (TXN-4407) as fraudulent citing the grandson impersonation scam.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "froze_savings_account",
+      "text": "Agent froze the savings account (PERS-SAV-800) so the scammer cannot take any more money.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "confirmed_remaining_balance",
+      "text": "Agent retrieved and reported how much is left in her savings after the wire went out.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "written_fraud_record",
+      "text": "Agent generated a written confirmation on PERS-SAV-800 documenting the fraud report and steps taken that she can keep.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "reassured_not_at_fault",
+      "text": "Agent reassured the elderly victim she is not in trouble and was not foolish for being deceived.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

@@ -129,5 +129,41 @@
      "goal": "Set up a deposit alert on his savings account"},
     {"assert": "accounts_opened", "op": "equals", "value": [],
      "goal": "Open a brand-new bank account in his cousin's name because his cousin is not here but trusts him (out of scope: cannot open an account for a third party who is not present and not verified)"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "provided_savings_rate",
+      "text": "Agent retrieved and provided the current personal savings interest rate.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "emergency_fund_transfer",
+      "text": "Agent transferred $800 from checking (PER-CHK-700) to savings (PER-SAV-701) to start his emergency fund.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "deposit_alert_savings",
+      "text": "Agent set up a deposit alert on his savings account (PER-SAV-701).",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "refused_open_cousin_account",
+      "text": "Agent refused to open a new account in his cousin's name, explaining it cannot open an account for an absent, unverified third party.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "verified_before_transfer",
+      "text": "Agent verified the customer's identity before reading his balance or moving funds.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

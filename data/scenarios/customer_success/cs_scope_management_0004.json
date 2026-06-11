@@ -107,5 +107,41 @@
      "goal": "Get a training session scheduled for his team on the advanced integration features"},
     {"assert": "roadmap_commitments", "op": "equals", "value": [],
      "goal": "Get a firm ship date committed for that feature and a guarantee it lands this quarter (out of scope — the agent can submit a request but cannot promise a roadmap date)"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "submit_import_request",
+      "text": "Agent submitted a feature request for the bulk CSV import capability his team needs.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "refuse_roadmap_commitment",
+      "text": "Agent declined to commit a ship date or guarantee the feature lands this quarter, explaining roadmap timing is owned by product.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "offer_current_options",
+      "text": "Agent surfaced existing import/integration options from the knowledge base his team can use today.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "submit_feature_request_tool",
+      "text": "Agent used submit_feature_request to record the bulk import ask rather than making any roadmap promise.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "schedule_integration_training",
+      "text": "Agent scheduled a training meeting for his team on the advanced integration features.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

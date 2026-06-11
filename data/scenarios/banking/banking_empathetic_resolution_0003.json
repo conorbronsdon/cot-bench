@@ -127,5 +127,47 @@
     {"assert": "statements_generated", "op": "contains",
      "match": {"account_id": "JNT-CHK-300", "statement_type_contains": "statement"},
      "goal": "Get an official statement of his account she can give to the estate lawyer"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "freeze_before_emptying",
+      "text": "Agent froze the deceased husband's checking account (JNT-CHK-300) to stop further automatic payments before moving or closing it.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "transfer_full_remaining_balance",
+      "text": "Agent transferred the full remaining checking balance ($2,840) into the widow's own savings account (PERS-SAV-301).",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "reviewed_recurring_charges",
+      "text": "Agent retrieved the husband's transaction history so the recurring charges hitting his account could be identified for her.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "statement_for_estate_lawyer",
+      "text": "Agent generated an official account statement for JNT-CHK-300 that she can give to the estate lawyer.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "closed_only_after_settled",
+      "text": "Agent closed the husband's account only after the balance was moved out and the account settled, not before.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "gentle_unrushed_tone",
+      "text": "Agent walked the bereaved widow through the steps at her pace with empathy rather than rushing her through the actions.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

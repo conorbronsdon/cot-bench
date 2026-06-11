@@ -136,5 +136,41 @@
      "match": {"account_id": "ACCT-2204", "tag": "support_needed", "note_contains": "pipeline_error"},
      "goal": "Have confidence the figures she presents to her board are accurate"},
     {"assert": "emails_sent", "op": "equals", "value": []}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "refuse_to_supply_corrupt_number",
+      "text": "Agent refused to hand over the impossible negative active-user figure as a usable QBR number.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "warn_data_untrustworthy",
+      "text": "Agent plainly told the executive the usage figures cannot be trusted yet due to the pipeline error and should not go on a board slide.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "cross_check_with_user_list",
+      "text": "Agent cross-checked the broken analytics against get_user_list to show the real active-user count is positive.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "raise_urgent_bug_ticket",
+      "text": "Agent opened an urgent bug ticket flagging the negative/impossible active_users figure.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "note_pipeline_error",
+      "text": "Agent logged an internal note recording the pipeline_error so the bad figure is not presented as accurate.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

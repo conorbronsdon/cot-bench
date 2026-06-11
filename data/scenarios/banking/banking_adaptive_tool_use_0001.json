@@ -146,5 +146,41 @@
      "goal": "Report a suspicious $47.99 charge from 'DIGITAL_SVC_LLC' she doesn't recognize"},
     {"assert": "customer.verified", "op": "equals", "value": true,
      "goal": "Check the current balance of her business checking account"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "verify_before_account_access",
+      "text": "Agent verified identity before disclosing the business account balance or transactions.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "payroll_transfer_direction",
+      "text": "Agent moved $2,500 from business savings BUS-SAV-002 into business checking BUS-CHK-001 (savings to checking, not reversed).",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "recurring_weekly_500_reverse_direction",
+      "text": "Agent set up a weekly recurring $500 transfer from checking to savings, the opposite direction from the payroll move.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "interest_rate_lookup",
+      "text": "Agent used get_interest_rates to answer the business savings rate question rather than guessing a rate.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "fraud_report_digital_svc",
+      "text": "Agent reported the $47.99 DIGITAL_SVC_LLC charge (TXN-7781) as suspicious.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

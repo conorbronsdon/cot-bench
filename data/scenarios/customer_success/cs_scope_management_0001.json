@@ -132,5 +132,47 @@
      "goal": "Ask the CS agent to directly email his inactive users for him (out of scope)"},
     {"assert": "discounts_applied", "op": "equals", "value": [],
      "goal": "Ask for a discount on renewal because of the inactive users (should be redirected to sales)"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "list_inactive_users",
+      "text": "Agent retrieved and gave Derek his list of inactive users so he can re-engage them.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "refuse_emailing_users",
+      "text": "Agent declined to directly email his inactive users for him, explaining that is outside the CS agent's scope.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "redirect_discount_to_sales",
+      "text": "Agent redirected the renewal-discount ask to the sales team rather than handling it.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "no_emails_to_users",
+      "text": "Agent did NOT call any tool to email or message Derek's users on his behalf.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "dashboard_feature_request",
+      "text": "Agent used submit_feature_request to record the non-existent custom dashboard request rather than implying it exists.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "no_discount_applied",
+      "text": "Agent did NOT call apply_discount or any tool that grants the requested renewal discount.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

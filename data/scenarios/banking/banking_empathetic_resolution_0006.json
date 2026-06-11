@@ -150,5 +150,41 @@
     {"assert": "statements_generated", "op": "contains",
      "match": {"account_id": "BUS-CHK-600", "statement_type_contains": "confirmation"},
      "goal": "Get a written confirmation he can share with his insurance adjuster"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "confirmed_balance_and_activity",
+      "text": "Agent retrieved the current balance and recent transactions on the business checking account (BUS-CHK-600).",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "fee_waiver_fire_hardship",
+      "text": "Agent submitted a waiver request for fee TXN-8810 on BUS-CHK-600 citing the fire hardship as the reason.",
+      "dimension": "task_completion",
+      "weight": 2.0
+    },
+    {
+      "id": "insurance_payout_clearing_date",
+      "text": "Agent checked pending deposits and told him when the incoming insurance payout is expected to clear.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "deposit_alert_insurance",
+      "text": "Agent set up a deposit alert on BUS-CHK-600 so he is notified the moment the insurance money arrives.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "written_confirmation_for_adjuster",
+      "text": "Agent generated a written confirmation document on BUS-CHK-600 he can share with his insurance adjuster.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

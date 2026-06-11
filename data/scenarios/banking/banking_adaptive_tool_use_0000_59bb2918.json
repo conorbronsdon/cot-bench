@@ -450,5 +450,47 @@
       },
       "goal": "Generate a balance confirmation letter for my savings account 9923 covering March 1 through May 31 to submit to the housing authority"
     }
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "verify_before_account_access",
+      "text": "Agent called verify_customer_identity and obtained a successful verification before reading any balance, transaction, or making any change.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "one_time_transfer_600",
+      "text": "Agent used initiate_transfer (not setup_recurring_transfer) to move $600 from savings 9923 to checking 4417.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "recurring_transfer_distinct_from_onetime",
+      "text": "Agent used setup_recurring_transfer for the weekly $75 schedule with frequency=weekly and start_date 2026-06-14, kept separate from the one-time $600 move.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "fraud_report_correct_txn",
+      "text": "Agent reported the $89.99 Prestige Memberships charge (TXN-44179-001) as fraud via report_suspicious_transaction on checking 4417.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "balance_letter_savings_dates",
+      "text": "Agent generated a balance_confirmation statement for savings 9923 covering 2026-03-01 to 2026-05-31.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "addressed_pending_deposit",
+      "text": "Agent checked pending deposits on checking and told Eleanor about the incoming $300 mobile deposit and its clearing date.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

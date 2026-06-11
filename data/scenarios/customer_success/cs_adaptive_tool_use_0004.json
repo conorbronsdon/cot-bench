@@ -150,5 +150,41 @@
     {"assert": "internal_notes", "op": "contains",
      "match": {"account_id": "ACCT-4470", "note_contains": "champion"},
      "goal": "Have a note added to the account flagging that the prior champion departed and ownership moved to him"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "lookup_account_with_contacts",
+      "text": "Agent looked up the account (ACCT-4470 / Wayfarer Booking Systems) and listed the contacts/users to show who has access.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "report_onboarding_state",
+      "text": "Agent reported the onboarding state, citing the invite_team step where new teammates stalled.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "flag_inactive_prior_admin",
+      "text": "Agent surfaced that the prior admin Janelle Cho is now inactive while invited members never finished setup.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "book_onboarding_meeting",
+      "text": "Agent scheduled an onboarding-type meeting (not training/QBR) to walk the new owners through setup.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "note_champion_departure",
+      "text": "Agent created an internal note flagging the prior champion's departure and ownership moving to Trevor.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }

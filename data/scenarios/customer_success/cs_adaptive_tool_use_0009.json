@@ -197,5 +197,41 @@
     {"assert": "meetings", "op": "contains",
      "match": {"account_id": "ACCT-1842", "meeting_type": "support"},
      "goal": "Get a save call scheduled with her CSM before the renewal date"}
-  ]
+  ],
+  "rubric_criteria": [
+    {
+      "id": "resolve_account_first",
+      "text": "Agent resolved the account (ACCT-1842 / Beacon Staffing Group) before pulling health, usage, or tickets.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "report_declining_health",
+      "text": "Agent reported the declining health trajectory (health 41, high risk, dropping from 68) to validate Tanya's read.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "escalate_export_bug",
+      "text": "Agent escalated the data-integrity export ticket (TCK-5503) to engineering, not the resolved password ticket.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "flag_churn_risk_note",
+      "text": "Agent created an internal note tagged churn_risk capturing how close Tanya is to leaving.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "schedule_save_call_before_renewal",
+      "text": "Agent scheduled a support (save) call with the CSM ahead of the 2026-07-15 renewal.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
+  }
 }
