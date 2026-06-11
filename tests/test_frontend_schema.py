@@ -532,7 +532,10 @@ class TestHeadlessRender:
         # Model names, failure-mode names (taxonomy can grow out-of-vocabulary),
         # profile names, and the corpus-health headline all flow into innerHTML
         # sinks in the diagnostics panel; every one must pass through esc().
-        evil = "<b>xss</b>"
+        # The payload carries a double quote so ATTRIBUTE-context escaping
+        # (title="..." tooltips) is pinned too, not just element context — a
+        # quote-less payload would pass even if esc() stopped escaping quotes.
+        evil = '<b "x>xss</b>'
         lb = _populated_payload(degraded=False)
         victim = lb["models"][0]["name"]
         lb["models"][0]["name"] = evil
@@ -544,5 +547,6 @@ class TestHeadlessRender:
         lb["corpus_health"]["headline"] = evil
         out = _run_node("populated", lb)
         assert out["ok"], out.get("error")
-        assert "<b>" not in out["diag_html"]
-        assert "&lt;b&gt;xss&lt;/b&gt;" in out["diag_html"]
+        assert "<b" not in out["diag_html"]
+        assert '"x' not in out["diag_html"].replace("&quot;x", "")
+        assert "&lt;b &quot;x&gt;xss&lt;/b&gt;" in out["diag_html"]
