@@ -16,6 +16,36 @@ sits on GitHub where a future model could train on it. The private holdout caps
 overfitting \emph{detection}, not its possibility; the public-versus-holdout gap is
 a tripwire, not a guarantee.
 
+\paragraph{Author-model concentration.} The generation pipeline supports
+multi-author generation across labs and enforces the author-is-never-a-contestant
+guard, but the committed public corpus is heavily skewed to one author: 76 of the
+92 scenarios (83\%) carry \texttt{author\_model} \texttt{claude-opus-4-8}, with
+the remainder authored by Kimi K2.6 (7), GLM-4.6 (5), and human writers (4). The
+dominant author model is not under test, so the contamination guard is satisfied,
+but it is a sibling snapshot of the Claude Opus panel judge and shares a lab with
+the two Claude contestants. Any resulting familiarity effect on judge or
+contestant behavior is unmeasured; the published per-judge deltas and the
+\texttt{same\_lab\_check} measure judge-side favoritism but not author-side style
+bias. Diversifying authorship is the priority for corpus growth.
+
+\paragraph{Effectively cooperative user simulation.} Scenario personas vary in
+tone and include adversarial personas, but v1 uses a single simulator model with
+prompt-only persona text and no behaviorally calibrated profile set. The published
+evidence is that off-the-shelf LLM user simulators skew over-cooperative and
+stylistically uniform relative to real users regardless of persona
+instructions~\cite{lostinsim2026,sim2real2026,realusersim2026}, which inflates
+measured agent performance and hides failure modes that only impatient, confused,
+or adversarial users trigger. Behavioral simulator profiles with
+persona-stratified reporting are planned (see Future Work below).
+
+\paragraph{Single-session, ten-turn horizon.} Every scenario is one conversation
+capped at ten user turns. The benchmark therefore measures within-conversation
+reliability and recovery, not long-horizon coherence over extended autonomous
+operation~\cite{vendingbench2025}, and not memory persistence across sessions.
+For deployed banking and customer-success agents, whose sessions are short, this
+is arguably the more deployment-relevant regime, but the composite should not be
+read as evidence about long-horizon autonomy.
+
 \paragraph{LLM-as-judge for the soft dimensions.} Two thirds of efficacy is judge
 scored, and judge quality is bounded by the judge models' capabilities. The
 multi-judge panel, median consensus, published per-judge deltas, length-bias
@@ -54,3 +84,28 @@ contributions. The governance policy (no silent retraction, pre-registration,
 pinning, automated weekly runs) is designed precisely to make a single-maintainer
 operation auditable, but it does not substitute for the institutional backing the
 larger benchmarks have.
+
+\subsection*{Future work}
+
+Several of the limitations above have committed mitigations, tracked as open
+issues in the repository (\#54--\#60) so the roadmap is itself auditable. Each
+would be a version bump under the policy of Section~\ref{sec:versioning}.
+\emph{Per-scenario atomic rubric criteria} (\#54) replace the generic judge
+rubric templates with 3--6 named criteria per scenario, each judged
+independently, following the instance-specific-rubric result of
+HealthBench~\cite{healthbench2025}. \emph{Per-category macro-averaged reporting
+with a failure-mode taxonomy} (\#55) prevents frequent-and-easy scenario types
+from swamping rare-but-hard ones and turns failures into diagnostic signal.
+\emph{A recovery-probe scenario tier} (\#57) injects a deliberate error or
+ambiguity mid-conversation and verifies recovery deterministically, bringing the
+goal-maintenance question inside the ten-turn
+horizon~\cite{vendingbench2025}. \emph{Dual-control scenarios} (\#58) let the
+simulated user also act on the shared world, the
+$\tau^2$-bench pattern~\cite{tau2bench2025}, which is the dominant real-world
+complexity the single-control design misses. \emph{Behavioral simulator profiles
+plus an adversarial-simulator audit pass} (\#59) address the cooperative-simulation
+limitation with persona-stratified reporting~\cite{realusersim2026}.
+\emph{Parameterized scenario templates} (\#60) resample surface entities (names,
+amounts, dates) per run so a model that has seen the public corpus cannot lean on
+memorized surface features. None of these are v1 claims; they are listed so the
+gap between what is measured now and what should be measured next is explicit.

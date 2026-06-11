@@ -1,9 +1,8 @@
 % COT Bench references.
 % Verification status per entry is noted in a comment above it.
-%   VERIFIED  = authors/title/arXiv id confirmed via web search during scaffolding.
-%   TODO      = could not independently verify (often a future-dated arXiv id that
-%               appears in the research reports' simulated-2026 context); confirm or
-%               replace before submission. The entry is left in so \cite compiles.
+%   VERIFIED  = authors/title/arXiv id confirmed against the arXiv abstract page
+%               (or the publisher page) via web fetch. Initial pass during
+%               scaffolding; full re-verification pass 2026-06-11.
 
 % ---------------------------------------------------------------------------
 % Deterministic / agentic tool-use benchmarks
@@ -18,11 +17,10 @@
   url     = {https://arxiv.org/abs/2406.12045}
 }
 
-% VERIFIED (id): tau2-bench, arXiv 2506.07982. Author list not individually
-% confirmed; title from arXiv listing.
+% VERIFIED 2026-06-11 against arxiv.org/abs/2506.07982 (full author list).
 @article{tau2bench2025,
   title   = {{$\tau^2$-Bench}: Evaluating Conversational Agents in a Dual-Control Environment},
-  author  = {Barres, Victor and others},
+  author  = {Barres, Victor and Dong, Honghua and Ray, Soham and Si, Xujie and Narasimhan, Karthik},
   journal = {arXiv preprint arXiv:2506.07982},
   year    = {2025},
   url     = {https://arxiv.org/abs/2506.07982}
@@ -55,26 +53,26 @@
   howpublished = {\url{https://scale.com/leaderboard/swe_bench_pro_commercial}}
 }
 
-% TODO: Terminal-Bench v2 arXiv id 2601.11868 is future-dated (appears in the
-% 2026-context research reports). Confirm id/authors or cite the tbench.ai / Snorkel
-% announcement instead before submission.
+% VERIFIED 2026-06-11 against arxiv.org/abs/2601.11868: Merrill et al. (85
+% authors), submitted 2026-01-17.
 @article{terminalbench2026,
-  title   = {{Terminal-Bench}: Evaluating AI Agents on Realistic Command-Line Tasks},
-  author  = {{Terminal-Bench Team and Snorkel AI and Stanford and Laude Institute}},
+  title   = {{Terminal-Bench}: Benchmarking Agents on Hard, Realistic Tasks in Command Line Interfaces},
+  author  = {Merrill, Mike A. and others},
   journal = {arXiv preprint arXiv:2601.11868},
   year    = {2026},
-  note    = {TODO: verify arXiv id and author list before submission},
   url     = {https://arxiv.org/abs/2601.11868}
 }
 
-% VERIFIED (source): Berkeley Function Calling Leaderboard, v3 multi-turn blog.
-% Also presented at ICML 2025. Citing the canonical blog as the methodology source.
-@misc{bfcl2024,
-  title        = {{Berkeley Function Calling Leaderboard} (BFCL v3): Multi-Turn and Multi-Step Function Calling},
-  author       = {Patil, Shishir G. and Mao, Huanzhi and Cheng-Jie Ji, Charlie and Yan, Fanjia and Suresh, Vishnu and Stoica, Ion and Gonzalez, Joseph E.},
-  year         = {2024},
-  howpublished = {\url{https://gorilla.cs.berkeley.edu/blogs/13_bfcl_v3_multi_turn.html}},
-  note         = {TODO: confirm author list against the ICML 2025 BFCL paper before submission}
+% VERIFIED 2026-06-11 against proceedings.mlr.press/v267/patil25a.html (ICML 2025
+% paper; author list and order confirmed). The v3 multi-turn methodology blog is
+% kept in the note as the state-based-checking source.
+@inproceedings{bfcl2024,
+  title     = {The {Berkeley Function Calling Leaderboard} ({BFCL}): From Tool Use to Agentic Evaluation of Large Language Models},
+  author    = {Patil, Shishir G. and Mao, Huanzhi and Yan, Fanjia and Ji, Charlie Cheng-Jie and Suresh, Vishnu and Stoica, Ion and Gonzalez, Joseph E.},
+  booktitle = {Proceedings of the 42nd International Conference on Machine Learning (ICML), PMLR 267},
+  year      = {2025},
+  url       = {https://proceedings.mlr.press/v267/patil25a.html},
+  note      = {Multi-turn state-based checking described in the BFCL v3 blog: \url{https://gorilla.cs.berkeley.edu/blogs/13_bfcl_v3_multi_turn.html}}
 }
 
 % ---------------------------------------------------------------------------
@@ -99,14 +97,13 @@
   url     = {https://arxiv.org/abs/2404.18796}
 }
 
-% VERIFIED (id): Self-Preference Bias in LLM-as-a-Judge, arXiv 2410.21819.
-% Author list not individually confirmed.
+% VERIFIED 2026-06-11 against arxiv.org/abs/2410.21819 (full author list; the
+% scaffold's "Wu, Koki" was wrong -- first author is Koki Wataoka).
 @article{selfpref2024,
   title   = {Self-Preference Bias in {LLM-as-a-Judge}},
-  author  = {Wu, Koki and others},
+  author  = {Wataoka, Koki and Takahashi, Tsubasa and Ri, Ryokan},
   journal = {arXiv preprint arXiv:2410.21819},
   year    = {2024},
-  note    = {TODO: confirm author list before submission},
   url     = {https://arxiv.org/abs/2410.21819}
 }
 
@@ -165,15 +162,26 @@
 % Anti-gaming, CLEAR framework, Galileo lineage
 % ---------------------------------------------------------------------------
 
-% TODO: Berkeley RDI agentic-benchmark audit. The research reports cite the RDI blog
-% (rdi.berkeley.edu/blog/trustworthy-benchmarks-cont/) and an arXiv id 2507.10325
-% (future-dated). Confirm the arXiv id or cite the blog before submission.
+% VERIFIED 2026-06-11 (source): Berkeley RDI trustworthy-benchmarks blog, the
+% source of the trivial-agent / seven-of-eight finding cited in the text. The
+% candidate arXiv id 2507.10325 was checked and is WRONG (it resolves to an
+% unrelated federated-averaging paper); the related peer audit from an
+% overlapping author group is arXiv:2507.02825 (bestpractices2025 below).
 @misc{rdi2026,
   title        = {How We Broke Top {AI} Agent Benchmarks (Trustworthy Benchmarks)},
   author       = {{Berkeley RDI}},
   year         = {2026},
-  howpublished = {\url{https://rdi.berkeley.edu/blog/trustworthy-benchmarks-cont/}},
-  note         = {TODO: confirm whether to cite arXiv:2507.10325 instead before submission}
+  howpublished = {\url{https://rdi.berkeley.edu/blog/trustworthy-benchmarks-cont/}}
+}
+
+% VERIFIED 2026-06-11 against arxiv.org/abs/2507.02825 (Zhu et al., 25 authors;
+% first five listed, submitted 2025-07-03).
+@article{bestpractices2025,
+  title   = {Establishing Best Practices for Building Rigorous Agentic Benchmarks},
+  author  = {Zhu, Yuxuan and Jin, Tengjun and Pruksachatkun, Yada and Zhang, Andy and Liu, Shu and others},
+  journal = {arXiv preprint arXiv:2507.02825},
+  year    = {2025},
+  url     = {https://arxiv.org/abs/2507.02825}
 }
 
 % VERIFIED: Mehta, arXiv 2511.14136. NOTE: this differs from the cot-bench README
@@ -197,36 +205,127 @@
   howpublished = {\url{https://github.com/rungalileo/agent-leaderboard}}
 }
 
-% TODO: "Lost in Simulation" (user-simulator miscalibration). Research reports cite
-% arXiv 2601.17087 (future-dated). Confirm id/authors before submission.
+% VERIFIED 2026-06-11 against arxiv.org/abs/2601.17087 (title corrected; full
+% author list confirmed; submitted 2026-01-23).
 @article{lostinsim2026,
-  title   = {Lost in Simulation: Miscalibration of {LLM}-Simulated Users in Agent Evaluation},
-  author  = {Unknown},
+  title   = {Lost in Simulation: {LLM}-Simulated Users are Unreliable Proxies for Human Users in Agentic Evaluations},
+  author  = {Seshadri, Preethi and Cahyawijaya, Samuel and Odumakinde, Ayomide and Singh, Sameer and Goldfarb-Tarrant, Seraphina},
   journal = {arXiv preprint arXiv:2601.17087},
   year    = {2026},
-  note    = {TODO: verify arXiv id and authors before submission},
   url     = {https://arxiv.org/abs/2601.17087}
 }
 
-% TODO: Sim2Real user-behavior study. Research reports cite arXiv 2603.11245
-% (future-dated). Confirm id/authors before submission.
+% VERIFIED 2026-06-11 against arxiv.org/abs/2603.11245 (title corrected; full
+% author list confirmed; submitted 2026-03-11).
 @article{sim2real2026,
-  title   = {Sim2Real for Conversational Agents: Real-Human Validation of Simulated Users},
-  author  = {Unknown},
+  title   = {Mind the {Sim2Real} Gap in User Simulation for Agentic Tasks},
+  author  = {Zhou, Xuhui and Sun, Weiwei and Ma, Qianou and Xie, Yiqing and Liu, Jiarui and Du, Weihua and Welleck, Sean and Yang, Yiming and Neubig, Graham and Wu, Sherry Tongshuang and Sap, Maarten},
   journal = {arXiv preprint arXiv:2603.11245},
   year    = {2026},
-  note    = {TODO: verify arXiv id and authors before submission},
   url     = {https://arxiv.org/abs/2603.11245}
 }
 
-% VERIFIED (concept): MTEB maintenance lessons (immutable published tasks, semantic
-% versioning). Confirm exact citation (arXiv:2506.21182 per research reports) before
-% submission.
+% VERIFIED 2026-06-11 against arxiv.org/abs/2506.21182 (full author list and
+% order confirmed; Chung is first author, not Enevoldsen).
 @article{mteb2025,
   title   = {Maintaining {MTEB}: Towards Long Term Usability and Reproducibility of Embedding Benchmarks},
-  author  = {Enevoldsen, Kenneth and others},
+  author  = {Chung, Isaac and Kerboua, Imene and Kardos, Marton and Solomatin, Roman and Enevoldsen, Kenneth},
   journal = {arXiv preprint arXiv:2506.21182},
   year    = {2025},
-  note    = {TODO: confirm author list before submission},
   url     = {https://arxiv.org/abs/2506.21182}
+}
+
+% ---------------------------------------------------------------------------
+% Rubric-grading, user-simulation realism, cost-aware and game-world evaluation
+% (related-work additions; all verified 2026-06-11 against the arXiv abstract page)
+% ---------------------------------------------------------------------------
+
+% VERIFIED 2026-06-11 against arxiv.org/abs/2505.08775 (first five authors listed;
+% submitted 2025-05-13).
+@article{healthbench2025,
+  title   = {{HealthBench}: Evaluating Large Language Models Towards Improved Human Health},
+  author  = {Arora, Rahul K. and Wei, Jason and Soskin Hicks, Rebecca and Bowman, Preston and Qui{\~n}onero-Candela, Joaquin and others},
+  journal = {arXiv preprint arXiv:2505.08775},
+  year    = {2025},
+  url     = {https://arxiv.org/abs/2505.08775}
+}
+
+% VERIFIED 2026-06-11 against arxiv.org/abs/2605.20204 (first five authors listed;
+% submitted 2026-04-07).
+@article{realusersim2026,
+  title   = {{RealUserSim}: Bridging the Reality Gap in Agent Benchmarking via Grounded User Simulation},
+  author  = {Zhu, Ming and Tan, Juntao and Murthy, Rithesh and Qiu, Jielin and Yang, Liangwei and others},
+  journal = {arXiv preprint arXiv:2605.20204},
+  year    = {2026},
+  url     = {https://arxiv.org/abs/2605.20204}
+}
+
+% VERIFIED 2026-06-11 against arxiv.org/abs/2510.11977 (first five of 31 authors
+% listed; submitted 2025-10-13).
+@article{hal2025,
+  title   = {Holistic Agent Leaderboard: The Missing Infrastructure for {AI} Agent Evaluation},
+  author  = {Kapoor, Sayash and Stroebl, Benedikt and Kirgis, Peter and Nadgir, Nitya and Siegel, Zachary S. and others},
+  journal = {arXiv preprint arXiv:2510.11977},
+  year    = {2025},
+  url     = {https://arxiv.org/abs/2510.11977}
+}
+
+% VERIFIED 2026-06-11 against arxiv.org/abs/2503.17354 (first five of 22 authors
+% listed; submitted 2025-03-21).
+@article{hcast2025,
+  title   = {{HCAST}: Human-Calibrated Autonomy Software Tasks},
+  author  = {Rein, David and Becker, Joel and Deng, Amy and Nix, Seraphina and Canal, Chris and others},
+  journal = {arXiv preprint arXiv:2503.17354},
+  year    = {2025},
+  url     = {https://arxiv.org/abs/2503.17354}
+}
+
+% VERIFIED 2026-06-11 against arxiv.org/abs/2502.15840 (full author list;
+% submitted 2025-02-20).
+@article{vendingbench2025,
+  title   = {{Vending-Bench}: A Benchmark for Long-Term Coherence of Autonomous Agents},
+  author  = {Backlund, Axel and Petersson, Lukas},
+  journal = {arXiv preprint arXiv:2502.15840},
+  year    = {2025},
+  url     = {https://arxiv.org/abs/2502.15840}
+}
+
+% VERIFIED 2026-06-11 against arxiv.org/abs/2407.13943 (full author list;
+% submitted 2024-07-18).
+@article{werewolfarena2024,
+  title   = {Werewolf Arena: A Case Study in {LLM} Evaluation via Social Deduction},
+  author  = {Bailis, Suma and Friedhoff, Jane and Chen, Feiyang},
+  journal = {arXiv preprint arXiv:2407.13943},
+  year    = {2024},
+  url     = {https://arxiv.org/abs/2407.13943}
+}
+
+% VERIFIED 2026-06-11 against arxiv.org/abs/2512.09187 (full author list;
+% submitted 2025-12-09; spotlight, MTI-LLM Workshop at NeurIPS 2025).
+@article{wolf2025,
+  title   = {{WOLF}: Werewolf-based Observations for {LLM} Deception and Falsehoods},
+  author  = {Agarwal, Mrinal and Rana, Saad and Sundoro, Theo and Berhe, Hermela and Kim, Spencer and Sharma, Vasu and O'Brien, Sean and Zhu, Kevin},
+  journal = {arXiv preprint arXiv:2512.09187},
+  year    = {2025},
+  url     = {https://arxiv.org/abs/2512.09187}
+}
+
+% VERIFIED 2026-06-11 against arxiv.org/abs/2504.11442 (full author list;
+% submitted 2025-04-15).
+@article{textarena2025,
+  title   = {{TextArena}},
+  author  = {Guertler, Leon and Cheng, Bobby and Yu, Simon and Liu, Bo and Choshen, Leshem and Tan, Cheston},
+  journal = {arXiv preprint arXiv:2504.11442},
+  year    = {2025},
+  url     = {https://arxiv.org/abs/2504.11442}
+}
+
+% VERIFIED 2026-06-11 against arxiv.org/abs/2605.29512 (first five authors listed;
+% submitted 2026-05-28; NeurIPS 2025 competition).
+@article{mindgames2026,
+  title   = {{MindGames}: A Live Arena for Evaluating Social and Strategic Reasoning in Multi-Agent {LLMs}},
+  author  = {Wang, Kevin and Th{\"o}ni, Anna and Kempinski, Benjamin and Cheng, Bobby and Yao, Jianzhu and others},
+  journal = {arXiv preprint arXiv:2605.29512},
+  year    = {2026},
+  url     = {https://arxiv.org/abs/2605.29512}
 }

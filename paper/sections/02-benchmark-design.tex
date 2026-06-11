@@ -117,34 +117,34 @@ residual exposure (the public corpus is on GitHub) is addressed by the private
 holdout described in Section~\ref{sec:governance}.
 
 \paragraph{Corpus statistics (public split).} The public corpus is
-\TODO{92} scenarios, all on schema v0.2 with ground-truth worlds:
-\TODO{49} banking and \TODO{43} customer success. The category and difficulty
-distribution is shown in Table~\ref{tab:corpus}. (These counts are computed from
-the committed corpus and should be regenerated with
-\texttt{scripts/validate\_scenarios.py} for the camera-ready version; they are
-flagged as placeholders here only to keep the no-uncited-number rule strict.)
+92 scenarios, all on schema v0.2 with ground-truth worlds:
+49 banking and 43 customer success. The category and difficulty
+distribution is shown in Table~\ref{tab:corpus}. These counts are computed from
+the committed corpus with \texttt{scripts/validate\_scenarios.py} (92/92
+schema-valid) and should be regenerated the same way if the corpus changes before
+the camera-ready version.
 
 \begin{table}[h]
 \centering
-\caption{Public corpus distribution by category and difficulty. Values from the
-committed \texttt{data/scenarios/} tree at scaffold time; regenerate before
-submission.}
+\caption{Public corpus distribution by category and difficulty. Values computed
+from the committed \texttt{data/scenarios/} tree with
+\texttt{scripts/validate\_scenarios.py}.}
 \label{tab:corpus}
 \begin{tabular}{lrr|lrrr}
 \toprule
 \textbf{Category} & \textbf{Bank} & \textbf{CS} & \textbf{Difficulty} & \multicolumn{3}{c}{\textbf{Count}} \\
 \midrule
-Adaptive tool use            & \TODO{12} & \TODO{10} & Easy   & \multicolumn{3}{c}{\TODO{18}} \\
-Scope management             & \TODO{10} & \TODO{9}  & Medium & \multicolumn{3}{c}{\TODO{36}} \\
-Empathetic resolution        & \TODO{10} & \TODO{9}  & Hard   & \multicolumn{3}{c}{\TODO{38}} \\
-Extreme scenario recovery    & \TODO{8}  & \TODO{7}  &        & \multicolumn{3}{c}{} \\
-Adversarial input mitigation & \TODO{9}  & \TODO{8}  &        & \multicolumn{3}{c}{} \\
+Adaptive tool use            & 12 & 10 & Easy   & \multicolumn{3}{c}{18} \\
+Scope management             & 10 & 9  & Medium & \multicolumn{3}{c}{36} \\
+Empathetic resolution        & 10 & 9  & Hard   & \multicolumn{3}{c}{38} \\
+Extreme scenario recovery    & 8  & 7  &        & \multicolumn{3}{c}{} \\
+Adversarial input mitigation & 9  & 8  &        & \multicolumn{3}{c}{} \\
 \midrule
-\textbf{Total}               & \TODO{49} & \TODO{43} & \textbf{Total} & \multicolumn{3}{c}{\TODO{92}} \\
+\textbf{Total}               & 49 & 43 & \textbf{Total} & \multicolumn{3}{c}{92} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-A separate private holdout (count \TODO{$\approx$10}, authored to the same v0.2
+A separate private holdout (10 scenarios, authored to the same v0.2
 schema and quality bar, stored outside the repository) is run alongside the public
 set; only its aggregate gap is published (Section~\ref{sec:governance}).

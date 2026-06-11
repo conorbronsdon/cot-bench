@@ -9,8 +9,9 @@ is a bracketed placeholder.}
 
 \subsection{Setup}
 
-The launch roster is \TODO{N} models across frontier-closed, efficient-closed, and
-open-weight tiers, plus one legacy cross-generation anchor, all configured in
+The configured launch roster is eleven models: ten current models across
+frontier-closed, efficient-closed, and open-weight tiers, plus one legacy
+cross-generation anchor (GPT-4.1), all configured in
 \texttt{eval/config.py} (verified against live provider sources at configuration
 time and pinned to dated snapshots where the provider publishes one). All models
 are evaluated on both domains over the full public corpus, three reliability runs
@@ -104,10 +105,11 @@ dimension. \emph{Fills from:} \texttt{judge\_alpha} and \texttt{length\_bias} in
 
 \subsection{Anti-gaming probe}
 
-\textbf{Result (planned, one line):} the do-nothing agent's efficacy halves, with
-the deterministic state component reported at 0.0 on mutation-expecting scenarios
-and the judge components at their floor, as direct evidence the scores reflect
-verified work. \emph{Fills from:} a \texttt{--include-null-agent} run's artifacts.
+\textbf{Result (planned, one line):} the do-nothing agent is expected to collapse
+to near the composite floor, with the deterministic state component reported at
+0.0 on mutation-expecting scenarios and the judge components at their floor, as
+direct evidence the scores reflect verified work; \TODO{report the observed
+null-agent efficacy}. \emph{Fills from:} a \texttt{--include-null-agent} run's artifacts.
 
 \subsection{Calibration}
 

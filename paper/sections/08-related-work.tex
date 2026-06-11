@@ -30,6 +30,32 @@ never-released, and commercial sets~\cite{swebenchpro2025}. COT Bench's
 independent-review gate and hash-pinned private holdout are these lessons in
 miniature.
 
+\paragraph{Rubric-graded conversational evaluation.} HealthBench grades 5{,}000
+multi-turn health conversations against per-conversation, physician-written
+rubrics, scoring each response against instance-specific criteria rather than one
+generic rubric~\cite{healthbench2025}. It is the closest published precedent for
+judge-graded multi-turn conversation at scale, and its core lesson points at a
+weakness COT Bench shares: COT Bench's two judge dimensions use generic published
+rubric templates, not per-scenario criteria. The difference in hedge is structural:
+HealthBench's defense against judge error is rubric specificity; COT Bench's is
+the deterministic state check, which removes the judge from a third of efficacy
+entirely. Per-scenario atomic rubric criteria are a planned extension
+(Section~\ref{sec:limitations}), making the two defenses complementary rather than
+competing.
+
+\paragraph{User-simulation realism.} A growing literature shows LLM-simulated
+users are unreliable proxies for humans: they are over-cooperative and
+stylistically uniform, and which model plays the user materially shifts measured
+agent success~\cite{lostinsim2026,sim2real2026}. RealUserSim grounds simulator
+personas in behavioral profiles extracted from real human--LLM conversations and
+finds off-the-shelf simulators match real user style poorly~\cite{realusersim2026}.
+COT Bench's response to this literature is architectural rather than cosmetic: the
+simulator is removed from the success-declaration path entirely
+(completion decoupling, Section~\ref{sec:design}), so simulator bias can end a
+conversation early but cannot mark goals as accomplished; the residual exposure is
+declared in Limitations, with behavioral simulator profiles and a sim-sensitivity
+check on the roadmap.
+
 \paragraph{LLM-as-judge methodology.} MT-Bench established the LLM-judge validation
 protocol and the canonical defense (GPT-4 agreed with humans at roughly the rate
 humans agree with each other) while naming position, verbosity, and self-enhancement
@@ -61,13 +87,60 @@ raters on ordinal or interval labels~\cite{krippendorff2011}.
 \paragraph{Anti-gaming and isolation.} The Berkeley RDI audit drove seven of eight
 agentic benchmarks to near-perfect scores with a trivial agent, largely through
 shared-container isolation failures and reachable answer keys, and recommended an
-exploit-agent self-test~\cite{rdi2026}. COT Bench is conversational rather than
-code-execution, so its isolation exposure is lower, but it adopts the do-nothing
-probe directly and keeps goal and answer data out of any surface the agent or tool
-simulator can read.
+exploit-agent self-test~\cite{rdi2026}. A related audit catalogs task-validity and
+outcome-validity failures across widely used agentic benchmarks and distills them
+into an explicit rigor checklist~\cite{bestpractices2025}. COT Bench is
+conversational rather than code-execution, so its isolation exposure is lower, but
+it adopts the do-nothing probe directly and keeps goal and answer data out of any
+surface the agent or tool simulator can read.
+
+\paragraph{Cost-aware evaluation and human-calibrated difficulty.} The Holistic
+Agent Leaderboard standardizes large-scale agent rollouts and reports
+accuracy--cost Pareto frontiers, showing that one-dimensional accuracy rankings
+hide most of the deployment-relevant structure: few models sit on the frontier,
+and the most expensive model is rarely among them~\cite{hal2025}. BFCL likewise
+publishes cost and latency alongside accuracy~\cite{bfcl2024}. COT Bench bakes
+this into its headline number: the CLEAR composite weights cost and latency
+directly, and the board publishes a cost--efficacy Pareto scatter with the
+frontier marked rather than treating cost as a footnote. HCAST takes a complementary route to interpretable
+difficulty, calibrating tasks against measured human completion
+times~\cite{hcast2025}; COT Bench's easy/medium/hard difficulty labels are
+author-assigned, and a human-time calibration of that axis is a natural follow-on.
+
+\paragraph{Game-world and social-deduction evaluation.} A parallel line of work
+evaluates agents in interactive game worlds rather than production domains.
+Vending-Bench measures long-horizon coherence over a simulated business and finds
+that breakdowns are goal-maintenance failures only weakly tied to context-window
+saturation~\cite{vendingbench2025}. Werewolf Arena and WOLF use social deduction
+to probe strategic communication; WOLF's central result is an asymmetry directly
+relevant to evaluation design: models produce deception far more convincingly than
+they detect it~\cite{werewolfarena2024,wolf2025}. TextArena and the MindGames
+arena profile social and strategic skills across game portfolios with
+relative-skill ratings, and document that win-rate scoring can reward robustness
+to opponent error as much as genuine skill~\cite{textarena2025,mindgames2026}.
+COT Bench draws two lessons from this genre without adopting its scoring. First,
+if strong models detect deception barely above chance, a transcript-reading judge
+is a weak last line of defense, which is the case for grading the world
+deterministically wherever ground truth exists. Second, the genre's coherence
+findings imply that goal maintenance under perturbation is measurable within a
+short horizon; COT Bench's ten-turn sessions measure within-conversation
+reliability and recovery, not long-horizon autonomy, and a recovery-probe scenario
+tier is planned (Section~\ref{sec:limitations}).
 
 \paragraph{The CLEAR framework and the Galileo lineage.} COT Bench aligns its
 metric framework with CLEAR, which reported that accuracy-only evaluation correlates
 about 0.41 with production success while multi-dimensional evaluation reaches about
 0.83~\cite{clear2025}. Its evaluation methodology draws on Galileo's open
 agent-leaderboard~\cite{galileo2025}.
+
+\paragraph{Summary of position.} No single element of COT Bench is novel in
+isolation: state grading is tau-bench's and BFCL's, $\text{pass}^k$ is
+tau-bench's, the judge panel is PoLL's, the holdout is SWE-bench Pro's, the
+intervals and bands are Chatbot Arena's and Arena-Hard's, and the do-nothing probe
+is the RDI audit's. The contribution is the combination, which to our knowledge no
+benchmark above assembles: multi-turn user simulation with the simulator removed
+from the success-declaration path, deterministic state verification against
+per-scenario ground-truth worlds, a cross-lab judge panel with published per-judge
+scores and chance-corrected agreement, and pre-registration governance with a
+hash-pinned private holdout, applied to production conversational domains where
+neither deterministic-only nor judge-only evaluation is honest on its own.
