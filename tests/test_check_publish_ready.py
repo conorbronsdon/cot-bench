@@ -14,7 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from eval.config import MIN_SCENARIOS_FOR_PUBLISH
+from eval.config import JUDGES, MIN_SCENARIOS_FOR_PUBLISH, RELIABILITY_RUNS
+from eval.simulation.profiles import DEFAULT_SIM_PROFILE
 from scripts.check_publish_ready import check_publish_ready
 
 
@@ -29,7 +30,11 @@ def _write_manifest(tmp_path: Path, **overrides) -> Path:
         # tests exercise the failed-model path in isolation; scenario-count
         # tests override this explicitly.
         "scenario_counts": {"banking": MIN_SCENARIOS_FOR_PUBLISH},
-        "reliability_runs": 3,
+        "reliability_runs": RELIABILITY_RUNS,
+        # Defaults that clear the H2 gates so other tests exercise their target
+        # condition in isolation; the H2 tests override these explicitly.
+        "judges": {"requested": list(JUDGES.keys()), "resolved": [j.name for j in JUDGES.values()]},
+        "sim_profile": DEFAULT_SIM_PROFILE,
     }
     manifest.update(overrides)
     path = tmp_path / "run_manifest.json"
@@ -140,6 +145,124 @@ class TestScenarioMinimum:
         # to check" rather than crashing (the failed-model gate still applies).
         path = _write_manifest(tmp_path, scenario_counts={})
         assert check_publish_ready(path) == 0
+
+
+class TestJudgePanelGate:
+    """H2: a non-default judge panel blocks the publish (distinct reason)."""
+
+    def test_single_judge_blocks(self, tmp_path, capsys):
+        path = _write_manifest(
+            tmp_path,
+            judges={"requested": ["opus"], "resolved": ["Claude Opus 4.6"]},
+        )
+        assert check_publish_ready(path) != 0
+        err = capsys.readouterr().err
+        assert "::error::" in err
+        assert "Judge panel" in err
+        assert "opus" in err
+
+    def test_full_panel_passes(self, tmp_path):
+        # Order-independent: a reordered full roster still passes.
+        reordered = list(reversed(list(JUDGES.keys())))
+        path = _write_manifest(
+            tmp_path,
+            judges={"requested": reordered, "resolved": [JUDGES[k].name for k in reordered]},
+        )
+        assert check_publish_ready(path) == 0
+
+    def test_allow_partial_rescues_reduced_panel(self, tmp_path, capsys):
+        path = _write_manifest(
+            tmp_path,
+            judges={"requested": ["opus"], "resolved": ["Claude Opus 4.6"]},
+        )
+        assert check_publish_ready(path, allow_partial=True) == 0
+        assert "::warning::" in capsys.readouterr().err
+
+    def test_legacy_manifest_without_judges_not_gated(self, tmp_path):
+        # A manifest predating the judges field is not blocked on this condition.
+        path = _write_manifest(tmp_path)
+        manifest = json.loads(path.read_text())
+        del manifest["judges"]
+        path.write_text(json.dumps(manifest))
+        assert check_publish_ready(path) == 0
+
+
+class TestReliabilityRunsGate:
+    """H2: a non-default reliability_runs blocks the publish (distinct reason)."""
+
+    def test_non_default_reliability_blocks(self, tmp_path, capsys):
+        path = _write_manifest(tmp_path, reliability_runs=1)
+        assert check_publish_ready(path) != 0
+        err = capsys.readouterr().err
+        assert "::error::" in err
+        assert "reliability_runs" in err
+        assert str(RELIABILITY_RUNS) in err
+
+    def test_default_reliability_passes(self, tmp_path):
+        path = _write_manifest(tmp_path, reliability_runs=RELIABILITY_RUNS)
+        assert check_publish_ready(path) == 0
+
+    def test_allow_partial_rescues_non_default_reliability(self, tmp_path, capsys):
+        path = _write_manifest(tmp_path, reliability_runs=1)
+        assert check_publish_ready(path, allow_partial=True) == 0
+        assert "::warning::" in capsys.readouterr().err
+
+    def test_legacy_manifest_without_reliability_not_gated(self, tmp_path):
+        path = _write_manifest(tmp_path)
+        manifest = json.loads(path.read_text())
+        del manifest["reliability_runs"]
+        path.write_text(json.dumps(manifest))
+        assert check_publish_ready(path) == 0
+
+
+class TestSimProfileGate:
+    """H2: a non-cooperative sim_profile blocks the publish (distinct reason)."""
+
+    def test_noncooperative_profile_blocks(self, tmp_path, capsys):
+        path = _write_manifest(tmp_path, sim_profile="adversarial")
+        assert check_publish_ready(path) != 0
+        err = capsys.readouterr().err
+        assert "::error::" in err
+        assert "sim_profile" in err
+        assert "adversarial" in err
+
+    def test_cooperative_profile_passes(self, tmp_path):
+        path = _write_manifest(tmp_path, sim_profile=DEFAULT_SIM_PROFILE)
+        assert check_publish_ready(path) == 0
+
+    def test_allow_partial_rescues_noncooperative(self, tmp_path, capsys):
+        path = _write_manifest(tmp_path, sim_profile="adversarial")
+        assert check_publish_ready(path, allow_partial=True) == 0
+        assert "::warning::" in capsys.readouterr().err
+
+    def test_legacy_manifest_without_sim_profile_not_gated(self, tmp_path):
+        path = _write_manifest(tmp_path)
+        manifest = json.loads(path.read_text())
+        del manifest["sim_profile"]
+        path.write_text(json.dumps(manifest))
+        assert check_publish_ready(path) == 0
+
+
+class TestAllH2BlockersReportedTogether:
+    def test_every_distinct_reason_named_at_once(self, tmp_path, capsys):
+        # All three H2 conditions plus a failed model and low scenarios should
+        # each be named in one pass — distinct reasons, not first-fail-only.
+        path = _write_manifest(
+            tmp_path,
+            models_completed=["GPT-4.1"],
+            models_failed=["Gemini 2.5 Pro"],
+            scenario_counts={"banking": 4},
+            judges={"requested": ["opus"], "resolved": ["Claude Opus 4.6"]},
+            reliability_runs=1,
+            sim_profile="impatient",
+        )
+        assert check_publish_ready(path) != 0
+        err = capsys.readouterr().err
+        assert "Gemini 2.5 Pro" in err  # failed model
+        assert str(MIN_SCENARIOS_FOR_PUBLISH) in err  # scenarios
+        assert "Judge panel" in err  # judges
+        assert "reliability_runs" in err  # reliability
+        assert "sim_profile" in err  # profile
 
 
 class TestMainExitCode:

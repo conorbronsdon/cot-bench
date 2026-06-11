@@ -10,17 +10,31 @@ a scheduled publish when:
      low scenario counts, leaderboard orderings are dominated by sampling noise
      (bootstrap CIs overlap almost completely), so the ranking is not meaningful.
      The methodological review set this hard minimum so the board stays honest
-     while the scenario set scales toward its ~80-scenario target.
+     while the corpus stays at its shipped 92-scenario size.
+  3. The judge panel is not the full default roster (H2). A single-judge or
+     reduced-panel board has a different, uncomparable consensus (and a null
+     inter-judge alpha) — publishing it as "the leaderboard" would be misleading.
+  4. reliability_runs differs from the default (H2). pass@3 / pass^k mean
+     different things at a different repeat count; a board run at reliability=1
+     is not the same measurement.
+  5. The sim_profile is not the cooperative default (H2). The public board is
+     defined against the cooperative simulated user; a behavioral-profile run is
+     a different, deliberately harder condition. (The aggregation already strips
+     non-cooperative rows, so a stratified run would yield an empty/partial
+     board — this gate names the cause loudly rather than letting it surface as
+     a confusing empty publish.)
+
+Conditions 3-5 only trip via an explicit ``workflow_dispatch`` with non-default
+inputs; the scheduled path always uses the defaults, so it passes them silently.
 
 Exit codes:
-  0  manifest is complete (no failed models, all domains >= minimum), or
-     --allow-partial set
-  1  one or more models failed, a domain is below the scenario minimum, or the
-     manifest is missing/unreadable
+  0  manifest is complete (no failed models, all domains >= minimum, full judge
+     panel, default reliability_runs, cooperative profile), or --allow-partial set
+  1  any blocking condition above, or the manifest is missing/unreadable
 
-Escape hatch: --allow-partial (or ALLOW_PARTIAL_PUBLISH=true) downgrades a
-partial run (failed models OR below-minimum scenario counts) to a loud warning
-and exits 0, for deliberate partial publishes / previews.
+Escape hatch: --allow-partial (or ALLOW_PARTIAL_PUBLISH=true) downgrades every
+blocking condition above (each reported distinctly) to a loud warning and exits
+0, for deliberate partial / non-default publishes and previews.
 """
 
 import argparse
@@ -29,7 +43,8 @@ import os
 import sys
 from pathlib import Path
 
-from eval.config import MIN_SCENARIOS_FOR_PUBLISH
+from eval.config import JUDGES, MIN_SCENARIOS_FOR_PUBLISH, RELIABILITY_RUNS
+from eval.simulation.profiles import DEFAULT_SIM_PROFILE
 
 MANIFEST_PATH = Path("data/results/run_manifest.json")
 
@@ -86,6 +101,44 @@ def check_publish_ready(manifest_path: Path = MANIFEST_PATH, allow_partial: bool
             f"{len(below_min)} domain(s) below the {MIN_SCENARIOS_FOR_PUBLISH}-scenario "
             f"publish minimum ({detail}). Orderings at this scenario count are dominated "
             "by sampling noise; add scenarios before publishing."
+        )
+
+    # Judge panel (H2). The board is only a leaderboard when scored by the full
+    # default panel — a reduced panel changes the consensus and nulls the
+    # inter-judge alpha. ``judges.requested`` is recorded by run_eval; legacy
+    # manifests without it are not gated on this condition (treated as default).
+    judges_block = manifest.get("judges") or {}
+    requested_judges = judges_block.get("requested")
+    if requested_judges is not None:
+        full_panel = sorted(JUDGES.keys())
+        if sorted(requested_judges) != full_panel:
+            blockers.append(
+                f"Judge panel was {sorted(requested_judges)}, not the full default "
+                f"roster {full_panel}. A reduced/single-judge board has a different "
+                "consensus (and a null inter-judge alpha) than a leaderboard run; "
+                "re-run with the full panel before publishing."
+            )
+
+    # Reliability runs (H2). pass@3 / pass^k change meaning at a different repeat
+    # count, so a board must use the default. Absent => legacy manifest, skip.
+    reliability_runs = manifest.get("reliability_runs")
+    if reliability_runs is not None and reliability_runs != RELIABILITY_RUNS:
+        blockers.append(
+            f"reliability_runs was {reliability_runs}, not the default "
+            f"{RELIABILITY_RUNS}. pass@3 / pass^k mean different things at a "
+            "different repeat count; re-run at the default before publishing."
+        )
+
+    # Sim profile (H2). The public board is defined against the cooperative
+    # simulated user. Absent => legacy manifest (all cooperative), skip.
+    sim_profile = manifest.get("sim_profile")
+    if sim_profile is not None and sim_profile != DEFAULT_SIM_PROFILE:
+        blockers.append(
+            f"sim_profile was '{sim_profile}', not the cooperative default "
+            f"'{DEFAULT_SIM_PROFILE}'. The public board measures every model "
+            "against the same cooperative user; a behavioral-profile run is a "
+            "different condition (and its rows are stripped from the public "
+            "aggregates). Re-run cooperative before publishing."
         )
 
     if not blockers:

@@ -244,3 +244,60 @@ class TestComputeLeaderboardKeys:
     def test_empty_df_returns_empty(self):
         lb = compute_leaderboard(pd.DataFrame())
         assert lb["models"] == []
+
+
+class TestClearWeightsSingleSource:
+    """H5: the point-estimate CLEAR must use CLEAR_WEIGHTS, not duplicated
+    hardcoded weights. Editing one path used to silently desync the published
+    score from its bootstrap CI; these pin that the two share one weight source.
+    """
+
+    def test_point_estimate_clear_equals_dict_weighted(self):
+        from scripts.aggregate_results import CLEAR_WEIGHTS, _min_max_norm
+
+        df = _make_df({"A": 0.85, "B": 0.6, "C": 0.4})
+        lb = compute_leaderboard(df)
+
+        # Re-derive the expected CLEAR independently, reading the weights from the
+        # single source (CLEAR_WEIGHTS). If the point estimate ever reverts to a
+        # hardcoded literal that disagrees with the dict, this fails.
+        overall = (
+            df.groupby("model")
+            .agg(
+                efficacy=("efficacy", "mean"),
+                cost_per_task=("cost_usd", "mean"),
+                avg_latency_ms=("latency_ms", "mean"),
+                reliability=("reliability_pass_rate", "mean"),
+            )
+            .reset_index()
+        )
+        eff_n = _min_max_norm(overall["efficacy"].to_numpy(dtype=float))
+        rel_n = _min_max_norm(overall["reliability"].to_numpy(dtype=float))
+        cost_n = _min_max_norm(overall["cost_per_task"].to_numpy(dtype=float), invert=True)
+        lat_n = _min_max_norm(overall["avg_latency_ms"].to_numpy(dtype=float), invert=True)
+        expected = (
+            eff_n * CLEAR_WEIGHTS["efficacy"]
+            + rel_n * CLEAR_WEIGHTS["reliability"]
+            + cost_n * CLEAR_WEIGHTS["cost_per_task"]
+            + lat_n * CLEAR_WEIGHTS["avg_latency_ms"]
+        )
+        expected_by_model = dict(zip(overall["model"], expected))
+
+        for m in lb["models"]:
+            assert m["clear_score"] == pytest.approx(
+                round(expected_by_model[m["name"]], 4), abs=1e-9
+            )
+
+    def test_clear_weights_sum_to_one(self):
+        from scripts.aggregate_results import CLEAR_WEIGHTS
+
+        assert sum(CLEAR_WEIGHTS.values()) == pytest.approx(1.0)
+
+    def test_point_estimate_and_bootstrap_share_clear_helper(self):
+        # Both the point estimate and the bootstrap go through _clear_from_means,
+        # so a degenerate single-model field yields the documented efficacy-only
+        # CLEAR on both paths.
+        df = _make_df({"A": 0.7})
+        lb = compute_leaderboard(df)
+        m = lb["models"][0]
+        assert m["clear_score"] == round(m["efficacy"], 4)

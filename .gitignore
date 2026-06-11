@@ -15,6 +15,18 @@ data/results/*.csv
 # scenario content when COT_BENCH_HOLDOUT_DIR is set. Never committable.
 data/results/artifacts/
 
+# Published leaderboard surfaces — these ARE committed by the weekly-eval
+# publish step (.github/workflows/weekly-eval.yml). They must be un-ignored
+# even though the broader data/results/*.csv rule above would otherwise swallow
+# latest.csv. governance.md §4 and methodology.md name leaderboard.json +
+# latest.csv as the published surfaces; history.jsonl is the append-only audit
+# trail governance §1 leans on. Any change here must keep
+# tests/test_published_surfaces_committable.py green (it runs `git check-ignore`
+# against exactly the paths the publish step adds).
+!data/results/leaderboard.json
+!data/results/latest.csv
+!data/results/history.jsonl
+
 # Keep domain definitions
 !data/domains/**/*.json
 

@@ -31,6 +31,7 @@ from eval.config import DEFAULT_SIMULATION, Domain, SimulationConfig
 from eval.pre_registration import build_pre_registration
 from eval.providers.registry import ModelSpec
 from eval.resume import _sim_namespace
+from eval.scoring.rubrics import PASS_THRESHOLD
 from eval.simulation.profiles import (
     ADVERSARIAL_PROFILE,
     CONFUSED_PROFILE,
@@ -531,7 +532,13 @@ class TestLeaderboardTripwire:
         entry_a = next(m for m in lb["models"] if m["name"] == "A")
         assert abs(entry_a["efficacy"] - 0.9) < 0.05
 
-    def test_no_profile_name_appears_in_leaderboard_json(self):
+    def test_no_profile_name_appears_in_public_board(self):
+        # Non-cooperative profile names must not leak into the PUBLIC leaderboard
+        # aggregates (models[], domain/category scores, judge stats, etc.). The
+        # one place they legitimately appear is the dedicated
+        # ``sim_profile_robustness`` surface (issue #59 / H4), which is what
+        # publishes the persona-stratified table — so exclude that key before
+        # asserting nothing else carries a profile name.
         df = _profile_df(
             {
                 "A": {
@@ -542,7 +549,12 @@ class TestLeaderboardTripwire:
                 }
             }
         )
-        flat = json.dumps(compute_leaderboard(df))
+        lb = compute_leaderboard(df)
+        # The robustness surface IS expected to name the profiles; the rest of
+        # the board must not.
+        assert "sim_profile_robustness" in lb
+        lb.pop("sim_profile_robustness")
+        flat = json.dumps(lb)
         for profile in (ADVERSARIAL_PROFILE, IMPATIENT_PROFILE, CONFUSED_PROFILE):
             assert profile not in flat
 
@@ -550,6 +562,83 @@ class TestLeaderboardTripwire:
         df = _profile_df({"A": {ADVERSARIAL_PROFILE: 0.6}})
         lb = compute_leaderboard(df)
         assert lb["models"] == []
+
+
+class TestSimProfileRobustnessSurface:
+    """H4: the persona-stratified robustness table is actually emitted into
+    leaderboard.json when non-cooperative rows exist, computed from the full
+    frame (before the cooperative exclusion) but still excluding holdout +
+    null-agent rows.
+    """
+
+    def test_emitted_when_noncooperative_rows_present(self):
+        df = _profile_df(
+            {
+                "A": {COOPERATIVE_PROFILE: 0.9, ADVERSARIAL_PROFILE: 0.1},
+                "B": {COOPERATIVE_PROFILE: 0.6},
+            }
+        )
+        lb = compute_leaderboard(df)
+        assert "sim_profile_robustness" in lb
+        rob = lb["sim_profile_robustness"]["models"]
+        # A has both profiles; the adversarial delta is positive (worse).
+        assert COOPERATIVE_PROFILE in rob["A"]
+        assert ADVERSARIAL_PROFILE in rob["A"]
+        assert rob["A"][ADVERSARIAL_PROFILE]["delta_vs_cooperative"] > 0
+        assert lb["sim_profile_robustness"]["pass_threshold"] == PASS_THRESHOLD
+        assert lb["sim_profile_robustness"]["cooperative_profile"] == COOPERATIVE_PROFILE
+
+    def test_absent_on_cooperative_only_run(self):
+        # A normal leaderboard run must not ship an empty robustness surface.
+        df = _profile_df({"A": {COOPERATIVE_PROFILE: 0.9}, "B": {COOPERATIVE_PROFILE: 0.6}})
+        lb = compute_leaderboard(df)
+        assert "sim_profile_robustness" not in lb
+
+    def test_does_not_move_public_efficacy(self):
+        # Emitting the robustness table must not change the public board: A's
+        # public efficacy still reads cooperative-only (~0.9), not blended.
+        df = _profile_df(
+            {
+                "A": {COOPERATIVE_PROFILE: 0.9, ADVERSARIAL_PROFILE: 0.1},
+                "B": {COOPERATIVE_PROFILE: 0.5},
+            }
+        )
+        lb = compute_leaderboard(df)
+        entry_a = next(m for m in lb["models"] if m["name"] == "A")
+        assert abs(entry_a["efficacy"] - 0.9) < 0.05
+
+    def test_holdout_rows_never_in_robustness_table(self):
+        # The robustness table reads non-cooperative rows but must STILL exclude
+        # holdout rows (governance §4). Build a frame where the holdout rows are
+        # the only adversarial rows for a phantom scenario id; the table's row
+        # count / scenario count must reflect only the public adversarial rows.
+        df = _profile_df(
+            {
+                "A": {COOPERATIVE_PROFILE: 0.9, ADVERSARIAL_PROFILE: 0.2},
+            }
+        )
+        # Add a holdout adversarial row with a distinctive scenario id and a
+        # distinctive (perfect) efficacy that would skew the pass rate if leaked.
+        holdout_rows = df[(df["sim_profile"] == ADVERSARIAL_PROFILE)].copy()
+        holdout_rows["holdout"] = True
+        holdout_rows["scenario_id"] = "HOLDOUT_SECRET"
+        holdout_rows["efficacy"] = 1.0
+        df_with_holdout = pd.concat([df, holdout_rows], ignore_index=True)
+
+        lb = compute_leaderboard(df_with_holdout)
+        rob = lb["sim_profile_robustness"]["models"]["A"][ADVERSARIAL_PROFILE]
+        # Only the 4 public adversarial scenarios — the holdout scenario must not
+        # appear, and its perfect efficacy must not lift the adversarial pass rate.
+        assert rob["n_scenarios"] == 4
+        assert rob["pass_rate"] == 0.0  # public adversarial rows are all ~0.2 (fail)
+        # And no holdout scenario id leaks anywhere into the JSON.
+        assert "HOLDOUT_SECRET" not in json.dumps(lb)
+
+    def test_no_profile_name_leaks_via_robustness_on_coop_only(self):
+        df = _profile_df({"A": {COOPERATIVE_PROFILE: 0.9}})
+        flat = json.dumps(compute_leaderboard(df))
+        for profile in (ADVERSARIAL_PROFILE, IMPATIENT_PROFILE, CONFUSED_PROFILE):
+            assert profile not in flat
 
 
 class TestSimProfilePassRates:
