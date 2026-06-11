@@ -844,6 +844,14 @@
 
         function relDetail(m) {
             const parts = [];
+            // Consistency band (#71): solid = passed every reliability run
+            // (pass^k at k=n), avg = mean per-scenario pass rate, best = passed
+            // at least once. Omitted when the aggregate has no repeated runs.
+            const band = m.consistency_band;
+            if (band && band.solid_rate != null && band.avg_pass_rate != null && band.best_of_rate != null) {
+                const runsTxt = band.n_runs != null ? `${band.n_runs} reliability runs` : 'the reliability runs';
+                parts.push(`<span title="Consistency band over ${esc(runsTxt)}: solid = scenarios passed in every run (pass^k at k=n), avg = mean per-scenario pass rate, best = passed in at least one run (#71)">solid ${band.solid_rate.toFixed(2)} / avg ${band.avg_pass_rate.toFixed(2)} / best ${band.best_of_rate.toFixed(2)}</span>`);
+            }
             const phk = m.reliability_pass_hat_k;
             if (phk && typeof phk === 'object') {
                 const ks = Object.keys(phk).filter(k => phk[k] != null);
@@ -964,10 +972,16 @@
 
         function renderStatNote() {
             const note = leaderboardData && leaderboardData.statistical_note;
+            // Corpus-health headline (#71): appended to the stat note. Rendered
+            // via textContent (a safe sink), so the string needs no escaping.
+            const health = leaderboardData && leaderboardData.corpus_health;
+            const healthTxt = (health && typeof health.headline === 'string')
+                ? `Corpus health: ${health.headline}.` : '';
+            const full = [note, healthTxt].filter(Boolean).join(' ');
             ['stat-note', 'stat-note-mobile'].forEach(id => {
                 const el = document.getElementById(id);
                 if (!el) return;
-                if (note) { el.textContent = note; el.style.display = ''; }
+                if (full) { el.textContent = full; el.style.display = ''; }
                 else el.style.display = 'none';
             });
         }
@@ -1103,10 +1117,11 @@
                 domains: ['banking', 'customer_success'],
                 holdout: { present: true },
                 n_rank_bands: 3,
+                corpus_health: { total_scenarios: 80, passed_at_least_once: 78, never_passed: 2, passed_by_every_model: 11, n_models: 6, headline: '78 of 80 scenarios passed at least once; 11 passed by every model' },
                 statistical_note: 'DEMO DATA — fabricated numbers, not benchmark results.',
                 models: [
-                    { name: 'GPT-5.5', clear_score: 0.847, clear_score_ci: [0.82, 0.874], efficacy: 0.89, efficacy_ci: [0.86, 0.92], task_completion: 0.91, tool_selection: 0.87, cost_per_task_usd: 0.0234, reliability: 0.85, reliability_pass_hat_k: {1:0.88,2:0.80,3:0.72}, premature_end_rate: 0.03, avg_latency_ms: 3200, judge_agreement: { task_completion: 0.92, tool_selection: 0.88 }, holdout_gap: 0.012, holdout_score: 0.878, rank_band: 1 },
-                    { name: 'Claude Opus 4.8', clear_score: 0.831, clear_score_ci: [0.805, 0.857], efficacy: 0.87, efficacy_ci: [0.84, 0.90], task_completion: 0.89, tool_selection: 0.85, cost_per_task_usd: 0.0412, reliability: 0.82, reliability_pass_hat_k: {1:0.85,2:0.77,3:0.68}, premature_end_rate: 0.04, avg_latency_ms: 2800, judge_agreement: { task_completion: 0.90, tool_selection: 0.85 }, holdout_gap: 0.071, holdout_score: 0.799, rank_band: 1 },
+                    { name: 'GPT-5.5', clear_score: 0.847, clear_score_ci: [0.82, 0.874], efficacy: 0.89, efficacy_ci: [0.86, 0.92], task_completion: 0.91, tool_selection: 0.87, cost_per_task_usd: 0.0234, reliability: 0.85, reliability_pass_hat_k: {1:0.88,2:0.80,3:0.72}, consistency_band: { solid_rate: 0.72, avg_pass_rate: 0.85, best_of_rate: 0.94, n_scenarios: 80, n_runs: 3 }, premature_end_rate: 0.03, avg_latency_ms: 3200, judge_agreement: { task_completion: 0.92, tool_selection: 0.88 }, holdout_gap: 0.012, holdout_score: 0.878, rank_band: 1 },
+                    { name: 'Claude Opus 4.8', clear_score: 0.831, clear_score_ci: [0.805, 0.857], efficacy: 0.87, efficacy_ci: [0.84, 0.90], task_completion: 0.89, tool_selection: 0.85, cost_per_task_usd: 0.0412, reliability: 0.82, reliability_pass_hat_k: {1:0.85,2:0.77,3:0.68}, consistency_band: { solid_rate: 0.68, avg_pass_rate: 0.82, best_of_rate: 0.92, n_scenarios: 80, n_runs: 3 }, premature_end_rate: 0.04, avg_latency_ms: 2800, judge_agreement: { task_completion: 0.90, tool_selection: 0.85 }, holdout_gap: 0.071, holdout_score: 0.799, rank_band: 1 },
                     { name: 'Gemini 3.1 Pro', clear_score: 0.819, clear_score_ci: [0.79, 0.848], efficacy: 0.85, efficacy_ci: [0.82, 0.88], task_completion: 0.87, tool_selection: 0.83, cost_per_task_usd: 0.0198, reliability: 0.80, reliability_pass_hat_k: {1:0.83,2:0.74,3:0.64}, premature_end_rate: 0.05, avg_latency_ms: 3500, judge_agreement: { task_completion: 0.89, tool_selection: 0.86 }, holdout_gap: -0.008, holdout_score: 0.858, rank_band: 1 },
                     { name: 'DeepSeek-V4 Pro', clear_score: 0.803, clear_score_ci: [0.77, 0.836], efficacy: 0.82, efficacy_ci: [0.79, 0.85], task_completion: 0.84, tool_selection: 0.80, cost_per_task_usd: 0.0045, reliability: 0.78, reliability_pass_hat_k: {1:0.80,2:0.70,3:0.60}, premature_end_rate: 0.06, avg_latency_ms: 4100, judge_agreement: { task_completion: 0.87, tool_selection: 0.83 }, holdout_gap: 0.02, holdout_score: 0.80, rank_band: 2 },
                     { name: 'Gemini 3.5 Flash', clear_score: 0.771, clear_score_ci: [0.74, 0.802], efficacy: 0.74, efficacy_ci: [0.71, 0.77], task_completion: 0.76, tool_selection: 0.72, cost_per_task_usd: 0.0012, reliability: 0.81, reliability_pass_hat_k: {1:0.83,2:0.75,3:0.66}, premature_end_rate: 0.04, avg_latency_ms: 1600, judge_agreement: { task_completion: 0.88, tool_selection: 0.84 }, holdout_gap: 0.005, holdout_score: 0.735, rank_band: 2 },
