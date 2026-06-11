@@ -134,6 +134,13 @@ def _sim_namespace(payload: dict):
         # Behavioral user-sim profile (issue #59). Older artifacts predate the
         # field and were all cooperative by construction.
         sim_profile=meta.get("sim_profile", DEFAULT_SIM_PROFILE),
+        # Dual control (issue #58). Older artifacts predate the fields; the
+        # single-control majority carry False/0/None — all reconstruct the row
+        # identically. ``user_actions_fired`` records how many user actions fired
+        # (coordination_ok is None when none did).
+        dual_control=bool(meta.get("dual_control", False)),
+        user_actions_fired=int(meta.get("user_actions_fired", 0) or 0),
+        coordination_ok=meta.get("coordination_ok"),
     )
 
 

@@ -185,6 +185,30 @@ class TestBuildArtifact:
         assert art["sim_meta"]["state_progress_at_end"] == 0.5
         assert art["sim_meta"]["premature_end"] is True
 
+    def test_sim_meta_carries_dual_control(self):
+        # Dual control (#58): dual_control / user_actions_fired / coordination_ok
+        # are persisted in sim_meta so the coordination_rate denominator (fired-
+        # action rows only) is auditable from artifacts and a resume reconstructs
+        # the row identically.
+        tc = _consensus("task_completion", [_judge("Kimi", 0.8, "task_completion")])
+        ts = _consensus("tool_selection", [_judge("Kimi", 0.7, "tool_selection")])
+        sim = _sim_result()
+        sim.dual_control = True
+        sim.user_actions_fired = 1
+        sim.coordination_ok = True
+        art = build_artifact("banking_001", "GPT-4.1", 0, sim, tc, ts)
+        assert art["sim_meta"]["dual_control"] is True
+        assert art["sim_meta"]["user_actions_fired"] == 1
+        assert art["sim_meta"]["coordination_ok"] is True
+
+    def test_sim_meta_dual_control_defaults_for_single_control(self):
+        tc = _consensus("task_completion", [_judge("Kimi", 0.8, "task_completion")])
+        ts = _consensus("tool_selection", [_judge("Kimi", 0.7, "tool_selection")])
+        art = build_artifact("banking_001", "GPT-4.1", 0, _sim_result(), tc, ts)
+        assert art["sim_meta"]["dual_control"] is False
+        assert art["sim_meta"]["user_actions_fired"] == 0
+        assert art["sim_meta"]["coordination_ok"] is None
+
     def test_no_state_block_when_state_omitted(self):
         tc = _consensus("task_completion", [_judge("Kimi", 0.8, "task_completion")])
         ts = _consensus("tool_selection", [_judge("Kimi", 0.7, "tool_selection")])

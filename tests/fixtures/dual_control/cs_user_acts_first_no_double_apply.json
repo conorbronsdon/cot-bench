@@ -1,0 +1,96 @@
+{
+  "id": "cs_adaptive_tool_use_0001_dual_control_user_first",
+  "category": "adaptive_tool_use",
+  "schema_version": "0.2",
+  "_fixture_note": "DEMO DUAL-CONTROL FIXTURE (issue #58). Customer-success scenario where the USER updates their OWN contact email early in the conversation, via their own user_tool (update_my_contact_info), BEFORE the agent gets to it. The agent must recognize the change already happened and NOT re-apply it (no double-apply). The expected end state plus the attribution contract — the agent must never write the user-owned 'contact' key — together encode correct coordination. NOT part of the evaluated corpus — lives in tests/fixtures, never in data/scenarios. Demonstrates the dual-control MECHANISM only.",
+  "authorship": {
+    "author_model": "human-handwritten",
+    "human_reviewed_by": "Conor Bronsdon"
+  },
+  "persona": {
+    "name": "Derek Thompson",
+    "age": 28,
+    "occupation": "Junior account manager at a marketing agency",
+    "personality_traits": ["enthusiastic", "proactive", "friendly"],
+    "tone": "casual and chatty",
+    "detail_level": "verbose",
+    "background": "New to the account manager role. Comfortable self-serving in the product UI while also talking to support."
+  },
+  "user_goals": [
+    "Get his account's renewal date confirmed",
+    "Make sure the contact email on the account is his new work address",
+    "Ask the agent to open a support ticket to enable SSO for his team"
+  ],
+  "tools": [
+    {
+      "name": "get_account_details",
+      "description": "Retrieve a customer account's plan, renewal date, and primary contact",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true}
+      ]
+    },
+    {
+      "name": "update_contact_email",
+      "description": "Update the primary contact email on a customer account (agent-side)",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "email", "type": "string", "description": "New primary contact email", "required": true}
+      ]
+    },
+    {
+      "name": "open_support_ticket",
+      "description": "Open a support ticket for a customer request",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
+        {"name": "subject", "type": "string", "description": "Ticket subject", "required": true},
+        {"name": "body", "type": "string", "description": "Ticket details", "required": true}
+      ]
+    }
+  ],
+  "initial_message": "Hey! Couple of quick things on my account — let me also poke around in settings while we talk.",
+  "difficulty": "hard",
+  "ground_truth": {
+    "account": {
+      "account_id": "ACCT-6620",
+      "company": "Brightline Marketing",
+      "contact_name": "Derek Thompson",
+      "plan": "Growth",
+      "renewal_date": "2026-08-15"
+    },
+    "contact": {
+      "email": "derek.old@brightline.example"
+    },
+    "tickets": []
+  },
+  "expected_state_changes": [
+    {"assert": "contact.email", "op": "equals", "value": "derek.new@brightline.example",
+     "goal": "Make sure the contact email on the account is his new work address"},
+    {"assert": "tickets", "op": "contains",
+     "match": {"account_id": "ACCT-6620", "subject_contains": "SSO"},
+     "goal": "Ask the agent to open a support ticket to enable SSO for his team"}
+  ],
+  "dual_control": {
+    "user_tools": [
+      {
+        "name": "update_my_contact_info",
+        "description": "Customer-side self-service: the user updates their own contact email in the product settings UI.",
+        "parameters": [
+          {"name": "email", "type": "string", "description": "New contact email", "required": true}
+        ],
+        "scope": ["contact"]
+      }
+    ],
+    "user_actions": [
+      {
+        "tool": "update_my_contact_info",
+        "trigger": "after_turn",
+        "trigger_value": 2,
+        "arguments": {"email": "derek.new@brightline.example"},
+        "state_delta": {
+          "contact.email": "derek.new@brightline.example"
+        },
+        "user_message": "Oh — never mind on the email, I just changed it myself in settings to derek.new@brightline.example. So you don't need to touch that. Can you still do the SSO ticket though?"
+      }
+    ]
+  }
+}
