@@ -711,6 +711,8 @@ class TestEndToEndOffline:
             "ended_by",
             "state_progress_at_end",
             "premature_end",
+            "failure_mode",
+            "failure_mode_source",
             "tc_n_judges",
             "ts_n_judges",
             "tc_parse_failures",
@@ -805,6 +807,33 @@ class TestEndToEndOffline:
                 "means must differ for this check to mean anything"
             )
             assert abs(m["efficacy"] - expected) < 1e-9
+
+    def test_failure_modes_and_macro_published(self):
+        # Failure taxonomy (#55), end to end. Every PUBLIC run here fails (the
+        # judge fakes + partial state land efficacy below 0.7) with the user sim
+        # quitting before the state check passed -> the deterministic premature
+        # flag classifies them all, ahead of any keyword matching. The holdout
+        # dummies PASS (state 1.0) -> no failure mode.
+        df = self.df
+        public = df[~df["holdout"]]
+        assert (public["failure_mode"] == "premature-end").all()
+        assert (public["failure_mode_source"] == "premature-flag").all()
+        assert df[df["holdout"]]["failure_mode"].isna().all()
+
+        # Published profiles count PUBLIC rows only (2 scenarios * 2 runs = 4),
+        # pinning the holdout exclusion the same way the micro efficacy is.
+        for m in self.leaderboard["models"]:
+            profile = m["failure_profile"]
+            assert profile["n_rows"] == 4
+            assert profile["n_failures"] == 4
+            assert profile["modes"]["premature-end"]["count"] == 4
+            # Macro efficacy published with a CI alongside the micro headline.
+            assert m["efficacy_macro_category"] is not None
+            assert m["efficacy_macro_domain"] is not None
+            lo, hi = m["efficacy_macro_category_ci"]
+            assert lo is not None and hi is not None
+        assert self.leaderboard["failure_taxonomy"]["modes"]
+        assert self.leaderboard["categories"] == ["adaptive_tool_use"]
 
     def test_judge_deltas_cover_every_judge(self):
         lb = self.leaderboard

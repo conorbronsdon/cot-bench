@@ -26,6 +26,14 @@ consistent per replicate and propagates normalization variance into the CLEAR
 interval. Pairing on the scenario set is also what makes model-versus-model
 difference intervals valid, which is what ``is A really better than B'' requires.
 
+\paragraph{Macro-averaged scores.} The headline efficacy is the micro average
+over scenarios, which lets a frequent-easy scenario category drown a rare-hard
+one. The board therefore also publishes macro-averaged efficacy — the unweighted
+mean of per-category (and per-domain) means — alongside the micro value. Its
+interval comes from a category-stratified variant of the same paired bootstrap
+(scenarios resampled with replacement \emph{within} each category, then category
+means averaged), with the same $B$, seed, and run-collapsing conventions.
+
 \subsection{Rank bands}
 
 Orderings are only meaningful where intervals separate. Models are clustered into

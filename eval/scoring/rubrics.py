@@ -291,8 +291,10 @@ Rules:
 # Not judge-based — computed from repeated runs.
 
 # A run "passes" when its efficacy reaches this threshold. Single source of the
-# pass definition: reliability (pass@k / pass^k) and the persona-stratified
-# profile pass rates (scripts/aggregate_results.py, issue #59) both use it, so
+# pass definition repo-wide: reliability (pass@k / pass^k), the
+# persona-stratified profile pass rates (scripts/aggregate_results.py, issue
+# #59), and the failure-mode taxonomy (eval/scoring/failure_modes.py, issue
+# #55 — it classifies exactly the runs that land below it) all use it, so
 # "pass" means the same thing everywhere it is published.
 PASS_THRESHOLD = 0.7
 

@@ -15,6 +15,7 @@ import pandas as pd
 from eval.config import MIN_SCENARIOS_FOR_PUBLISH
 from eval.providers.null_agent import NULL_AGENT_NAME
 from eval.scoring.agreement import krippendorff_alpha
+from eval.scoring.failure_modes import FAILURE_MODES
 from eval.scoring.rubrics import PASS_THRESHOLD
 from eval.simulation.profiles import DEFAULT_SIM_PROFILE
 
@@ -288,6 +289,117 @@ def _percentile_ci(samples: np.ndarray) -> list:
     lo = float(np.percentile(clean, CI_LOW_PCT))
     hi = float(np.percentile(clean, CI_HIGH_PCT))
     return [round(lo, 4), round(hi, 4)]
+
+
+def compute_macro_efficacy(df: pd.DataFrame, group_col: str) -> dict:
+    """Per-model MACRO-averaged efficacy over ``group_col`` (issue #55).
+
+    Macro = the unweighted mean over groups of each group's mean efficacy, so
+    every category (or domain) counts equally regardless of how many scenarios
+    it has — frequent-easy scenario clusters cannot drown rare-hard ones. The
+    existing headline ``efficacy`` is the MICRO average (mean over all rows);
+    both are published. Mirrors the micro convention: the group mean is the mean
+    over that group's rows, and groups a model has no rows in are simply absent
+    from its macro mean. Returns ``{model: macro}``; empty when the grouping
+    column is missing (legacy parquets without a ``category`` column).
+    """
+    if df.empty or group_col not in df.columns:
+        return {}
+    per_group = df.groupby(["model", group_col])["efficacy"].mean()
+    macro = per_group.groupby(level="model").mean()
+    return {str(m): round(float(v), 4) for m, v in macro.items()}
+
+
+def compute_macro_bootstrap_cis(df: pd.DataFrame, models: list[str], group_col: str) -> dict:
+    """Stratified paired bootstrap CIs for macro-averaged efficacy (issue #55).
+
+    The micro bootstrap (``compute_bootstrap_cis``) resamples scenarios
+    UNIFORMLY, which is the right uncertainty for a mean over scenarios — but
+    the macro statistic is a mean of per-GROUP means, so its resampling must
+    preserve the group structure. Each replicate resamples scenarios WITHIN each
+    group (with replacement, group size preserved), recomputes every group's
+    mean, and averages the group means — a bootstrap of category means. As with
+    the micro CIs, the same within-group draw is applied to every model (paired),
+    runs are collapsed to scenario means first (runs of a scenario are
+    correlated), B and the seed match the micro bootstrap (B=2000, seed 42), and
+    a fresh seeded generator keeps the micro CIs byte-identical to before.
+
+    Edge cases: a single-scenario group always resamples to itself (it
+    contributes its own mean with zero spread — correct, not a crash); a model
+    with no rows in a group nan-skips that group, matching the point estimate.
+    Returns ``{model: [lo, hi]}``; empty when ``group_col`` is missing.
+    """
+    if df.empty or group_col not in df.columns or not models:
+        return {}
+    col = df[group_col].astype(str)
+    groups = sorted(col.dropna().unique())
+    if not groups:
+        return {}
+
+    rng = np.random.default_rng(BOOTSTRAP_SEED)
+
+    # Per group: (n_models, n_scenarios_in_group) matrix of per-scenario mean
+    # efficacy (runs collapsed), NaN where a model lacks that scenario.
+    group_mats: list[np.ndarray] = []
+    for group in groups:
+        gdf = df[col == group]
+        scenario_ids = gdf["scenario_id"].unique()
+        per_model = []
+        for model in models:
+            mdf = gdf[gdf["model"] == model]
+            per_scenario = mdf.groupby("scenario_id")["efficacy"].mean().reindex(scenario_ids)
+            per_model.append(per_scenario.to_numpy(dtype=float))
+        group_mats.append(np.vstack(per_model))
+
+    samples = np.empty((BOOTSTRAP_REPLICATES, len(models)))
+    for b in range(BOOTSTRAP_REPLICATES):
+        group_means = np.empty((len(groups), len(models)))
+        for gi, mat in enumerate(group_mats):
+            n = mat.shape[1]
+            idx = rng.integers(0, n, size=n)  # same within-group draw for all models
+            with np.errstate(invalid="ignore"):
+                group_means[gi] = np.nanmean(mat[:, idx], axis=1)
+        with np.errstate(invalid="ignore"):
+            samples[b] = np.nanmean(group_means, axis=0)
+
+    return {model: _percentile_ci(samples[:, j]) for j, model in enumerate(models)}
+
+
+def compute_failure_profiles(df: pd.DataFrame) -> dict:
+    """Per-model failure-mode profiles — counts and rates (issue #55).
+
+    Aggregates the per-row ``failure_mode`` column (written by
+    ``build_result_row``; null for passed runs) into the diagnostic
+    practitioners actually use: how often, and in which of the six taxonomy
+    modes, each model fails. Rates are per evaluated row, so an all-pass model
+    publishes an explicit all-zeros profile rather than disappearing. The full
+    mode vocabulary is always present (zero counts included) for a stable
+    schema; an out-of-vocabulary mode string (future taxonomy growth) is
+    appended rather than silently dropped, so counts always sum to n_failures.
+    Returns ``{}`` for legacy parquets without the column — the caller publishes
+    null per model. The caller passes the PUBLIC, null-agent-stripped frame, so
+    holdout rows and non-contestants never reach a published profile.
+    """
+    if df.empty or "failure_mode" not in df.columns:
+        return {}
+    out: dict[str, dict] = {}
+    for model in df["model"].unique():
+        mdf = df[df["model"] == model]
+        n_rows = int(len(mdf))
+        failed = mdf["failure_mode"].dropna().astype(str)
+        counts = failed.value_counts().to_dict()
+        n_failures = int(failed.size)
+        modes = {}
+        for mode in [*FAILURE_MODES, *sorted(set(counts) - set(FAILURE_MODES))]:
+            count = int(counts.get(mode, 0))
+            modes[mode] = {"count": count, "rate": round(count / n_rows, 4)}
+        out[str(model)] = {
+            "n_rows": n_rows,
+            "n_failures": n_failures,
+            "failure_rate": round(n_failures / n_rows, 4),
+            "modes": modes,
+        }
+    return out
 
 
 def assign_rank_bands(models: list[dict]) -> None:
@@ -803,6 +915,36 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
         )
         domain_scores[domain] = domain_agg.to_dict("records")
 
+    # Per-category breakdown (issue #55) — the micro view of the macro grouping,
+    # so a reader can see WHICH category drags a model's macro score. Efficacy +
+    # scenario depth only (cost/latency are not category-shaped questions).
+    category_scores: dict[str, list] = {}
+    if "category" in df.columns:
+        for category in df["category"].dropna().unique():
+            cat_df = df[df["category"] == category]
+            cat_agg = (
+                cat_df.groupby("model")
+                .agg(
+                    efficacy=("efficacy", "mean"),
+                    n_scenarios=("scenario_id", "nunique"),
+                )
+                .reset_index()
+                .sort_values("efficacy", ascending=False)
+            )
+            category_scores[str(category)] = cat_agg.to_dict("records")
+
+    # Macro-averaged efficacy + stratified bootstrap CIs (issue #55): every
+    # category (and domain) weighted equally, published ALONGSIDE the micro
+    # headline. Empty dicts on legacy parquets without the grouping column.
+    macro_category = compute_macro_efficacy(df, "category")
+    macro_domain = compute_macro_efficacy(df, "domain")
+    macro_category_cis = compute_macro_bootstrap_cis(df, model_order, "category")
+    macro_domain_cis = compute_macro_bootstrap_cis(df, model_order, "domain")
+
+    # Per-model failure-mode profiles (issue #55), over the PUBLIC corpus only
+    # (df has holdout rows + non-contestants stripped above).
+    failure_profiles = compute_failure_profiles(df)
+
     # Per-judge scores (transparency). Exclude the consensus accounting columns
     # (agreement, disagreement, validity counts, failure counts, degraded flags)
     # — those share the tc_/ts_ prefix but are not per-judge score columns.
@@ -850,6 +992,24 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
         "models": [],
         "domains": list(df["domain"].unique()),
         "domain_scores": domain_scores,
+        # Scenario categories present in this run (issue #55), with the per-
+        # category micro breakdown backing the macro-averaged scores. Empty on
+        # legacy parquets without a category column.
+        "categories": sorted(category_scores),
+        "category_scores": category_scores,
+        # Failure-mode taxonomy header (issue #55): the fixed mode vocabulary +
+        # how rows were classified. Per-model profiles live in each model entry.
+        "failure_taxonomy": {
+            "modes": list(FAILURE_MODES),
+            "note": (
+                "Failed evaluations (efficacy below the "
+                f"{PASS_THRESHOLD} pass threshold) are classified "
+                "deterministic-first: state-grader evidence and the premature-end "
+                "instrumentation (#32) take precedence over judge-reasoning "
+                "keyword matching; no additional LLM calls. Per-model counts and "
+                "rates are in each entry's failure_profile."
+            ),
+        },
         "judge_scores": judge_scores,
         "judge_alpha": judge_alpha,
         "length_bias": length_bias,
@@ -880,6 +1040,15 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
             "clear_score_ci": cis.get("clear_score_ci", [None, None]),
             "efficacy": round(row["efficacy"], 4),
             "efficacy_ci": cis.get("efficacy_ci", [None, None]),
+            # Macro-averaged efficacy (issue #55): unweighted mean of per-
+            # category (per-domain) means, published alongside the micro
+            # ``efficacy`` above so frequent-easy scenario clusters cannot drown
+            # rare-hard ones. CIs come from the category-stratified bootstrap
+            # (same B/seed). None/[None, None] on legacy data without the column.
+            "efficacy_macro_category": macro_category.get(row["model"]),
+            "efficacy_macro_category_ci": macro_category_cis.get(row["model"], [None, None]),
+            "efficacy_macro_domain": macro_domain.get(row["model"]),
+            "efficacy_macro_domain_ci": macro_domain_cis.get(row["model"], [None, None]),
             "task_completion": round(row["task_completion"], 4),
             "tool_selection": round(row["tool_selection"], 4),
             "state_score": _round_or_none(row.get("state_score"), 4),
@@ -895,6 +1064,10 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
             # sim ended before the deterministic state check passed. None for
             # legacy parquets that predate the column.
             "premature_end_rate": _round_or_none(row.get("premature_end_rate"), 4),
+            # Failure-mode profile (issue #55): per-mode counts + rates over this
+            # model's PUBLIC rows. An all-pass model gets an explicit all-zeros
+            # profile; None only for legacy parquets without the column.
+            "failure_profile": failure_profiles.get(row["model"]),
             "cost_per_task_usd": round(row["cost_per_task"], 6),
             "avg_latency_ms": round(row["avg_latency_ms"], 1),
             "reliability": round(row["reliability"], 4),
@@ -936,7 +1109,9 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
         f"Scores are means over {max_scenarios} scenario(s) with 95% bootstrap "
         f"confidence intervals (B={BOOTSTRAP_REPLICATES} resamples over scenarios, "
         f"seed {BOOTSTRAP_SEED}). Models sharing a rank band have overlapping CLEAR "
-        "intervals; their ordering within a band is not statistically distinguishable."
+        "intervals; their ordering within a band is not statistically distinguishable. "
+        "Macro-averaged efficacy weights each scenario category (or domain) equally; "
+        "its CI uses a category-stratified scenario bootstrap with the same B and seed."
     )
     if max_scenarios < MIN_SCENARIOS_FOR_PUBLISH:
         note += (

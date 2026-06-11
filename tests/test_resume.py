@@ -304,3 +304,29 @@ def test_reconstructed_rows_price_by_requested_model_id(tmp_path):
     expected = 100 * costs["input"] / 1_000_000 + 50 * costs["output"] / 1_000_000
     assert expected > 0, "roster head model must have nonzero pricing for this test"
     assert abs(rows[0]["cost_usd"] - expected) < 1e-12
+
+
+def test_reconstructed_rows_classify_failure_modes(tmp_path):
+    """Resume-path parity for the failure taxonomy (issue #55): reconstructed
+    rows go through the same build_result_row, so a failed artifact (judges low,
+    reasoning text persisted) classifies exactly like the live path — and a
+    passing artifact stays unclassified.
+    """
+    from eval.config import MODELS_UNDER_TEST
+    from eval.resume import rows_from_artifacts
+
+    name = MODELS_UNDER_TEST[0]["name"]
+    run_id = "results_test"
+    # Passing artifact (judges 0.8, state 1.0 -> efficacy >= 0.7).
+    _write_artifact(tmp_path, run_id, name, "banking_x_0000_aaaa1111", 0, efficacy_judges=0.8)
+    # Failing artifact: judges 0.2 with the default state 1.0 -> efficacy 0.44.
+    # Its persisted reasoning ("r") has no keywords -> incomplete-task fallback.
+    _write_artifact(tmp_path, run_id, name, "banking_x_0001_aaaa1111", 0, efficacy_judges=0.2)
+
+    rows = {r["scenario_id"]: r for r in rows_from_artifacts(tmp_path, run_id, [name])}
+    passed = rows["banking_x_0000_aaaa1111"]
+    failed = rows["banking_x_0001_aaaa1111"]
+    assert passed["failure_mode"] is None
+    assert passed["failure_mode_source"] is None
+    assert failed["failure_mode"] == "incomplete-task"
+    assert failed["failure_mode_source"] == "fallback"

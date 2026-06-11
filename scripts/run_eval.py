@@ -43,6 +43,7 @@ from eval.resume import (
     rows_from_artifacts,
     verify_corpus_unchanged,
 )
+from eval.scoring.failure_modes import classify_failure, judge_reasoning_text
 from eval.scoring.judge import score_with_all_judges, score_with_all_judges_combined
 from eval.scoring.rubrics import (
     COMBINED_RUBRIC,
@@ -211,6 +212,18 @@ def build_result_row(
     state_score = None if state_result is None else round(state_result["score"], 4)
     state_checks_passed = None if state_result is None else state_result["n_passed"]
     state_checks_total = None if state_result is None else state_result["n_total"]
+    # Failure-mode taxonomy (issue #55): classify failed evaluations from signals
+    # already on this row — deterministic state-grader / premature-end (#32)
+    # evidence first, judge-reasoning keywords as assist, never a new LLM call.
+    # Computed HERE (not at aggregation) so the resume path, which replays
+    # artifacts through this same builder, classifies identically — the judge
+    # reasoning lives in the consensus objects, not in the parquet.
+    failure = classify_failure(
+        efficacy,
+        state_result=state_result,
+        premature_end=bool(getattr(sim_result, "premature_end", False)),
+        judge_reasoning=judge_reasoning_text(tc_result, ts_result),
+    )
     return {
         "scenario_id": scenario.id,
         "domain": scenario.domain.value,
@@ -243,6 +256,12 @@ def build_result_row(
         "ended_by": getattr(sim_result, "ended_by", "max_turns"),
         "state_progress_at_end": getattr(sim_result, "state_progress_at_end", None),
         "premature_end": bool(getattr(sim_result, "premature_end", False)),
+        # Failure-mode taxonomy (issue #55). None when the run PASSED (efficacy
+        # at/above the reliability pass threshold). ``failure_mode_source``
+        # records the classification provenance (state-grader / premature-flag /
+        # judge-keyword / fallback) so published failure counts are auditable.
+        "failure_mode": None if failure is None else failure["mode"],
+        "failure_mode_source": None if failure is None else failure["source"],
         # Provider-reported model actually served (vs the pinned request id)
         "resolved_model": getattr(sim_result, "resolved_model", None),
         # Simulator model ids actually used this run (issue #50). Recorded on every
