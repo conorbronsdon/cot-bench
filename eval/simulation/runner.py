@@ -24,6 +24,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from eval.config import DEFAULT_SIMULATION, DOMAIN_CONFIGS, Domain, SimulationConfig
 from eval.providers.registry import ModelSpec, create_model
 from eval.scoring.state_check import score_state_changes
+from eval.simulation.profiles import DEFAULT_SIM_PROFILE, profile_instructions
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +126,12 @@ class SimulationResult:
     # attributable. Filled from the runner's SimulationConfig.
     user_sim_model: str | None = None
     tool_sim_model: str | None = None
+    # Behavioral user-sim profile active for this run (issue #59 part 1) —
+    # "cooperative" (the unchanged default), "impatient", "technically-confused",
+    # or "adversarial". Stamped per row/artifact so persona-stratified pass rates
+    # are computable and non-cooperative rows can be excluded from the public
+    # leaderboard aggregates. Filled from the runner's SimulationConfig.
+    sim_profile: str = DEFAULT_SIM_PROFILE
 
 
 @dataclass
@@ -299,6 +306,12 @@ class SimulationRunner:
 
     def __init__(self, config: SimulationConfig | None = None):
         self.config = config or DEFAULT_SIMULATION
+
+        # Validate the behavioral profile up front (issue #59): an unknown name
+        # raises here, before any simulator client is built or paid call made,
+        # rather than silently running cooperative while stamping a profile that
+        # never applied.
+        profile_instructions(self.config.user_sim_profile)
 
         # User simulator — generates realistic user turns. Provider comes from the
         # config (default "openai") so an override (issue #50) can route the sim to
@@ -478,6 +491,7 @@ class SimulationRunner:
                         sim_output_tokens=self._sim_output_tokens,
                         user_sim_model=self.config.user_simulator_model,
                         tool_sim_model=self.config.tool_simulator_model,
+                        sim_profile=self.config.user_sim_profile,
                     )
                 agent_latency = (time.perf_counter() - start) * 1000
                 total_latency_ms += agent_latency
@@ -635,6 +649,7 @@ class SimulationRunner:
             sim_output_tokens=self._sim_output_tokens,
             user_sim_model=self.config.user_simulator_model,
             tool_sim_model=self.config.tool_simulator_model,
+            sim_profile=self.config.user_sim_profile,
         )
 
     def _extract_tool_calls(self, response, content: str, turn: int) -> tuple[list[ToolCall], bool]:
@@ -882,6 +897,16 @@ class SimulationRunner:
             "incomplete or unsatisfactory\n"
             "- Keep responses concise (1-3 sentences typically)\n"
         )
+
+        # Behavioral profile block (issue #59 part 1). The cooperative default
+        # maps to None and appends NOTHING — the prompt above stays byte-identical
+        # to pre-profile behavior (pinned by a snapshot test). Non-cooperative
+        # profiles layer a behavior block on top of the same persona/goals/facts;
+        # {complete_token} lets a profile reference the end-of-conversation
+        # signal without profiles.py importing this module.
+        profile_block = profile_instructions(self.config.user_sim_profile)
+        if profile_block is not None:
+            prompt += "\n" + profile_block.format(complete_token=CONVERSATION_COMPLETE) + "\n"
 
         response = self._user_sim.invoke([HumanMessage(content=prompt)])
         self._accumulate_sim_tokens(response)

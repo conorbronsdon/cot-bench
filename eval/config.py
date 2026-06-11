@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from enum import Enum
 
+from eval.simulation.profiles import DEFAULT_SIM_PROFILE
+
 
 class Domain(str, Enum):
     BANKING = "banking"
@@ -39,6 +41,12 @@ class SimulationConfig:
     simulator's provider defaults to ``openai`` but is resolved from the model id
     when overridden (e.g. a Claude user-sim resolves to ``anthropic``), so an
     override is provider-routed through the existing registry.
+
+    ``user_sim_profile`` (issue #59 part 1) names the behavioral profile of the
+    USER simulator — ``run_eval --sim-profile`` overrides it per run. The default
+    (``cooperative``) appends nothing to the user-sim prompt, so a run that never
+    passes the flag is byte-identical to pre-profile behavior. Profiles live in
+    ``eval/simulation/profiles.py`` (the single source of profile names + texts).
     """
 
     max_turns: int = 10
@@ -48,6 +56,7 @@ class SimulationConfig:
     tool_simulator_temperature: float = 0.0
     user_simulator_provider: str = "openai"
     tool_simulator_provider: str = "openai"
+    user_sim_profile: str = DEFAULT_SIM_PROFILE
 
 
 # --- Judge Panel ---

@@ -15,6 +15,8 @@ import pandas as pd
 from eval.config import MIN_SCENARIOS_FOR_PUBLISH
 from eval.providers.null_agent import NULL_AGENT_NAME
 from eval.scoring.agreement import krippendorff_alpha
+from eval.scoring.rubrics import PASS_THRESHOLD
+from eval.simulation.profiles import DEFAULT_SIM_PROFILE
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -43,6 +45,100 @@ def exclude_non_contestants(df: pd.DataFrame) -> pd.DataFrame:
             NULL_AGENT_NAME,
         )
     return df[keep]
+
+
+def _cooperative_mask(df: pd.DataFrame) -> pd.Series:
+    """Boolean mask of rows produced under the cooperative (default) sim profile.
+
+    A missing ``sim_profile`` column or a null cell means the row predates the
+    profile feature (issue #59) — those runs were all cooperative by
+    construction, so they count as cooperative rather than being dropped.
+    """
+    if "sim_profile" not in df.columns:
+        return pd.Series(True, index=df.index)
+    return df["sim_profile"].fillna(DEFAULT_SIM_PROFILE).astype(str) == DEFAULT_SIM_PROFILE
+
+
+def exclude_non_cooperative_profiles(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop rows produced under a non-cooperative user-sim profile (issue #59).
+
+    The public leaderboard measures every model against the SAME simulated user:
+    the cooperative default. Rows from the behavioral profiles (impatient /
+    technically-confused / adversarial) are a different, deliberately harder
+    condition — mixing them into the public aggregates would silently deflate
+    whichever models happened to be run under them. Like the null-agent and
+    holdout exclusions, this is enforced here at the single aggregation entry
+    point so a stratified run can never leak into public efficacy regardless of
+    how it was invoked. Non-cooperative rows are reported separately via
+    :func:`compute_sim_profile_pass_rates` (the robustness table).
+    """
+    if df.empty:
+        return df
+    keep = _cooperative_mask(df)
+    dropped = int((~keep).sum())
+    if dropped:
+        profiles = sorted(df.loc[~keep, "sim_profile"].astype(str).unique())
+        logger.info(
+            "Excluding %d row(s) from non-cooperative sim profile(s) %s from the "
+            "public leaderboard (issue #59; see the persona-stratified table).",
+            dropped,
+            profiles,
+        )
+    return df[keep]
+
+
+def compute_sim_profile_pass_rates(df: pd.DataFrame, threshold: float = PASS_THRESHOLD) -> dict:
+    """Per-profile pass rates per model — the persona-stratified robustness table.
+
+    Given result rows spanning one or more user-sim profiles (issue #59),
+    returns::
+
+        {model: {profile: {"pass_rate": .., "mean_efficacy": .., "n_rows": ..,
+                           "n_scenarios": ..,
+                           "delta_vs_cooperative": ..}}}
+
+    A row "passes" when its efficacy reaches ``threshold`` — the same pass
+    definition reliability uses (``eval.scoring.rubrics.PASS_THRESHOLD``), so
+    "pass rate" means the same thing here as on the leaderboard.
+    ``delta_vs_cooperative`` is ``cooperative_pass_rate - profile_pass_rate``
+    (positive = the model does worse under that behavioral profile — the
+    inflation the cooperative-only literature warns about); it is ``None`` on the
+    cooperative entry itself and when the model has no cooperative rows. Rows
+    with no ``sim_profile`` (legacy parquets) count as cooperative. Deterministic:
+    plain groupby means over the input rows, no resampling.
+
+    This is a reporting helper for the published robustness table; it is NOT part
+    of ``compute_leaderboard`` — non-cooperative rows never reach the public
+    aggregates (see :func:`exclude_non_cooperative_profiles`).
+    """
+    if df.empty or "model" not in df.columns or "efficacy" not in df.columns:
+        return {}
+    work = df.copy()
+    if "sim_profile" in work.columns:
+        work["sim_profile"] = work["sim_profile"].fillna(DEFAULT_SIM_PROFILE).astype(str)
+    else:
+        work["sim_profile"] = DEFAULT_SIM_PROFILE
+    work["_passed"] = work["efficacy"].astype(float) >= threshold
+
+    out: dict[str, dict] = {}
+    for (model, profile), grp in sorted(
+        work.groupby(["model", "sim_profile"]), key=lambda kv: (str(kv[0][0]), str(kv[0][1]))
+    ):
+        out.setdefault(str(model), {})[str(profile)] = {
+            "pass_rate": round(float(grp["_passed"].mean()), 4),
+            "mean_efficacy": round(float(grp["efficacy"].mean()), 4),
+            "n_rows": int(len(grp)),
+            "n_scenarios": int(grp["scenario_id"].nunique()) if "scenario_id" in grp else None,
+        }
+
+    for profiles in out.values():
+        coop = profiles.get(DEFAULT_SIM_PROFILE)
+        for profile, entry in profiles.items():
+            if profile == DEFAULT_SIM_PROFILE or coop is None:
+                entry["delta_vs_cooperative"] = None
+            else:
+                entry["delta_vs_cooperative"] = round(coop["pass_rate"] - entry["pass_rate"], 4)
+    return out
 
 
 # --- Bootstrap configuration ---
@@ -590,6 +686,15 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
     # aggregation so they never appear on the board or skew normalization.
     df = exclude_non_contestants(df)
     if df.empty:
+        return {"models": [], "updated": "", "domains": []}
+
+    # Strip rows from non-cooperative user-sim profiles (issue #59) before ANY
+    # aggregate — including the holdout gap below — so a behavioral-profile run
+    # can never move public efficacy. They are published separately via
+    # compute_sim_profile_pass_rates (the persona-stratified robustness table).
+    df = exclude_non_cooperative_profiles(df)
+    if df.empty:
+        # A run with only non-cooperative rows has no public leaderboard.
         return {"models": [], "updated": "", "domains": []}
 
     # Private-holdout split (issue #31). Compute the per-model gap from the full
