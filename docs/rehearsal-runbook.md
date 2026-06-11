@@ -96,8 +96,9 @@ is no env var to remember to unset for the subset passes.
 python -m scripts.preflight
 ```
 
-Expect every line `[PASS]` except `GOOGLE_API_KEY`, which reports as optional
-("not set" is fine for this rehearsal). Preflight validates OpenAI
+Expect every line `[PASS]` — including `GOOGLE_API_KEY`, which passes even
+when unset (its detail reads `not set (Optional key, ...)`; that is fine for
+this rehearsal, no Gemini model runs). Preflight validates OpenAI
 connectivity with a real API call, but only constructs a client for Anthropic
 and **does not test the OpenRouter key at all** — the smoke run below is the
 first real validation of `ANTHROPIC_API_KEY` and `OPENROUTER_API_KEY`.
@@ -206,7 +207,7 @@ edit scenarios mid-rehearsal). Two cautions:
   $50, not $50 again.
 - `--resume` is incompatible with `--no-artifacts` (the harness refuses).
 
-### Aggregate immediately — before steps 3 and 4
+### Aggregate and snapshot immediately — before steps 3 and 4
 
 `scripts/aggregate_results.py` always loads the **newest** `results_*.parquet`.
 The subset passes below write newer parquets, so build the leaderboard from the
@@ -219,6 +220,20 @@ python -m scripts.aggregate_results
 This writes `data/results/leaderboard.json`, `latest.csv`, and appends one line
 to `history.jsonl` — all local-only for this rehearsal (see DO-NOTs). Do not
 re-run aggregation after steps 3/4; it would aggregate the wrong parquet.
+
+**Keep this command's console output** (or scroll back to it later): the
+corpus-health diagnostics log any never-passed scenario IDs at INFO here and
+nowhere else — `leaderboard.json` carries counts only, by design (see 5g).
+
+Then snapshot the two governance files. `run_manifest.json` and
+`pre_registration.json` are **fixed paths, overwritten by every run** — the
+subset passes in steps 3 and 4 will clobber the main run's copies, and step 5
+needs the main run's:
+
+```powershell
+Copy-Item data\results\run_manifest.json data\results\run_manifest.main.json
+Copy-Item data\results\pre_registration.json data\results\pre_registration.main.json
+```
 
 ---
 
@@ -290,7 +305,12 @@ rehearsal; everything here runs cooperative by default.
 All from the **main run's** outputs unless noted. Work through in order; each
 item says what healthy looks like and what blocks the full leaderboard run.
 
-### 5a. Run manifest — `data/results/run_manifest.json`
+### 5a. Run manifest — `data/results/run_manifest.main.json`
+
+The step-2 snapshot — the live `run_manifest.json` was overwritten by the
+step-4 run. (If you skipped the snapshot, the live file now describes the
+sim-sensitivity subset: `holdout: null`, ~$2 cost — don't panic, just don't
+read it as the main run.)
 
 - `models_failed`: `[]`. Anything listed = that provider path is broken.
 - `cost.estimate_usd` vs `cost.actual_usd`: actual at or below estimate
@@ -302,10 +322,11 @@ item says what healthy looks like and what blocks the full leaderboard run.
   `env_freeze.txt` sits next to the manifest (automatic environment capture).
 - `sim_profile`: `cooperative`.
 
-### 5b. Pre-registration — `data/results/pre_registration.json`
+### 5b. Pre-registration — `data/results/pre_registration.main.json`
 
-Exists, timestamped **before** the first model call, public scenario set hashed
-with its index, `holdout_set` with hash + count only (no IDs, no content).
+The step-2 snapshot (same overwrite caveat as 5a). Exists, timestamped
+**before** the first model call, public scenario set hashed with its index,
+`holdout_set` with hash + count only (no IDs, no content).
 
 ### 5c. Results parquet — `data/results/<run_id>.parquet` (+ same-stem `.csv`)
 
@@ -365,7 +386,10 @@ result in the artifacts records both the criterion-informed `overall_score`
 (what counts) and the judge's holistic template score (`holistic_score`, what
 the score *would have been* pre-#54), plus per-criterion `criteria_verdicts`.
 Measure the halo delta per judge per dimension (positive = the holistic score
-was inflated relative to criterion-grounded grading):
+was inflated relative to criterion-grounded grading). One thing the artifacts
+do **not** carry: per-judge token counts — judge token usage is captured per
+call but only feeds the run's cost totals (the manifest `cost` block); the
+artifact's judge entries record scores/reasoning/verdicts/raw response only:
 
 ```powershell
 python -c "import json, glob, collections, statistics; deltas=collections.defaultdict(list); files=glob.glob('data/results/artifacts/MAIN_RUN_ID/*/*.json'); [deltas[(j['judge_name'],dim)].append(j['holistic_score']-j['overall_score']) for f in files for dim in ('task_completion','tool_selection') for j in json.load(open(f,encoding='utf-8'))['judges'][dim] if j.get('criterion_informed') and j.get('holistic_score') is not None and not j.get('parse_failed')]; [print('%-18s %-16s n=%-4d mean=%+.4f stdev=%.4f' % (k[0], k[1], len(v), statistics.mean(v), statistics.pstdev(v))) for k,v in sorted(deltas.items())]"
@@ -387,21 +411,23 @@ the per-judge halo delta in the rehearsal notes.
 
 `data/results/traces/<run_id>/spans.jsonl` exists and is non-trivial.
 
-### 5g. Corpus-health / never-passed diagnostics — only if PR #72 has merged
+### 5g. Corpus health + consistency bands (PR #72, merged)
 
-As of this runbook's commit, PR #72 ("Leaderboard: consistency bands +
-corpus-health stats", #71) is **open, not merged** — the main-run
-`leaderboard.json` will not contain these fields. Check before the rehearsal:
+Two more things in the step-2 `leaderboard.json`:
 
-```powershell
-gh pr view 72 --repo conorbronsdon/cot-bench --json state,mergedAt
-```
-
-If it merged and you pulled master before running: also inspect the
-corpus-health block it adds to `leaderboard.json` (per-scenario consistency /
-never-passed diagnostics) — a scenario that **no** run ever passed is either
-genuinely hard or broken; read its transcript and flag it for corpus review
-before the full run.
+- `corpus_health` (top level): pass-distribution **counts + headline only**
+  (`total_scenarios`, `passed_at_least_once`, `never_passed`,
+  `passed_by_every_model`) — deliberately no scenario IDs in the JSON. The
+  never-passed scenario IDs were logged at INFO by the step-2
+  `aggregate_results` console output (and only there); a scenario that **no**
+  run ever passed is either genuinely hard or broken — read its transcript and
+  flag it for corpus review before the full run. With a single mid-tier
+  contestant, expect a non-trivial `never_passed` count; it reads differently
+  on a full-roster run.
+- `models[0].consistency_band`: `solid_rate` (passed in every run) ≤
+  `avg_pass_rate` ≤ `best_of_rate` (passed in at least one run), over the 3
+  reliability runs. A wide solid-to-best-of spread is the same high
+  run-to-run variance signal as a `reliability_pass_hat_k` cliff.
 
 ---
 
@@ -411,9 +437,14 @@ before the full run.
   committing `data/results/leaderboard.json`, `latest.csv`, or `history.jsonl`
   (they are deliberately un-gitignored because the weekly workflow commits
   them — after the rehearsal they will show as uncommitted changes/untracked
-  files; leave them that way). The publish gate would block this non-default
-  config anyway (single model, and `--max-cost` runs aren't leaderboard runs);
-  the rehearsal does not get near it.
+  files, as will the manifest/pre-registration files and the `.main.json`
+  snapshots; leave them all that way). **Do not assume the publish gate has
+  your back here:** a clean rehearsal main run *passes* every gate condition
+  (the gate checks failed models, per-domain scenario minimum, full judge
+  panel, default reliability runs, cooperative profile — it has no
+  single-model or `--max-cost` check, and one model over the full corpus with
+  the default panel and 3 runs trips none of them). The only thing keeping
+  this rehearsal off the public board is you not running the publish steps.
 - **Do not trigger GitHub Actions.** No `gh workflow run weekly-eval.yml`, no
   enabling schedules. The rehearsal is local-only.
 - **Never put keys in files that commit.** Keys live in `.env` (gitignored)
