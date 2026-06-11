@@ -586,6 +586,126 @@ def compute_length_bias(df: pd.DataFrame) -> dict:
     return out
 
 
+def compute_consistency_bands(df: pd.DataFrame, threshold: float = PASS_THRESHOLD) -> dict:
+    """Per-model solid / average / best-of consistency band (issue #71).
+
+    WolfBench-style distribution-first presentation, derived entirely from the
+    reliability repeats already in the parquet — no new data:
+
+      * ``solid_rate`` — fraction of scenarios passed in EVERY run. This is
+        exactly the tau-bench pass^k estimator at k = n (``C(c, n) / C(n, n)``
+        is 1 iff c == n — see :func:`eval.scoring.rubrics.compute_pass_hat_k`),
+        recomputed from the per-row efficacies so it stays correct even when
+        run counts differ across scenarios (e.g. resume merges).
+      * ``avg_pass_rate`` — mean over scenarios of the per-scenario pass
+        fraction (pass^1 averaged over scenarios).
+      * ``best_of_rate`` — fraction of scenarios passed in at least ONE run
+        (pass@n).
+
+    ``solid_rate <= avg_pass_rate <= best_of_rate`` by construction. A row
+    "passes" at the same ``PASS_THRESHOLD`` every other published pass stat
+    uses. Returns ``{}`` — and the leaderboard then OMITS the key entirely
+    rather than publishing null/empty garbage — when the frame lacks the
+    needed columns or contains no repeated runs (a single-run parquet has no
+    consistency distribution: all three numbers would collapse to the same
+    pass rate). The caller passes the PUBLIC, cooperative, non-null-agent
+    frame, so holdout rows, behavioral-profile rows, and the null agent can
+    never reach a published band.
+    """
+    needed = {"model", "scenario_id", "efficacy"}
+    if df.empty or not needed <= set(df.columns):
+        return {}
+    runs_per = df.groupby(["model", "scenario_id"]).size()
+    if int(runs_per.max()) < 2:
+        # No reliability repeats anywhere -> no distribution to publish.
+        return {}
+    passed = df["efficacy"].astype(float) >= threshold
+    per_scenario = (
+        passed.groupby([df["model"], df["scenario_id"]]).agg(["all", "any", "mean"]).astype(float)
+    )
+    out: dict[str, dict] = {}
+    for model, grp in per_scenario.groupby(level="model"):
+        out[str(model)] = {
+            "solid_rate": round(float(grp["all"].mean()), 4),
+            "avg_pass_rate": round(float(grp["mean"].mean()), 4),
+            "best_of_rate": round(float(grp["any"].mean()), 4),
+            "n_scenarios": int(len(grp)),
+            "n_runs": int(runs_per.loc[model].max()),
+        }
+    return out
+
+
+def compute_corpus_health(df: pd.DataFrame, threshold: float = PASS_THRESHOLD) -> dict | None:
+    """Corpus-level pass-distribution stats over the PUBLIC corpus (issue #71).
+
+    WolfBench-style difficulty calibration / broken-task detection: scenarios
+    never passed by ANY model in any run are possible defects (route to expert
+    review); scenarios passed at least once by EVERY model carry no
+    discriminative signal (hard-tier replacement candidates). "Passed by every
+    model" means every model on the board passed the scenario in at least one
+    of its runs — a scenario some model never attempted does not qualify.
+
+    The published block carries COUNTS plus the headline string only — no
+    scenario ids. Never-passed scenario ids are logged at INFO for maintainer
+    eyes; the caller feeds the public-only frame (so even the log is id-safe),
+    and keeping the JSON count-only means the holdout tripwire (no holdout
+    scenario id ever in leaderboard.json) holds by construction.
+
+    Returns ``None`` when the needed columns are missing — the leaderboard key
+    is then absent, not null.
+    """
+    needed = {"model", "scenario_id", "efficacy"}
+    if df.empty or not needed <= set(df.columns):
+        return None
+    passed = df["efficacy"].astype(float) >= threshold
+    n_models = int(df["model"].nunique())
+
+    # Scenario -> passed at least once by ANY model/run.
+    by_scenario = passed.groupby(df["scenario_id"]).any()
+    total = int(by_scenario.size)
+    passed_at_least_once = int(by_scenario.sum())
+    never_passed_ids = sorted(str(s) for s in by_scenario.index[~by_scenario])
+
+    # Scenario -> how many distinct models passed it at least once. Comparing
+    # against the FULL model count means a model that never attempted the
+    # scenario correctly disqualifies it from "passed by every model".
+    models_passing = (
+        passed.groupby([df["scenario_id"], df["model"]]).any().groupby(level="scenario_id").sum()
+    )
+    passed_by_every_model = int((models_passing == n_models).sum())
+
+    if never_passed_ids:
+        logger.info(
+            "Corpus health: %d scenario(s) never passed by any model "
+            "(possible defects — route to expert review): %s",
+            len(never_passed_ids),
+            ", ".join(never_passed_ids),
+        )
+
+    headline = (
+        f"{passed_at_least_once} of {total} scenarios passed at least once; "
+        f"{passed_by_every_model} passed by every model"
+    )
+    return {
+        "total_scenarios": total,
+        "passed_at_least_once": passed_at_least_once,
+        "never_passed": total - passed_at_least_once,
+        "passed_by_every_model": passed_by_every_model,
+        "n_models": n_models,
+        "pass_threshold": threshold,
+        "headline": headline,
+        "note": (
+            "Pass distribution over the public corpus (issue #71). A run passes "
+            f"at efficacy >= {threshold}; a scenario counts as passed when any "
+            "run of any model passes it. never_passed scenarios are possible "
+            "defects (expert review); passed_by_every_model scenarios carry no "
+            "discriminative signal (hard-tier replacement candidates). Counts "
+            "only — scenario ids are logged for maintainers, never published. "
+            "Holdout, null-agent, and non-cooperative rows are excluded."
+        ),
+    }
+
+
 def compute_pass_hat_k_by_model(df: pd.DataFrame) -> dict:
     """Per-model pass^k (tau-bench) means, keyed by model name.
 
@@ -995,6 +1115,14 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
     # one entry per k. Published alongside pass@3 (reliability) and consistency.
     pass_hat_k = compute_pass_hat_k_by_model(df)
 
+    # Consistency bands + corpus health (issue #71, WolfBench learnings). Both
+    # are computed HERE — after the null-agent, non-cooperative, and holdout
+    # strips above — so they see PUBLIC, cooperative, contestant rows only.
+    # Empty/None when the parquet lacks the data (e.g. a single-run parquet has
+    # no consistency distribution); the keys are then omitted entirely.
+    consistency_bands = compute_consistency_bands(df)
+    corpus_health = compute_corpus_health(df)
+
     # Length-bias check: OLS of judge scores on agent output length, so verbosity
     # bias is a measured slope rather than an assumption.
     length_bias = compute_length_bias(df)
@@ -1055,6 +1183,12 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
     # included non-cooperative rows, so a normal cooperative leaderboard ships no
     # empty/misleading surface (mirrors the holdout "present" pattern). No profile
     # name ever appears unless a stratified run actually produced those rows.
+    # Corpus-health block (issue #71): pass-distribution counts + the headline
+    # line over the public corpus. Key omitted (not null) when uncomputable,
+    # following the sim_profile_robustness / holdout conditional pattern.
+    if corpus_health is not None:
+        leaderboard["corpus_health"] = corpus_health
+
     if sim_profile_robustness:
         leaderboard["sim_profile_robustness"] = {
             "cooperative_profile": DEFAULT_SIM_PROFILE,
@@ -1133,6 +1267,12 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
             # no same-lab judge on the panel. Kept working alongside judge_deltas.
             "same_lab_check": same_lab_checks.get(row["model"]),
         }
+        # Consistency band (issue #71): solid / avg / best-of over the
+        # reliability runs. Key ABSENT (not null) when the parquet has no
+        # repeated runs to derive a distribution from.
+        band = consistency_bands.get(row["model"])
+        if band is not None:
+            model_entry["consistency_band"] = band
         leaderboard["models"].append(model_entry)
 
     # Rank bands: cluster models whose clear_score CIs overlap so the frontend
@@ -1226,6 +1366,11 @@ def main():
             f"Rel={model['reliability']:.3f}  "
             f"Lat={model['avg_latency_ms']:.0f}ms"
         )
+
+    # Corpus-health headline (issue #71): the WolfBench-style distribution line.
+    corpus_health = leaderboard.get("corpus_health")
+    if corpus_health:
+        print(f"\nCorpus health: {corpus_health['headline']}")
 
 
 if __name__ == "__main__":

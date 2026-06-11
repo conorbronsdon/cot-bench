@@ -830,6 +830,31 @@ class TestEndToEndOffline:
             )
             assert m["efficacy"] == round(expected, 4)
 
+    def test_corpus_health_and_consistency_bands_published(self):
+        # Issue #71 end to end. The PUBLIC corpus here is 2 scenarios whose runs
+        # ALL fail (efficacy < 0.7 — see the failure-modes test below), while the
+        # 2 holdout dummies pass with state 1.0. So the corpus-health counts are
+        # only correct if the holdout exclusion held: a leak moves total to 4
+        # and the pass counts off zero by construction.
+        health = self.leaderboard["corpus_health"]
+        assert health["total_scenarios"] == 2
+        assert health["passed_at_least_once"] == 0
+        assert health["never_passed"] == 2
+        assert health["passed_by_every_model"] == 0
+        assert health["n_models"] == 2
+        assert health["headline"] == (
+            "0 of 2 scenarios passed at least once; 0 passed by every model"
+        )
+        # Consistency bands (solid/avg/best): present (2 reliability runs) and
+        # pinned to the all-fail public rows — holdout passes would lift them.
+        for m in self.leaderboard["models"]:
+            band = m["consistency_band"]
+            assert band["n_runs"] == 2
+            assert band["n_scenarios"] == 2
+            assert band["solid_rate"] == 0.0
+            assert band["avg_pass_rate"] == 0.0
+            assert band["best_of_rate"] == 0.0
+
     def test_failure_modes_and_macro_published(self):
         # Failure taxonomy (#55), end to end. Every PUBLIC run here fails (the
         # judge fakes + partial state land efficacy below 0.7) with the user sim

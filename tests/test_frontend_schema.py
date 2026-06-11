@@ -50,6 +50,9 @@ FRONTEND_TOPLEVEL_KEYS = {
     "domains",
     "domain_scores",
     "n_rank_bands",
+    # Corpus-health headline appended to the stat note (#71). Conditionally
+    # emitted, but always present on a frame with model/scenario/efficacy data.
+    "corpus_health",
 }
 
 # Keys index.html dereferences off each entry in leaderboard.models.
@@ -76,6 +79,9 @@ FRONTEND_MODEL_KEYS = {
     "efficacy_macro_category",
     "efficacy_macro_category_ci",
     "failure_profile",
+    # Consistency band (solid / avg / best, #71) in the reliability detail line.
+    # Conditionally emitted: present whenever the parquet has reliability repeats.
+    "consistency_band",
 }
 
 
@@ -158,6 +164,11 @@ class TestFrontendSchemaCoupling:
         assert isinstance(ci, list) and len(ci) == 2 and all(isinstance(v, float) for v in ci)
         assert isinstance(entry["failure_profile"], dict)
         assert set(entry["failure_profile"]) == {"n_rows", "n_failures", "failure_rate", "modes"}
+        # Consistency band + corpus health (#71): present on this 3-run frame.
+        band = entry["consistency_band"]
+        assert isinstance(band, dict)
+        assert band["solid_rate"] <= band["avg_pass_rate"] <= band["best_of_rate"]
+        assert isinstance(lb["corpus_health"]["headline"], str)
 
     def test_new_fields_degrade_to_none_on_legacy_data(self):
         # No holdout / premature / pass^k columns (legacy parquet). The frontend
@@ -358,7 +369,11 @@ def _populated_payload(degraded: bool = False) -> dict:
             mdl["efficacy_macro_category"] = None
             mdl["efficacy_macro_category_ci"] = [None, None]
             mdl["failure_profile"] = None
+            # Consistency band is OMITTED (not nulled) on single-run parquets (#71).
+            mdl.pop("consistency_band", None)
         lb["statistical_note"] = None
+        # Corpus health is omitted entirely when uncomputable (#71).
+        lb.pop("corpus_health", None)
     return lb
 
 
