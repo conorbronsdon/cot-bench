@@ -50,6 +50,27 @@ failure (unrecoverable JSON after one retry, or a body in which either dimension
 missing or has an invalid score) flags the judge as parse-failed for both. The
 legacy two-call path remains available behind a flag for A/B validation.
 
+\paragraph{Per-scenario atomic rubric criteria.} Generic rubric templates leave
+room for halo effects: a confident, fluent transcript reads as a good one.
+Following the instance-specific-rubric result of
+HealthBench~\cite{healthbench2025}, every scenario --- the full public corpus and
+the private holdout --- additionally carries 4--6 atomic, checkable,
+instance-specific criteria, each mapped to one of the two judge dimensions with
+a positive weight (e.g.\ ``agent verified the customer's identity before
+disclosing any balance''). The judge prompt appends the criteria (without their
+dimension mapping or weights) and requires a met/unmet verdict with cited
+evidence per criterion, alongside the holistic template scores; a missing or
+partial verdict block is a parse failure under the standard
+retry-then-exclude rule. For a dimension with mapped criteria, the judge's score
+is the \emph{weighted fraction of met criteria} --- it replaces the holistic
+template score rather than blending with it --- while the holistic score is
+preserved in the per-run artifacts alongside the per-criterion verdicts, so the
+criterion-versus-holistic (halo-effect) comparison is analyzable from any run.
+A dimension with no mapped criteria falls back to the holistic template, now a
+legacy path. Criteria carry their own authorship provenance, and the validator
+blocks a model under test from authoring the grading criteria for its own exam.
+Deterministic state verification, cost, latency, and reliability are untouched.
+
 \subsection{The judge panel and consensus}
 
 Three judges score every transcript independently: two open-weight models from

@@ -48,7 +48,8 @@ read as evidence about long-horizon autonomy.
 
 \paragraph{LLM-as-judge for the soft dimensions.} Two thirds of efficacy is judge
 scored, and judge quality is bounded by the judge models' capabilities. The
-multi-judge panel, median consensus, published per-judge deltas, length-bias
+multi-judge panel, median consensus, per-scenario atomic rubric criteria,
+published per-judge deltas, length-bias
 regression, and calibration protocol mitigate this, but they do not remove the
 underlying dependence. State verification, the judge-independent third, is the
 direct hedge.
@@ -88,12 +89,9 @@ larger benchmarks have.
 \subsection*{Future work}
 
 Several of the limitations above have committed mitigations, tracked as open
-issues in the repository (\#54--\#60) so the roadmap is itself auditable. Each
+issues in the repository (\#55--\#60) so the roadmap is itself auditable. Each
 would be a version bump under the policy of Section~\ref{sec:versioning}.
-\emph{Per-scenario atomic rubric criteria} (\#54) replace the generic judge
-rubric templates with 3--6 named criteria per scenario, each judged
-independently, following the instance-specific-rubric result of
-HealthBench~\cite{healthbench2025}. \emph{Per-category macro-averaged reporting
+\emph{Per-category macro-averaged reporting
 with a failure-mode taxonomy} (\#55) prevents frequent-and-easy scenario types
 from swamping rare-but-hard ones and turns failures into diagnostic signal.
 \emph{A recovery-probe scenario tier} (\#57) injects a deliberate error or

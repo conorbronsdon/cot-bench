@@ -34,14 +34,14 @@ miniature.
 multi-turn health conversations against per-conversation, physician-written
 rubrics, scoring each response against instance-specific criteria rather than one
 generic rubric~\cite{healthbench2025}. It is the closest published precedent for
-judge-graded multi-turn conversation at scale, and its core lesson points at a
-weakness COT Bench shares: COT Bench's two judge dimensions use generic published
-rubric templates, not per-scenario criteria. The difference in hedge is structural:
-HealthBench's defense against judge error is rubric specificity; COT Bench's is
-the deterministic state check, which removes the judge from a third of efficacy
-entirely. Per-scenario atomic rubric criteria are a planned extension
-(Section~\ref{sec:limitations}), making the two defenses complementary rather than
-competing.
+judge-graded multi-turn conversation at scale, and COT Bench adopts its core
+lesson directly: every scenario carries atomic, instance-specific rubric
+criteria that the judges grade as met/unmet with cited evidence, and a
+criteria-bearing dimension's judge score is the weighted fraction of met
+criteria (Section~\ref{sec:scoring}). The two hedges are complementary:
+HealthBench's defense against judge error is rubric specificity; COT Bench
+layers that same specificity on top of the deterministic state check, which
+removes the judge from a third of efficacy entirely.
 
 \paragraph{User-simulation realism.} A growing literature shows LLM-simulated
 users are unreliable proxies for humans: they are over-cooperative and

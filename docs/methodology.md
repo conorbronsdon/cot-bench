@@ -260,6 +260,46 @@ The legacy two-call path remains available behind `run_eval
 --separate-judge-calls` for A/B validation; it sends each dimension's prompt
 separately (context + transcript twice) and is otherwise identical.
 
+#### Per-scenario atomic rubric criteria (issue #54)
+
+Generic rubric templates leave room for halo effects: a confident, fluent,
+verbose transcript reads as a good one, and the judge's holistic dimension score
+absorbs that impression. Following HealthBench's instance-specific-rubric
+result, every public scenario (and every private holdout scenario) therefore
+carries `rubric_criteria`: 4–6 atomic, checkable, instance-specific criteria
+(the schema floor is 3), each mapped to one of the two judge-scored dimensions
+with a positive weight — e.g. *"Agent verified the customer's identity before
+disclosing any balance."* Criteria carry their own provenance stamp
+(`criteria_authorship`), and the validator blocks any model under test from
+authoring the grading criteria for its own exam (family-aware, the same rule as
+scenario authors). The schema is in
+[scenario-schema.md](scenario-schema.md).
+
+When a scenario has criteria, the judge prompt gains a per-criterion section
+(appended after the formatted template, so the criteria-less prompt stays
+byte-identical — asserted by test) listing the criteria *without* their
+dimension mapping or weights, and each judge must return a met/unmet verdict
+with brief cited evidence per criterion **alongside** the holistic dimension
+scores the template already asks for. A missing, partial, duplicated, or
+mistyped verdict block is a parse failure, handled by the standard
+retry-then-exclude path below.
+
+Scoring then **replaces** the holistic score rather than blending with it: a
+judge's score for a criteria-bearing dimension is the **weighted fraction of
+met criteria** mapped to that dimension (`aggregate_criterion_score` in
+[`eval/scoring/rubrics.py`](../eval/scoring/rubrics.py)), and consensus is the
+median of these criterion-informed scores. The judge's holistic template score
+is still recorded in every per-run artifact (`holistic_score`, next to the
+per-criterion verdicts), so the criterion-vs-holistic delta — the halo-effect
+measurement — is analyzable from any run, but it no longer feeds consensus for
+a criteria-bearing dimension. A dimension with no mapped criteria, or a
+scenario with no criteria at all, falls back to the holistic template score
+(now a legacy path: the whole corpus carries criteria). Deterministic state
+grading, Cost, Latency, and Reliability are untouched — criteria inform the
+judge dimensions only, on both the combined and `--separate-judge-calls`
+paths. The adoption rationale and decision record are in
+[atomic-rubrics.md](atomic-rubrics.md).
+
 #### Multi-Judge Consensus
 
 All three judges score independently. We report:

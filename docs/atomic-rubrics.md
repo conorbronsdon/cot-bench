@@ -1,13 +1,13 @@
 # Atomic Rubric Criteria — Decision Doc (issue #54)
 
-**Status: STAGED, not adopted.** This branch carries complete,
-backwards-compatible harness support AND authored criteria for all 92 public
-scenarios (4–6 per scenario, stamped `criteria_authorship`:
-`anthropic/claude-opus-4.8`, run `2026-06-11-atomic-rubrics-batch`). Nothing
-on master changes until this merges. This document exists so the decision
-reduces to **adopt before the first published run** or **defer to v2**. The
-10 private holdout scenarios are NOT covered — on adopt, author their
-criteria in the private repo with the same schema and stamp.
+**Status: ADOPTED — merged to master in PR #67, before the first published
+run.** All 92 public scenarios carry authored criteria (4–6 per scenario,
+stamped `criteria_authorship`: `anthropic/claude-opus-4.8`, run
+`2026-06-11-atomic-rubrics-batch`), and the 10 private holdout scenarios carry
+criteria with the same schema and stamp in the private repo. The sections
+below are preserved as the decision record; the adopted behavior is documented
+in [methodology.md](methodology.md) §3 and
+[scenario-schema.md](scenario-schema.md).
 
 ## What changes
 
@@ -82,7 +82,7 @@ harness (this branch), author criteria, and run one A/B rehearsal — the
 holistic-vs-criterion delta per judge is then measurable before committing the
 published scoring semantics.
 
-## What is staged on this branch
+## What merged (PR #67)
 
 - Schema + validator: `rubric_criteria` (3–6 items, unique ids, valid judge
   dimension, weight in (0, 10]), `criteria_authorship` provenance required,
@@ -98,5 +98,6 @@ published scoring semantics.
 - `stamp_criteria()` in `scripts/generate_data.py` for authoring agents.
 - 51 new tests; the no-criteria path is asserted byte-identical.
 
-**Not done (deliberately):** no criteria authored for any real scenario; no
-A/B run; no methodology.md update (that lands with adoption, not staging).
+**Still open after adoption:** no A/B rehearsal run yet — the
+holistic-vs-criterion delta is measurable from any run's artifacts, since both
+scores are recorded on every judged row.
