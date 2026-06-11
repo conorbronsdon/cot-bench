@@ -1,15 +1,20 @@
 # Atomic Rubric Criteria — Decision Doc (issue #54)
 
-**Status: STAGED, not adopted.** The harness support on this branch is complete
-and fully backwards-compatible; no scenario carries criteria yet. This document
-exists so the decision reduces to **adopt before the first published run** or
-**defer to v2**.
+**Status: STAGED, not adopted.** This branch carries complete,
+backwards-compatible harness support AND authored criteria for all 92 public
+scenarios (4–6 per scenario, stamped `criteria_authorship`:
+`anthropic/claude-opus-4.8`, run `2026-06-11-atomic-rubrics-batch`). Nothing
+on master changes until this merges. This document exists so the decision
+reduces to **adopt before the first published run** or **defer to v2**. The
+10 private holdout scenarios are NOT covered — on adopt, author their
+criteria in the private repo with the same schema and stamp.
 
 ## What changes
 
 Scenarios may carry a `rubric_criteria` array: 3–6 atomic, checkable,
-instance-specific criteria, each mapped to one of the two judge-scored
-dimensions (`task_completion` / `tool_selection`) with a positive weight.
+instance-specific criteria (the validator floor is 3; the authored corpus
+uses 4–6), each mapped to one of the two judge-scored dimensions
+(`task_completion` / `tool_selection`) with a positive weight.
 Example:
 
 ```jsonc
@@ -22,7 +27,7 @@ Example:
 ],
 "criteria_authorship": {
   "criteria_author_model": "anthropic/claude-opus-4.8",
-  "criteria_author_run": "2026-06-12-claude-opus-criteria-batch"
+  "criteria_author_run": "2026-06-11-atomic-rubrics-batch"
 }
 ```
 
