@@ -9,8 +9,8 @@
 
 <p align="center">
   <a href="https://github.com/conorbronsdon/cot-bench/actions/workflows/ci.yml"><img src="https://github.com/conorbronsdon/cot-bench/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/conorbronsdon/cot-bench/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
-  <a href="https://github.com/conorbronsdon/cot-bench/blob/master/eval/scoring/rubrics.py"><img src="https://img.shields.io/badge/rubrics-published-brightgreen.svg" alt="Rubrics"></a>
+  <a href="https://github.com/conorbronsdon/cot-bench/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
+  <a href="https://github.com/conorbronsdon/cot-bench/blob/main/eval/scoring/rubrics.py"><img src="https://img.shields.io/badge/rubrics-published-brightgreen.svg" alt="Rubrics"></a>
 </p>
 
 ---

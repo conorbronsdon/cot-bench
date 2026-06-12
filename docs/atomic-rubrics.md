@@ -1,6 +1,6 @@
 # Atomic Rubric Criteria — Decision Doc (issue #54)
 
-**Status: ADOPTED — merged to master in PR #67, before the first published
+**Status: ADOPTED — merged to main in PR #67, before the first published
 run.** All 92 public scenarios carry authored criteria (4–6 per scenario,
 stamped `criteria_authorship`: `anthropic/claude-opus-4.8`, run
 `2026-06-11-atomic-rubrics-batch`), and the 10 private holdout scenarios carry

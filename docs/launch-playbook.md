@@ -153,7 +153,7 @@ gate and touches exactly the same surfaces:
    no parquet, no manifest, no `.env` is staged. The only files that publish
    are `data/results/leaderboard.json`, `data/results/latest.csv`, and
    `data/results/history.jsonl`.
-4. Commit those three files to `master` and push.
+4. Commit those three files to `main` and push.
 5. The push triggers `.github/workflows/pages.yml` (its path filter watches
    `data/results/leaderboard.json` and `frontend/**`), which copies
    `frontend/index.html` and the leaderboard JSON into a static site and
@@ -239,7 +239,7 @@ run results, not the already-spent repo-hardening story.
   single static page that fetches `data/results/leaderboard.json` relative to
   itself and renders an explicit pre-launch empty state when the JSON is
   absent. `pages.yml` stages `frontend/index.html` plus
-  `data/results/leaderboard.json` into `_site/` and deploys on any `master`
+  `data/results/leaderboard.json` into `_site/` and deploys on any `main`
   push touching either path (or manual `workflow_dispatch`). Go-live steps:
   - [ ] Push the publish commit (1.4). Watch the `pages` workflow run green.
   - [ ] Load the URL, confirm the empty state is gone and the board renders
