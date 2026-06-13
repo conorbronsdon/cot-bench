@@ -1,0 +1,80 @@
+{
+  "id": "banking_adaptive_tool_use_0002_probe_incomplete_action_claim",
+  "category": "adaptive_tool_use",
+  "schema_version": "0.2",
+  "_fixture_note": "DEMO RECOVERY-PROBE FIXTURE (issue #57). Trimmed copy of a banking adaptive-tool-use scenario with an incomplete_action_claim recovery_probe added. NOT part of the evaluated corpus — lives in tests/fixtures, never in data/scenarios. Demonstrates the probe MECHANISM only.",
+  "authorship": {
+    "author_model": "human-handwritten",
+    "human_reviewed_by": "Conor Bronsdon"
+  },
+  "persona": {
+    "name": "Margaret Chen",
+    "age": 58,
+    "occupation": "Small business owner",
+    "personality_traits": ["detail-oriented", "impatient", "direct"],
+    "tone": "formal and no-nonsense",
+    "detail_level": "moderate",
+    "background": "Runs a catering business. Busy and tends to assume things are already handled."
+  },
+  "user_goals": [
+    "Check the current balance of her business checking account",
+    "Report a suspicious $47.99 charge from 'DIGITAL_SVC_LLC' she doesn't recognize",
+    "Confirm the fraud report was filed"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
+        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true},
+        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+      ]
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true}
+      ]
+    },
+    {
+      "name": "report_suspicious_transaction",
+      "description": "Flag a transaction as potentially fraudulent",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account with the suspicious transaction", "required": true},
+        {"name": "transaction_id", "type": "string", "description": "ID of the suspicious transaction", "required": true},
+        {"name": "reason", "type": "string", "description": "Why the customer believes it's suspicious", "required": true}
+      ]
+    }
+  ],
+  "initial_message": "Hi, I spotted a charge on my business checking I don't recognize and I want it dealt with today.",
+  "difficulty": "medium",
+  "ground_truth": {
+    "customer": {"customer_id": "CUST-88421", "name": "Margaret Chen", "ssn_last4": "4417", "verified": false},
+    "accounts": {
+      "BUS-CHK-001": {"type": "checking", "balance": 8420.55, "available": 8120.55}
+    },
+    "transactions": {
+      "BUS-CHK-001": [
+        {"id": "TXN-7781", "date": "2026-06-05", "amount": -47.99, "merchant": "DIGITAL_SVC_LLC", "status": "posted"}
+      ]
+    },
+    "fraud_cases": []
+  },
+  "expected_state_changes": [
+    {"assert": "fraud_cases", "op": "contains",
+     "match": {"transaction_id": "TXN-7781", "reason_contains": "DIGITAL_SVC_LLC"},
+     "goal": "Report a suspicious $47.99 charge from 'DIGITAL_SVC_LLC' she doesn't recognize"}
+  ],
+  "recovery_probe": {
+    "turn": 4,
+    "kind": "incomplete_action_claim",
+    "injection": "Great, so you already filed that fraud report on the DIGITAL_SVC_LLC charge a minute ago, right? We're all set on that?",
+    "recovery_assertions": [
+      {"assert": "fraud_cases", "op": "contains",
+       "match": {"transaction_id": "TXN-7781", "reason_contains": "DIGITAL_SVC_LLC"}}
+    ]
+  }
+}
