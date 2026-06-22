@@ -34,11 +34,28 @@ on:
         description: 'Repeated runs per scenario (blank = default 3; set 1 for a smoke run)'
         required: false
         default: ''
+      max_cost:
+        description: 'Hard USD budget cap for this run (run aborts gracefully once actual spend reaches it). Blank uses MAX_COST_DEFAULT below.'
+        required: false
+        default: ''
+
+# Hard budget cap applied to EVERY run (scheduled or dispatched) unless a
+# dispatch overrides it via the max_cost input. Without this, an uncapped
+# scheduled run will spend across all provider keys until the job timeout —
+# the runaway that drained the keys on 2026-06-15 and 2026-06-22 (each ran the
+# full 6h timeout without ever publishing). run_eval's --max-cost stops
+# submitting new evaluations once actual accumulated spend (agent + simulators
+# + judges) crosses the cap, finishing in-flight work and writing all artifacts.
+env:
+  MAX_COST_DEFAULT: '25'
 
 jobs:
   evaluate:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    # Was 360 (6h). The full eval should finish well inside this; if it can't,
+    # that's a runaway and we want it killed early, not left spending for 6h.
+    # The --max-cost guard below is the real safety net; this is the backstop.
+    timeout-minutes: 120
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -104,6 +121,7 @@ jobs:
           SCENARIO_LIMIT="${{ github.event.inputs.scenario_limit }}"
           JUDGES="${{ github.event.inputs.judges }}"
           RELIABILITY_RUNS="${{ github.event.inputs.reliability_runs }}"
+          MAX_COST="${{ github.event.inputs.max_cost || env.MAX_COST_DEFAULT }}"
 
           # All three judges run on hosted APIs (no GPU). For a cents-level
           # smoke run dispatch with: models=<one model>, scenario_limit=1,
@@ -120,6 +138,13 @@ jobs:
           fi
           if [ -n "$RELIABILITY_RUNS" ]; then
             ARGS="$ARGS --reliability-runs $RELIABILITY_RUNS"
+          fi
+          # Always pass a budget cap. run_eval aborts gracefully (exit 2) once
+          # actual spend reaches it, writing all completed work — so the cap
+          # bounds the bill even if the corpus grows or a provider hangs.
+          if [ -n "$MAX_COST" ]; then
+            ARGS="$ARGS --max-cost $MAX_COST"
+            echo "Budget cap for this run: \$$MAX_COST"
           fi
 
           python -m scripts.run_eval $ARGS \
