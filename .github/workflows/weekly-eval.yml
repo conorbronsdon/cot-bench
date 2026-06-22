@@ -1,9 +1,13 @@
 name: Weekly Evaluation Run
 
 on:
-  schedule:
-    # Every Monday at 6:00 UTC
-    - cron: '0 6 * * 1'
+  # Schedule disabled after the 2026-06 spend incident: an uncapped scheduled
+  # run drained every provider key by running to the job timeout (runs #16/#17).
+  # Manual dispatch only until the new --max-cost guard + reduced timeout are
+  # validated with a real, watched run. Re-enable by uncommenting once verified.
+  # schedule:
+  #   # Every Monday at 6:00 UTC
+  #   - cron: '0 6 * * 1'
   workflow_dispatch:
     inputs:
       domains:
