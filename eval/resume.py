@@ -134,6 +134,13 @@ def _sim_namespace(payload: dict):
         # Behavioral user-sim profile (issue #59). Older artifacts predate the
         # field and were all cooperative by construction.
         sim_profile=meta.get("sim_profile", DEFAULT_SIM_PROFILE),
+        # Recovery probe (issue #57). Older artifacts predate the fields; the
+        # non-probe majority carry None/False — both reconstruct the row
+        # identically. ``probe_fired`` records whether the injection was
+        # actually delivered (recovered is None when it was not).
+        recovery_probe_kind=meta.get("recovery_probe_kind"),
+        recovered=meta.get("recovered"),
+        probe_fired=bool(meta.get("probe_fired", False)),
     )
 
 

@@ -15,6 +15,13 @@ The assertion vocabulary is intentionally tiny and fully deterministic:
   contains an item matching every key in ``match``. A ``<key>_contains`` match
   key means a case-insensitive substring test on ``str(item[<key>])`` instead of
   an equality test.
+- ``not_exists`` — the path does NOT resolve in the final world (added for
+  recovery probes, issue #57). This is the one assertion that PASSES on an absent
+  path: it encodes "the bad entity the probe introduced was never acted on /
+  created" — e.g. a wrong-account probe must not produce ``accounts.BUS-CHK-999``.
+  ``equals null`` cannot express this (it requires the path to resolve), so this
+  is the minimal, deterministic op that makes the wrong-entity recovery check
+  expressible in the existing assertion grammar.
 
 An **empty** assertion list (``[]``) encodes the no-unauthorized-mutation
 contract: it scores 1.0 iff the world is unchanged, else 0.0 with the differing
@@ -116,6 +123,16 @@ def check_assertion(initial_world, final_world, assertion: dict) -> dict:
             "detail": (
                 f"{path}: changed by {delta:+.2f}, expected {op} {expected} (target {target:+.2f})"
             ),
+        }
+
+    if op == "not_exists":
+        # Passes iff the path is ABSENT from the final world — the recovery-probe
+        # "bad entity was never created / acted on" check (issue #57). The only
+        # op for which a non-resolving path is the SUCCESS case.
+        found, _ = resolve_path(final_world, path)
+        return {
+            "passed": not found,
+            "detail": (f"{path}: {'absent (ok)' if not found else 'present (should not exist)'}"),
         }
 
     if op == "contains":

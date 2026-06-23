@@ -185,6 +185,33 @@ class TestBuildArtifact:
         assert art["sim_meta"]["state_progress_at_end"] == 0.5
         assert art["sim_meta"]["premature_end"] is True
 
+    def test_sim_meta_carries_probe_fired(self):
+        # Recovery probe (#57, review fix): probe_fired is persisted alongside
+        # recovered so the recovery_rate denominator (fired probes only) is
+        # auditable from artifacts. A declared-but-never-fired probe carries
+        # probe_fired=False with recovered=None.
+        tc = _consensus("task_completion", [_judge("Kimi", 0.8, "task_completion")])
+        ts = _consensus("tool_selection", [_judge("Kimi", 0.7, "tool_selection")])
+        sim = _sim_result()
+        sim.recovery_probe_kind = "wrong_entity"
+        sim.recovered = None
+        sim.probe_fired = False
+        art = build_artifact("banking_001", "GPT-4.1", 0, sim, tc, ts)
+        assert art["sim_meta"]["recovery_probe_kind"] == "wrong_entity"
+        assert art["sim_meta"]["recovered"] is None
+        assert art["sim_meta"]["probe_fired"] is False
+
+    def test_sim_meta_probe_fired_true_when_fired(self):
+        tc = _consensus("task_completion", [_judge("Kimi", 0.8, "task_completion")])
+        ts = _consensus("tool_selection", [_judge("Kimi", 0.7, "tool_selection")])
+        sim = _sim_result()
+        sim.recovery_probe_kind = "wrong_entity"
+        sim.recovered = True
+        sim.probe_fired = True
+        art = build_artifact("banking_001", "GPT-4.1", 0, sim, tc, ts)
+        assert art["sim_meta"]["probe_fired"] is True
+        assert art["sim_meta"]["recovered"] is True
+
     def test_no_state_block_when_state_omitted(self):
         tc = _consensus("task_completion", [_judge("Kimi", 0.8, "task_completion")])
         ts = _consensus("tool_selection", [_judge("Kimi", 0.7, "tool_selection")])
