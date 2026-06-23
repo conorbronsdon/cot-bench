@@ -280,12 +280,31 @@ Every run publishes the evidence behind its scores, not just the numbers:
 
 All of the above are uploaded as workflow artifacts on every weekly run.
 
-## Acknowledgments
+## Citations & Credits
 
-- Evaluation methodology inspired by [Galileo's agent-leaderboard](https://github.com/rungalileo/agent-leaderboard) (Apache 2.0)
-- Metrics framework aligned with the [CLEAR paper](https://arxiv.org/abs/2511.14136) (Simmering et al., 2025)
-- Open-weight judge inference served via [OpenRouter](https://openrouter.ai/)
-- Trace format follows [OpenInference](https://github.com/Arize-ai/openinference) semantic conventions
+COT Bench builds on ideas and tooling from prior work in agent and LLM evaluation. Where a specific mechanism is borrowed it is also credited at its source in the relevant doc; this section collects the major influences.
+
+**Methodology & metrics**
+- [Galileo agent-leaderboard](https://github.com/rungalileo/agent-leaderboard) (Apache 2.0) — evaluation-methodology foundation.
+- [CLEAR](https://arxiv.org/abs/2511.14136) (Simmering et al., 2025) — the composite metric framework the leaderboard aligns to.
+- [τ-bench](https://arxiv.org/abs/2406.12045) / [τ²-bench](https://arxiv.org/abs/2506.07982) (Sierra) — the `pass^k` all-k-succeed reliability metric, the dual-control coordination model (user and agent acting on shared state), and the deterministic coded-tool-transition architecture COT Bench is adopting for its state-grading spine.
+- [pass@k](https://arxiv.org/abs/2107.03374) (Chen et al., 2021; Codex/HumanEval) — the estimator `pass^k` inverts.
+- [Chatbot Arena / LMSYS](https://lmsys.org/) — Bradley–Terry bootstrap confidence intervals on scores.
+
+**Scenario & robustness design**
+- Vending-Bench (Andon Labs) — the recovery-probe tier: long-horizon coherence failures modeled as unrecovered mid-task errors.
+- clembench / EcoGym — parameterized scenario templates: randomize the surface, hold the logical task invariant.
+- [GSM-Symbolic](https://arxiv.org/abs/2410.05229) (Apple) — measuring anti-memorization via score variance across instances of the same template.
+
+**Scoring integrity & publish hygiene**
+- [Inspect AI](https://inspect.aisi.org.uk/) (UK AISI) — a first-class error / ungradable outcome distinct from a failing score, with a run-level error threshold.
+- [HELM](https://arxiv.org/abs/2211.09110) (Stanford CRFM) — judge-output robustness (reject malformed scores rather than clamp) and full-output transparency.
+- [SWE-bench](https://arxiv.org/abs/2310.06770) — execution-based grading, trajectory/log transparency, and difficulty stratification for publish hygiene.
+- [LiveBench](https://arxiv.org/abs/2406.19314) / [LiveCodeBench](https://arxiv.org/abs/2403.07974) — "contamination-limited" framing and temporal/holdout contamination signals.
+
+**Infrastructure**
+- Open-weight judge inference served via [OpenRouter](https://openrouter.ai/).
+- Trace format follows [OpenInference](https://github.com/Arize-ai/openinference) semantic conventions.
 
 ---
 
