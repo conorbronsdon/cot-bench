@@ -162,14 +162,18 @@ def check_publish_ready(manifest_path: Path = MANIFEST_PATH, allow_partial: bool
     templating = manifest.get("templating")
     if templating:
         instantiation_seed = templating.get("instantiation_seed")
-        if instantiation_seed == DEFAULT_INSTANTIATION_SEED:
+        # Fail closed: block when the seed is the default (0) OR cannot be
+        # confirmed fresh (missing/None). run_eval always records an int seed, so
+        # None only arises from a malformed/hand-edited manifest — but a publish
+        # gate on the live board must not pass a surface it can't prove is fresh.
+        if instantiation_seed is None or instantiation_seed == DEFAULT_INSTANTIATION_SEED:
             blockers.append(
                 f"Templating was used ({templating.get('n_templated_scenarios')} "
                 f"templated scenario(s)) but the instantiation seed was "
-                f"{DEFAULT_INSTANTIATION_SEED} (the default). At seed "
-                f"{DEFAULT_INSTANTIATION_SEED} the instantiated surface is identical "
-                "every run, so a memorized surface defeats the benchmark and "
-                "templating gains nothing. Re-run with --random-instantiation-seed "
+                f"{instantiation_seed!r} (the default {DEFAULT_INSTANTIATION_SEED}, "
+                "or unconfirmable). At the default seed the instantiated surface is "
+                "identical every run, so a memorized surface defeats the benchmark "
+                "and templating gains nothing. Re-run with --random-instantiation-seed "
                 f"(which draws a fresh non-zero seed); seed "
                 f"{DEFAULT_INSTANTIATION_SEED} is CI-only, not for a published board."
             )

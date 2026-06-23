@@ -278,6 +278,14 @@ class TestTemplatingSeedGate:
         )
         assert check_publish_ready(path) == 0
 
+    def test_templated_run_with_missing_seed_blocks(self, tmp_path, capsys):
+        # Fail-closed: a templating block whose instantiation_seed is missing/None
+        # (only reachable via a malformed/hand-edited manifest) must NOT pass — a
+        # publish gate cannot certify a surface whose seed it can't confirm.
+        path = _write_manifest(tmp_path, templating=self._templating(None))
+        assert check_publish_ready(path) != 0
+        assert "::error::" in capsys.readouterr().err
+
     def test_non_templated_run_with_default_seed_unaffected(self, tmp_path):
         # No templating block (non-templated run): seed 0 is fine, gate is silent.
         path = _write_manifest(tmp_path)
