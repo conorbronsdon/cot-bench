@@ -8,7 +8,7 @@ Decision driving this: **cover many domains from the start, not 2.** Today's ben
 - **Full transcripts read:** Dan Klein (ep54), Loic Houssier (ep59), Tyler Akidau (ep60), Jerry Liu (ep61), Kris Lovejoy (ep62).
 - **Mined from publish-assets/clip-transcriptions (verbatim quotes, flagged):** Tricot (52), Alake (53), Hasbe (55), Elangovan (56), Ratner (57), Chait (58), Batra (63).
 - **Baselines:** Galileo v2 domains = Banking, Healthcare, Investment, Telecom, Insurance. τ²-bench = Airline, Retail, Telecom, Mock.
-- ⚠️ **Data-integrity flag:** the mining pass saw ep53 assets attribute **Richmond Alake to Oracle**, not MongoDB. Verify before any external use.
+- ✅ **Data-integrity flag (resolved):** the mining pass saw ep53 assets attribute **Richmond Alake to Oracle**. Verified 2026-06-23 — Alake is **Staff AI/ML Developer Advocate at MongoDB** (LinkedIn, MongoDB author pages, SuperDataScience SDS 871). The mining attribution was wrong; treat any other ep53-asset employer attributions as suspect until checked.
 - Feasibility lens throughout: a domain/scenario must map to tool calls mutating an **assertable JSON world state** (the deterministic spine).
 
 ---
@@ -39,7 +39,7 @@ Keep the 2 we have, add 6. This **matches or exceeds Galileo v2's 5 verticals** 
 **Add in v1** (all high-gradable, heavily evidenced):
 1. **Silent-wrongness / grounding** ⭐ — output indistinguishable from truth but factually wrong (Klein's whole thesis: "plausibility engines, not truth engines"; hallucination iceberg ~5× visible). Seed subtle wrong-but-plausible distractors; assert exact state match. **Highest-priority add.**
 2. **Human-in-the-loop / approval-gate handoff** — agent takes an irreversible action it should have escalated (Akidau >$1k→human; Houssier draft-not-send). Assert the gated action was NOT executed / was queued.
-3. **Cost / budget & latency adherence** — token/call blowup, SLA miss (Tricot 30K-token blowup; Elangovan 50µs SLA). Track token/call counts + latency vs budget; pure numeric assert.
+3. **Cost / budget & latency adherence** — token/call blowup, SLA miss (Tricot 30K-token blowup; Elangovan 50µs SLA). Track token/call counts + latency vs budget. ⚠️ **Blocked on a grader op, NOT on instrumentation.** The runner already records per-episode `total_input_tokens` / `total_output_tokens` / `total_latency_ms` / `tool_calls` in the result artifact (`eval/artifacts.py`), so the telemetry exists. But the state grader (`eval/scoring/state_check.py`) only asserts over the *world* (`equals` / `contains` / `increased_by` / `decreased_by` / `not_exists`) — there is no numeric `lte`/`gte` op and telemetry is not in `final_world`. This category needs a new assertion path that compares a recorded telemetry field against a numeric budget. Sequence that grader work before authoring cost/latency scenarios — see §E.
 
 **Add in v2:** long-horizon memory/context-retention (Alake "don't delete, forget" — hard-delete fails audit), accountability/audit-trail completeness. **Defer:** multi-agent coordination (hard to grade in the single-world model).
 
@@ -47,11 +47,15 @@ Keep the 2 we have, add 6. This **matches or exceeds Galileo v2's 5 verticals** 
 
 The site's `/topics` taxonomy is **horizontal (capability)**; the bench needs **vertical (industry)** axes — they're orthogonal. Model the bench as a **matrix**: 8 domains (rows) × categories (columns), where categories reuse the site's reliability cluster (AI Evaluation & Reliability, AI Observability, AI Security, Agent Memory, Context Management) as the spine. The site has **no industry-vertical topics** — every domain is net-new structure the bench adds.
 
+**The matrix is deliberately SPARSE, not a grid to fill.** 8 domains × 8 categories = 64 cells, each needing multiple authored + reviewed scenarios — read as "fill the grid," that is a launch-blocker. It isn't the plan. Cell selection is driven by the war-story seeds (§D) and by where a domain×category pairing is both *gradable* and *evidenced*, not by coverage completeness. Which cells are intentionally empty is a documented design decision, not a gap to apologize for. The published surface should state the sparsity explicitly so "8 and 8" never reads as "64 scenarios authored."
+
 ---
 
 ## D. War-story scenario seeds (build-first 8)
 
 Grounded incidents from the transcripts — far more credible than generated. Each tagged to its source; full ~32-seed list and per-seed gradability in the mining report (to be appended/linked). **Anonymize vendor/company names before shipping.**
+
+**These 8 seeds are a different axis from the 8 domains in §A — don't conflate them.** The build-first seeds are mostly banking / customer-success / cross-cutting (Waymo-inbox, trade-routing, lost-package). Their job is to validate the three *new categories* (silent-wrongness, HITL-handoff, cost/latency) on the **domains we already have**. Domain expansion (§A's six new verticals) is a **separate, later** workstream — each new domain carries its own world schema + coded-tool + authoring cost (see §E). "8 and 8" is sequential, not simultaneous: prove the categories on existing domains first, then widen the domain axis.
 
 1. **"How much time in Waymo last month?"** (Houssier 59) — inbox state: filter receipts from marketing, resolve the month window, sum durations, assert the number. *Flagship: multi-tool + temporal + scope in one end-state.*
 2. **Trade > $1,000 hard-routes to human** (Akidau 60) — assert sub-$1k executes, ≥$1k queued, and prompt-injection can't bypass.
@@ -65,6 +69,13 @@ Grounded incidents from the transcripts — far more credible than generated. Ea
 Second wave: workaround-around-deny (Akidau), intersection authz / "guest badge" (Akidau), fraud-ring graph traversal (Hasbe), don't-archive-the-critical-email (Houssier), browser form-fill (Batra), OCR table-hallucination flagging (Liu), don't-hard-delete-memory (Alake).
 
 ---
+
+## E. Sequencing & open dependencies (do these before authoring widens)
+
+Two prerequisites surfaced in review. Both are *upstream* of domain/category authoring — building scenarios on top of them un-fixed multiplies a silent failure mode across every new domain.
+
+1. **Lock a canonical-key contract + negative-assertion coverage test FIRST.** #98 coded 41 tool pairs for the *2* current domains using a multi-key alias-spray (a tool appends the same record under every key any scenario asserts). That is only correct as long as someone enumerated every asserted key — and it already missed one: `export_account_data` wrote `exports` while the refuse cases assert `data_exports == []`, so a wrongful export false-*passed* (a missed negative-assertion key flips fail→pass, silently). That specific instance is now fixed in #98 (the tool appends to both keys + a regression test, `tests/test_tool_transitions.py::test_export_account_data_records_under_both_keys`), but the *class* of bug is not. At 8 domains that's ~160+ tool pairs carrying the same fragility. Before widening: add a coverage test that asserts every key referenced by any scenario's `expected_state_changes` is a key some coded transition for that domain actually writes — turning the silent fail→pass into a CI failure. **This is a sequencing blocker, not a nice-to-have.**
+2. **Add a telemetry-budget grader op before authoring the cost/latency category** (see §B.3). Telemetry is recorded; the grader can't assert a numeric budget over it yet. Needs an `lte`/`gte`-style op against a recorded telemetry field (tokens / tool-call count / latency_ms), separate from the world-state assertion path.
 
 ## Build-cost note (honest)
 More domains multiplies two workstreams: **(a)** the S2 coded-tool transitions (issue #87) — each domain needs its tools coded deterministically; **(b)** scenario authoring + per-scenario review per domain. The payoff is a bench that credibly "covers production agent use cases" with podcast-grounded provenance no competitor has. The data-driven domain ranking above is exactly so we build the *right* domains first rather than all at once.
