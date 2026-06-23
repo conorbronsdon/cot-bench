@@ -215,6 +215,35 @@ so the single-control public corpus runs and hashes identically), but in a
 `dual_control` scenario the validator **requires** every agent tool to declare it,
 so the clamp is always in force where the coordination metric depends on it.
 
+**The catchability guard — `double_apply_targets` (issue #83).** The clamp has a
+mirror-image failure mode: it is *too* good at dropping out-of-scope writes. If a
+scenario MEANS to test "the agent must not re-apply user-owned key `X`" but no
+agent tool's `writes` includes `X`, the clamp **declaws the trap** — the agent
+literally cannot write `X`, so `agent_mutated_keys & user_owned` is *vacuously*
+empty and the scenario **silently always-passes** the no-double-apply contract.
+A blanket check ("every user-owned key must be writable by some agent tool") is
+wrong: it false-fires on the legitimate **approval-wait** shape, where the user
+owns `pending_requests` and no agent tool writes it *on purpose* (the test is
+"wait for approval," not "don't double-apply").
+
+So the guard is **explicit, not inferred**. The `dual_control` block carries an
+optional `double_apply_targets`: a list of top-level state keys the scenario
+intends to trap for no-re-apply. For each declared target the validator
+(`scripts/validate_scenarios.py:_validate_dual_control`) **errors unless** the key
+is **(a)** declared in some `user_tool`'s `scope` (it must be user-owned) **AND**
+**(b)** present in the union of all agent tools' `writes` (so the clamp cannot
+declaw it — the double-apply is actually reachable, hence catchable). Keys NOT
+listed as targets are unaffected: the approval-wait fixture declares no targets and
+correctly raises nothing. `double_apply_targets` changes **no runtime semantics** —
+the coordination verdict's trespass set stays `agent_mutated_keys & user_owned`; it
+is a purely validation-time catchability guarantee. It is parsed onto the
+`DualControl` object (`eval/simulation/dual_control.py`) and, because it is emitted
+in the canonical hash dict only when non-empty, a block that omits it hashes
+identically to before the field existed (the public corpus, which declares no
+`dual_control` at all, is untouched). The customer-success act-first fixture
+declares `double_apply_targets: ["contact"]` (in `update_contact_email`'s `writes`,
+so catchable); the banking approval-wait fixture declares none.
+
 ### The authorization boundary
 
 `user_tools` declare a `scope` of top-level state keys. The validator and the

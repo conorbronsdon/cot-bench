@@ -218,11 +218,32 @@ class DualControl:
     time, before any run, exactly like RecoveryProbe / an unknown sim profile.
     """
 
-    __slots__ = ("user_tools", "user_actions")
+    __slots__ = ("user_tools", "user_actions", "double_apply_targets")
 
-    def __init__(self, *, user_tools: list[UserTool], user_actions: list[UserAction]):
+    def __init__(
+        self,
+        *,
+        user_tools: list[UserTool],
+        user_actions: list[UserAction],
+        double_apply_targets: list | None = None,
+    ):
         self.user_tools = {t.name: t for t in user_tools}
         self.user_actions = list(user_actions)
+        # OPTIONAL explicit list of top-level state keys the scenario INTENDS to
+        # test for the no-re-apply (no-double-apply) contract. Changes NO runtime
+        # semantics — the coordination verdict's trespass set stays
+        # ``agent_mutated_keys & user_owned`` regardless. Its sole purpose is a
+        # validation-time CATCHABILITY guarantee: the Option A write-clamp
+        # (runner._simulate_tool_stateful) drops any agent tool-sim write to a
+        # top-level key not in the called tool's ``writes``, so if a scenario
+        # means to trap "the agent must not re-apply user-owned key X" but NO
+        # agent tool's ``writes`` includes X, the clamp declaws the trap and the
+        # attribution check is vacuously empty — a silent always-pass. Listing X
+        # here makes the validator require X to be both user-owned AND writable by
+        # some agent tool, so the trap is actually catchable. An approval-wait
+        # scenario (user owns ``pending_requests``, no agent tool writes it on
+        # purpose) simply leaves this empty — no requirement, no false-fire.
+        self.double_apply_targets = [str(k) for k in (double_apply_targets or [])]
         # Authorization boundary: every action targets a declared tool and stays
         # within that tool's scope. The runtime guard mirrors the validator so a
         # loaded object is self-consistent even if it bypassed the on-disk check.
@@ -253,7 +274,11 @@ class DualControl:
         actions = [UserAction.from_dict(a) for a in data.get("user_actions", [])]
         if not actions:
             raise ValueError("dual_control requires at least one user_action")
-        return cls(user_tools=tools, user_actions=actions)
+        return cls(
+            user_tools=tools,
+            user_actions=actions,
+            double_apply_targets=data.get("double_apply_targets"),
+        )
 
     def tool_schemas(self) -> list[dict]:
         """Agent-tool-shaped schemas for the user tools (for the tool sim)."""

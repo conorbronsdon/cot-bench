@@ -908,6 +908,164 @@ class TestValidator:
         assert validate_scenario_dict(data) == []
 
 
+class TestDoubleApplyTargets:
+    """Catchability guard for explicit no-re-apply traps (issue #83, PR #77).
+
+    ``double_apply_targets`` names the top-level keys a scenario intends to trap
+    for the no-double-apply contract. Because the Option A write-clamp drops any
+    agent tool-sim write to a key not in the called tool's ``writes``, a declared
+    target that no agent tool can write would be DECLAWED — the coordination
+    verdict's ``agent_mutated_keys & user_owned`` is vacuously empty and the
+    scenario silently always-passes. So each target must be both user-owned AND
+    agent-writable. Keys NOT listed as targets (approval-wait) are unaffected.
+    """
+
+    def _wired(self):
+        # _base(): tool 'execute' writes ['pending_requests']; _valid_dc()'s
+        # user_tool scope is ['pending_requests'] -> a correctly-wired target.
+        data = TestValidator()._base()
+        data["expected_state_changes"] = TestValidator()._nonempty_changes()
+        data["dual_control"] = TestValidator()._valid_dc()
+        return data
+
+    def test_correctly_wired_target_passes(self):
+        data = self._wired()
+        data["dual_control"]["double_apply_targets"] = ["pending_requests"]
+        assert validate_scenario_dict(data) == []
+
+    def test_target_not_in_any_tool_writes_errors(self):
+        # The trap key is user-owned but NO agent tool writes it: the clamp would
+        # declaw the trap. This is exactly the approval-wait shape promoted to a
+        # declared target — which must error.
+        data = self._wired()
+        # Strip the only agent ``writes`` of pending_requests so nothing can write it.
+        for t in data["tools"]:
+            t["writes"] = []
+        data["dual_control"]["double_apply_targets"] = ["pending_requests"]
+        errs = validate_scenario_dict(data)
+        assert any("would declaw the trap" in e for e in errs)
+        assert any("pending_requests" in e for e in errs)
+
+    def test_target_not_user_owned_errors(self):
+        # A target that is NOT in any user_tool scope is not a user-owned key, so
+        # a "no-double-apply" trap on it is meaningless.
+        data = self._wired()
+        # 'wires_sent' is agent-writable below but never in a user_tool scope.
+        data["tools"][1]["writes"] = ["pending_requests", "wires_sent"]
+        data["ground_truth"]["wires_sent"] = []
+        data["dual_control"]["double_apply_targets"] = ["wires_sent"]
+        errs = validate_scenario_dict(data)
+        assert any("not user-owned" in e for e in errs)
+
+    def test_no_targets_field_unaffected(self):
+        # Absent double_apply_targets: no requirement (the approval-wait default).
+        data = self._wired()
+        assert "double_apply_targets" not in data["dual_control"]
+        assert validate_scenario_dict(data) == []
+
+    def test_empty_targets_list_unaffected(self):
+        data = self._wired()
+        data["dual_control"]["double_apply_targets"] = []
+        assert validate_scenario_dict(data) == []
+
+    def test_non_list_targets_errors(self):
+        data = self._wired()
+        data["dual_control"]["double_apply_targets"] = "pending_requests"
+        errs = validate_scenario_dict(data)
+        assert any("must be a list" in e for e in errs)
+
+    def test_cs_fixture_declares_contact_target(self):
+        data = json.loads(
+            (FIXTURE_DIR / "cs_user_acts_first_no_double_apply.json").read_text(encoding="utf-8")
+        )
+        assert data["dual_control"]["double_apply_targets"] == ["contact"]
+        # 'contact' is user-owned (update_my_contact_info scope) AND agent-writable
+        # (update_contact_email writes ['contact']) -> a catchable trap, validates.
+        assert validate_scenario_dict(data) == []
+        dc = DualControl.from_dict(data["dual_control"])
+        assert dc.double_apply_targets == ["contact"]
+
+    def test_approval_wait_fixture_declares_no_targets(self):
+        data = json.loads(
+            (FIXTURE_DIR / "banking_user_approves_midflow.json").read_text(encoding="utf-8")
+        )
+        # The user owns pending_requests and NO agent tool writes it ON PURPOSE
+        # (the trap is "wait for approval," not "don't double-apply"). It declares
+        # no targets, so the catchability guard raises nothing and it validates.
+        assert "double_apply_targets" not in data["dual_control"]
+        assert validate_scenario_dict(data) == []
+
+    def test_parse_stores_targets_on_object(self):
+        dc = DualControl.from_dict(
+            {
+                "user_tools": [{"name": "u", "scope": ["contact"]}],
+                "user_actions": [
+                    {
+                        "tool": "u",
+                        "trigger": "after_turn",
+                        "trigger_value": 2,
+                        "state_delta": {"contact.email": "x@y.z"},
+                    }
+                ],
+                "double_apply_targets": ["contact"],
+            }
+        )
+        assert dc.double_apply_targets == ["contact"]
+
+    def test_parse_absent_targets_defaults_empty(self):
+        dc = DualControl.from_dict(
+            {
+                "user_tools": [{"name": "u", "scope": ["contact"]}],
+                "user_actions": [
+                    {
+                        "tool": "u",
+                        "trigger": "after_turn",
+                        "trigger_value": 2,
+                        "state_delta": {"contact.email": "x@y.z"},
+                    }
+                ],
+            }
+        )
+        assert dc.double_apply_targets == []
+
+    def test_targets_field_hash_stable_when_absent(self):
+        # A dual_control block that omits double_apply_targets hashes IDENTICALLY
+        # to before the field existed (the canonical dict emits it only when
+        # non-empty), so the public corpus (no dual_control at all) is unchanged.
+        from eval.pre_registration import _dual_control_to_dict
+
+        without = DualControl.from_dict(
+            {
+                "user_tools": [{"name": "u", "scope": ["contact"]}],
+                "user_actions": [
+                    {
+                        "tool": "u",
+                        "trigger": "after_turn",
+                        "trigger_value": 2,
+                        "state_delta": {"contact.email": "x@y.z"},
+                    }
+                ],
+            }
+        )
+        assert "double_apply_targets" not in _dual_control_to_dict(without)
+        with_targets = DualControl.from_dict(
+            {
+                "user_tools": [{"name": "u", "scope": ["contact"]}],
+                "user_actions": [
+                    {
+                        "tool": "u",
+                        "trigger": "after_turn",
+                        "trigger_value": 2,
+                        "state_delta": {"contact.email": "x@y.z"},
+                    }
+                ],
+                "double_apply_targets": ["contact"],
+            }
+        )
+        d = _dual_control_to_dict(with_targets)
+        assert d["double_apply_targets"] == ["contact"]
+
+
 # --------------------------------------------------------------------------- #
 # 6. Aggregation: per-model coordination_rate, conditional emission
 # --------------------------------------------------------------------------- #
