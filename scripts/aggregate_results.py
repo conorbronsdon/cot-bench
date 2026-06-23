@@ -1004,6 +1004,64 @@ def compute_holdout_gap(df: pd.DataFrame) -> dict:
     return out
 
 
+def compute_intra_template_variance(df: pd.DataFrame) -> dict:
+    """Per-model score variance across instances of the SAME template (issue #90).
+
+    GSM-Symbolic's memorization signal: a model that learned a template's
+    *solution shape* scores consistently across its instances; a model that
+    surface-matched a memorized instance scores erratically as the slots change.
+    So a high spread of efficacy across different instantiations of one template
+    is the contamination/brittleness signal a single aggregate score hides.
+
+    Method (per model): group rows by ``scenario_id`` (the template id is stable
+    across instantiations — see eval/templating.instantiate). Within a template,
+    take the mean efficacy per DISTINCT instance (keyed by ``instantiation_seed``)
+    and compute the population std across those instance means. A model's
+    ``intra_template_std`` is the mean of those per-template stds over templates
+    that have >= 2 distinct instances. Returns ``{}`` when no template has >= 2
+    distinct instances in the frame (the current single-seed reality — see the
+    prerequisite note below), so the caller emits nothing rather than a
+    misleading zero.
+
+    PREREQUISITE (documented honestly): this is a live signal only once an
+    aggregation input contains >= 2 distinct instantiations of the same template.
+    A single run instantiates each template once (one corpus seed), and
+    load_all_results reads one run's parquet, so today this returns ``{}``. It
+    activates when the corpus is instantiated with multiple seeds per template
+    (multi-instantiation) within a run, or when aggregation spans runs with
+    different fresh seeds. The function is the ready measurement primitive; wiring
+    the multi-instantiation that feeds it is tracked separately on issue #90.
+
+    Only per-MODEL aggregates are returned — never per-template detail — mirroring
+    the holdout-gap privacy rule. ``df`` is assumed already null-agent-stripped by
+    the caller.
+    """
+    required = {"scenario_id", "instantiation_seed", "efficacy", "model"}
+    if df.empty or not required.issubset(df.columns):
+        return {}
+    # Holdout rows must not leak into a published memorization stat.
+    if "holdout" in df.columns:
+        df = df[~df["holdout"].fillna(False).astype(bool)]
+    # An instance is a (template, seed) pair; a template needs >= 2 distinct seeds.
+    seeds = df.dropna(subset=["instantiation_seed"])
+    if seeds.empty:
+        return {}
+
+    out: dict[str, dict] = {}
+    for model, model_df in seeds.groupby("model"):
+        per_template_std: list[float] = []
+        for _scenario_id, tmpl_df in model_df.groupby("scenario_id"):
+            instance_means = tmpl_df.groupby("instantiation_seed")["efficacy"].mean()
+            if instance_means.size >= 2:
+                per_template_std.append(float(np.std(instance_means.to_numpy(), ddof=0)))
+        if per_template_std:
+            out[str(model)] = {
+                "intra_template_std": round(float(np.mean(per_template_std)), 4),
+                "n_templates_measured": len(per_template_std),
+            }
+    return out
+
+
 def compute_leaderboard(df: pd.DataFrame) -> dict:
     """Compute leaderboard rankings from raw results.
 
@@ -1071,6 +1129,11 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
     # CLEAR, bootstrap CIs, per-domain, per-judge) is over the PUBLIC corpus only.
     # The leaderboard publishes the gap per model but never holdout scenario IDs.
     holdout_gap = compute_holdout_gap(df)
+    # Intra-template variance (issue #90), computed from the full frame before the
+    # holdout drop (the function excludes holdout rows itself). Empty until the
+    # corpus is instantiated with >= 2 seeds per template — see the function's
+    # prerequisite note — so it ships nothing on a single-seed run.
+    intra_template_variance = compute_intra_template_variance(df)
     if "holdout" in df.columns:
         df = df[~df["holdout"].fillna(False).astype(bool)]
         if df.empty:
@@ -1289,6 +1352,24 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
         }
         if holdout_gap
         else {"present": False},
+        # Anti-memorization umbrella (issue #90). The two contamination signals
+        # this benchmark publishes: the public-vs-holdout efficacy delta (above,
+        # per model) and intra-template score variance (GSM-Symbolic — high spread
+        # across instances of one template flags surface memorization). Framed as
+        # "contamination-limited", never "contamination-free": following LiveBench,
+        # which renamed its own claim free->limited. ``intra_template_variance`` is
+        # present only when the frame carries >= 2 instances per template (it ships
+        # empty on a single-seed run — see compute_intra_template_variance).
+        "anti_memorization": {
+            "framing": (
+                "contamination-limited, not contamination-free: the public corpus "
+                "is on GitHub and trainable. The signals here BOUND contamination "
+                "(holdout delta + intra-template variance), they do not eliminate "
+                "it. See README references (GSM-Symbolic, LiveBench) and issue #90."
+            ),
+            "holdout_present": bool(holdout_gap),
+            "intra_template_variance": intra_template_variance,
+        },
     }
 
     # Persona-stratified robustness table (issue #59 / H4): per-model, per-profile

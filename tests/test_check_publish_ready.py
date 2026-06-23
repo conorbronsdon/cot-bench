@@ -14,7 +14,12 @@ from pathlib import Path
 
 import pytest
 
-from eval.config import JUDGES, MIN_SCENARIOS_FOR_PUBLISH, RELIABILITY_RUNS
+from eval.config import (
+    JUDGES,
+    MAX_UNGRADABLE_RATE,
+    MIN_SCENARIOS_FOR_PUBLISH,
+    RELIABILITY_RUNS,
+)
 from eval.simulation.profiles import DEFAULT_SIM_PROFILE
 from eval.templating import DEFAULT_INSTANTIATION_SEED
 from scripts.check_publish_ready import check_publish_ready
@@ -83,6 +88,38 @@ class TestCheckPublishReady:
         # we can't know what (if anything) ran.
         path = tmp_path / "does_not_exist.json"
         assert check_publish_ready(path, allow_partial=True) != 0
+
+
+class TestUngradableRate:
+    """#88: a run too degraded by harness faults must not publish."""
+
+    def _grad(self, rate):
+        return {"n_episodes": 100, "n_ungradable": int(round(rate * 100)), "ungradable_rate": rate}
+
+    def test_rate_above_ceiling_blocks(self, tmp_path, capsys):
+        path = _write_manifest(tmp_path, gradability=self._grad(MAX_UNGRADABLE_RATE + 0.05))
+        assert check_publish_ready(path) != 0
+        err = capsys.readouterr().err
+        assert "::error::" in err
+        assert "ungradable" in err.lower()
+
+    def test_rate_at_or_below_ceiling_passes(self, tmp_path):
+        path = _write_manifest(tmp_path, gradability=self._grad(MAX_UNGRADABLE_RATE))
+        assert check_publish_ready(path) == 0
+
+    def test_zero_ungradable_passes(self, tmp_path):
+        path = _write_manifest(tmp_path, gradability=self._grad(0.0))
+        assert check_publish_ready(path) == 0
+
+    def test_legacy_manifest_without_gradability_passes(self, tmp_path):
+        # No gradability block (predates #88) must not be gated.
+        path = _write_manifest(tmp_path)
+        assert check_publish_ready(path) == 0
+
+    def test_allow_partial_downgrades_to_warning(self, tmp_path, capsys):
+        path = _write_manifest(tmp_path, gradability=self._grad(0.5))
+        assert check_publish_ready(path, allow_partial=True) == 0
+        assert "::warning::" in capsys.readouterr().err
 
 
 class TestScenarioMinimum:
