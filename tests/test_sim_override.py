@@ -73,7 +73,7 @@ def _run_with_overrides(tmp_path, monkeypatch, extra_argv):
     output = results_dir / "results_20260610_777777.parquet"
 
     scenarios = [_scenario(0)]
-    monkeypatch.setattr(run_eval, "load_scenarios", lambda domain: scenarios)
+    monkeypatch.setattr(run_eval, "load_scenarios", lambda domain, seed: (scenarios, []))
     monkeypatch.setattr(run_eval, "init_tracing", lambda **kw: None)
     monkeypatch.setattr(run_eval, "get_tracer", lambda: None)
     monkeypatch.setattr(run_eval, "SimulationRunner", lambda *a, **k: object())
