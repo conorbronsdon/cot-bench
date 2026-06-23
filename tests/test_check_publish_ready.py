@@ -302,6 +302,94 @@ class TestTemplatingSeedGate:
         assert "::warning::" in capsys.readouterr().err
 
 
+class TestSurfaceReuseGate:
+    """Closes the gap left open by #82: the seed gate stops seed 0 but NOT reusing
+    the same fresh seed across two published runs, which re-exposes a byte-identical
+    instantiated surface. The collision key is ``instantiated_corpus_sha256``; a
+    committed ledger of already-published surfaces makes the reuse detectable.
+    """
+
+    def _templating(self, surface_hash, seed=1234567):
+        return {
+            "instantiation_seed": seed,
+            "n_templated_scenarios": 5,
+            "template_corpus_sha256": "a" * 64,
+            "instantiated_corpus_sha256": surface_hash,
+        }
+
+    def _ledger(self, tmp_path, *entries) -> Path:
+        ledger = tmp_path / "published_surfaces.jsonl"
+        ledger.write_text("".join(json.dumps(e) + "\n" for e in entries))
+        return ledger
+
+    def test_reused_surface_blocks(self, tmp_path, capsys):
+        # The current run's surface hash is already in the ledger (a prior board
+        # published it): block, naming the prior run + seed.
+        surface = "c" * 64
+        ledger = self._ledger(
+            tmp_path,
+            {
+                "run_id": "results_20260101",
+                "instantiation_seed": 1234567,
+                "instantiated_corpus_sha256": surface,
+                "published_at": "2026-01-01T00:00:00+00:00",
+            },
+        )
+        path = _write_manifest(tmp_path, templating=self._templating(surface))
+        assert check_publish_ready(path, ledger_path=ledger) != 0
+        err = capsys.readouterr().err
+        assert "::error::" in err
+        assert "already published" in err
+        assert "results_20260101" in err  # names the prior run
+        assert "--random-instantiation-seed" in err
+
+    def test_novel_surface_passes(self, tmp_path):
+        # The ledger holds a different surface; this run's surface is new -> pass.
+        ledger = self._ledger(
+            tmp_path,
+            {
+                "run_id": "results_20260101",
+                "instantiation_seed": 999,
+                "instantiated_corpus_sha256": "d" * 64,
+                "published_at": "2026-01-01T00:00:00+00:00",
+            },
+        )
+        path = _write_manifest(tmp_path, templating=self._templating("e" * 64))
+        assert check_publish_ready(path, ledger_path=ledger) == 0
+
+    def test_non_templated_run_and_empty_or_missing_ledger_pass_silently(self, tmp_path, capsys):
+        # A non-templated run (no templating block) is never gated on surface reuse,
+        # even with a missing ledger.
+        missing_ledger = tmp_path / "nope.jsonl"
+        non_templated = _write_manifest(tmp_path)
+        assert "templating" not in json.loads(non_templated.read_text())
+        assert check_publish_ready(non_templated, ledger_path=missing_ledger) == 0
+        assert "already published" not in capsys.readouterr().err
+
+        # A templated run with no prior publishes (empty ledger) also passes — the
+        # surface is novel by definition.
+        empty_ledger = tmp_path / "empty.jsonl"
+        empty_ledger.write_text("")
+        templated = _write_manifest(tmp_path, templating=self._templating("f" * 64))
+        assert check_publish_ready(templated, ledger_path=empty_ledger) == 0
+        assert "already published" not in capsys.readouterr().err
+
+    def test_allow_partial_rescues_reused_surface(self, tmp_path, capsys):
+        surface = "1" * 64
+        ledger = self._ledger(
+            tmp_path,
+            {
+                "run_id": "results_20260101",
+                "instantiation_seed": 1234567,
+                "instantiated_corpus_sha256": surface,
+                "published_at": "2026-01-01T00:00:00+00:00",
+            },
+        )
+        path = _write_manifest(tmp_path, templating=self._templating(surface))
+        assert check_publish_ready(path, allow_partial=True, ledger_path=ledger) == 0
+        assert "::warning::" in capsys.readouterr().err
+
+
 class TestAllH2BlockersReportedTogether:
     def test_every_distinct_reason_named_at_once(self, tmp_path, capsys):
         # All three H2 conditions plus a failed model and low scenarios should

@@ -35,6 +35,7 @@ EXPECTED_PUBLISHED_SURFACES = {
     "data/results/leaderboard.json",
     "data/results/latest.csv",
     "data/results/history.jsonl",
+    "data/results/published_surfaces.jsonl",
 }
 
 

@@ -26,6 +26,13 @@ data/results/artifacts/
 !data/results/leaderboard.json
 !data/results/latest.csv
 !data/results/history.jsonl
+# published_surfaces.jsonl is the anti-memorization ledger: an append-only record
+# of every published instantiated surface (instantiated_corpus_sha256). The
+# publish step commits it alongside the leaderboard so the next published run can
+# be blocked from re-exposing a surface that already shipped (closes the
+# same-surface-reuse gap left open by #82). It must be committed each run or the
+# anti-memorization history is discarded with the CI workspace.
+!data/results/published_surfaces.jsonl
 
 # Keep domain definitions
 !data/domains/**/*.json
