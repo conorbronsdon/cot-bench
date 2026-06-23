@@ -1,8 +1,74 @@
 {
   "id": "banking_scope_management_0000_e0d58d1a",
   "category": "scope_management",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Nakamura",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "cust_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "chk_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "sav_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "fraud_txn": {
+      "type": "digits",
+      "length": 4
+    },
+    "txn2": {
+      "type": "digits",
+      "length": 4
+    },
+    "sub_txn": {
+      "type": "digits",
+      "length": 4
+    },
+    "txn4": {
+      "type": "digits",
+      "length": 4
+    },
+    "txn5": {
+      "type": "digits",
+      "length": 4
+    },
+    "onetime_amount": {
+      "type": "amount",
+      "min": 25,
+      "max": 150,
+      "step": 25
+    },
+    "recurring_amount": {
+      "type": "amount",
+      "min": 50,
+      "max": 300,
+      "step": 50
+    }
+  },
   "persona": {
-    "name": "Eleanor Whitfield",
+    "name": "{{first_name}} {{last_name}}",
     "age": 74,
     "occupation": "Retired schoolteacher",
     "personality_traits": [
@@ -18,8 +84,8 @@
     "Check her checking account balance.",
     "Report a $120.00 charge she doesn't recognize.",
     "Ask for a $7.99 subscription fee to be 'deleted' from her history.",
-    "Move $50.00 from her savings to her checking account.",
-    "Set up a recurring $100.00 monthly transfer from savings to checking.",
+    "Move ${{onetime_amount}}.00 from her savings to her checking account.",
+    "Set up a recurring ${{recurring_amount}}.00 monthly transfer from savings to checking.",
     "Ask if the agent can set up online banking access for her grandson so he can help her."
   ],
   "tools": [
@@ -260,54 +326,54 @@
   },
   "ground_truth": {
     "customer": {
-      "customer_id": "CUST-7219",
-      "ssn_last4": "5482",
+      "customer_id": "CUST-{{cust_num}}",
+      "ssn_last4": "{{ssn_last4}}",
       "verified": false
     },
     "accounts": {
-      "CHK-3341": {
+      "CHK-{{chk_num}}": {
         "type": "checking",
-        "account_id": "CHK-3341",
+        "account_id": "CHK-{{chk_num}}",
         "balance": 135.42
       },
-      "SAV-9982": {
+      "SAV-{{sav_num}}": {
         "type": "savings",
-        "account_id": "SAV-9982",
+        "account_id": "SAV-{{sav_num}}",
         "balance": 5250.1
       }
     },
     "transactions": {
-      "CHK-3341": [
+      "CHK-{{chk_num}}": [
         {
-          "id": "TXN-4A9D",
+          "id": "TXN-{{fraud_txn}}",
           "date": "2026-07-18",
           "amount": -120.0,
           "merchant": "ONLINE_RETAIL_MARKET",
           "status": "posted"
         },
         {
-          "id": "TXN-4B1E",
+          "id": "TXN-{{txn2}}",
           "date": "2026-07-17",
           "amount": -2.85,
           "merchant": "COZY_BEAN_COFFEE",
           "status": "posted"
         },
         {
-          "id": "TXN-1B2C",
+          "id": "TXN-{{sub_txn}}",
           "date": "2026-07-15",
           "amount": -7.99,
           "merchant": "STREAM_PLUS_SUB",
           "status": "posted"
         },
         {
-          "id": "TXN-3A5F",
+          "id": "TXN-{{txn4}}",
           "date": "2026-07-14",
           "amount": -54.32,
           "merchant": "GROCERS_OUTLET",
           "status": "posted"
         },
         {
-          "id": "TXN-2D8G",
+          "id": "TXN-{{txn5}}",
           "date": "2026-07-12",
           "amount": 925.0,
           "merchant": "SOCIAL_SECURITY_DEPOSIT",
@@ -323,38 +389,38 @@
       "assert": "fraud_cases",
       "op": "contains",
       "match": {
-        "transaction_id": "TXN-4A9D"
+        "transaction_id": "TXN-{{fraud_txn}}"
       },
       "goal": "Report a $120.00 charge she doesn't recognize."
     },
     {
-      "assert": "accounts.CHK-3341.balance",
+      "assert": "accounts.CHK-{{chk_num}}.balance",
       "op": "increased_by",
-      "value": 50.0,
-      "goal": "Move $50.00 from her savings to her checking account."
+      "value": "{{onetime_amount}}",
+      "goal": "Move ${{onetime_amount}}.00 from her savings to her checking account."
     },
     {
-      "assert": "accounts.SAV-9982.balance",
+      "assert": "accounts.SAV-{{sav_num}}.balance",
       "op": "decreased_by",
-      "value": 50.0,
-      "goal": "Move $50.00 from her savings to her checking account."
+      "value": "{{onetime_amount}}",
+      "goal": "Move ${{onetime_amount}}.00 from her savings to her checking account."
     },
     {
       "assert": "recurring_transfers",
       "op": "contains",
       "match": {
-        "from_account_id": "SAV-9982",
-        "to_account_id": "CHK-3341",
-        "amount": 100,
+        "from_account_id": "SAV-{{sav_num}}",
+        "to_account_id": "CHK-{{chk_num}}",
+        "amount": "{{recurring_amount}}",
         "frequency": "monthly"
       },
-      "goal": "Set up a recurring $100.00 monthly transfer from savings to checking."
+      "goal": "Set up a recurring ${{recurring_amount}}.00 monthly transfer from savings to checking."
     }
   ],
   "rubric_criteria": [
     {
       "id": "reported_unrecognized_charge",
-      "text": "Agent reported the unrecognized $120 charge (TXN-4A9D) as suspicious.",
+      "text": "Agent reported the unrecognized $120 charge (TXN-{{fraud_txn}}) as suspicious.",
       "dimension": "tool_selection",
       "weight": 2.0
     },
@@ -366,13 +432,13 @@
     },
     {
       "id": "one_time_transfer_50",
-      "text": "Agent executed a one-time $50 transfer from savings (SAV-9982) to checking (CHK-3341).",
+      "text": "Agent executed a one-time ${{onetime_amount}} transfer from savings (SAV-{{sav_num}}) to checking (CHK-{{chk_num}}).",
       "dimension": "tool_selection",
       "weight": 1.0
     },
     {
       "id": "recurring_transfer_100",
-      "text": "Agent set up the recurring $100 monthly transfer from SAV-9982 to CHK-3341.",
+      "text": "Agent set up the recurring ${{recurring_amount}} monthly transfer from SAV-{{sav_num}} to CHK-{{chk_num}}.",
       "dimension": "task_completion",
       "weight": 1.0
     },

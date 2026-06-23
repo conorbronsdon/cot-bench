@@ -2,15 +2,60 @@
   "id": "banking_empathetic_resolution_0005",
   "category": "empathetic_resolution",
   "schema_version": "0.2",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Goldberg",
+        "Okonkwo",
+        "Castellanos",
+        "Nakamura",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Hollander"
+      ]
+    },
+    "customer_id": {
+      "type": "customer_id",
+      "prefix": "CUST-",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "chk_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "sav_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "transfer_amount": {
+      "type": "amount",
+      "min": 900,
+      "max": 2000,
+      "step": 50
+    }
+  },
   "authorship": {
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
   "persona": {
-    "name": "Hannah Goldberg",
+    "name": "{{first_name}} {{last_name}}",
     "age": 38,
     "occupation": "Nonprofit development director",
-    "personality_traits": ["thorough", "empathetic", "detail-oriented"],
+    "personality_traits": [
+      "thorough",
+      "empathetic",
+      "detail-oriented"
+    ],
     "tone": "warm and measured",
     "detail_level": "moderate",
     "background": "Manages a custodial account for her disabled adult son, whose medical equipment supplier just declined a critical payment because a daily withdrawal limit was hit. She is calm on the surface but the stakes are high and she needs it resolved today."
@@ -28,59 +73,186 @@
       "name": "verify_customer_identity",
       "description": "Verify customer identity using account number, SSN last 4, or security questions",
       "parameters": [
-        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
-        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
-        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
       ]
     },
     {
       "name": "get_account_balance",
       "description": "Get current balance for a specific account",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
       ]
     },
     {
       "name": "get_transaction_history",
       "description": "Retrieve transaction history for an account",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
-        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        }
       ]
     },
     {
       "name": "initiate_transfer",
       "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity.",
       "parameters": [
-        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
-        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
-        {"name": "amount", "type": "number", "description": "Amount in USD", "required": true},
-        {"name": "memo", "type": "string", "description": "Transfer memo/description", "required": false}
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount in USD",
+          "required": true
+        },
+        {
+          "name": "memo",
+          "type": "string",
+          "description": "Transfer memo/description",
+          "required": false
+        }
       ]
     },
     {
       "name": "setup_account_alerts",
       "description": "Configure account alerts and notifications",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "alert_type", "type": "string", "description": "Type: 'low_balance', 'large_transaction', 'deposit', 'withdrawal'", "required": true, "enum": ["low_balance", "large_transaction", "deposit", "withdrawal"]},
-        {"name": "threshold", "type": "number", "description": "Threshold amount for the alert", "required": false},
-        {"name": "notification_method", "type": "string", "description": "Method: 'email', 'sms', 'push', 'all'", "required": true, "enum": ["email", "sms", "push", "all"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "alert_type",
+          "type": "string",
+          "description": "Type: 'low_balance', 'large_transaction', 'deposit', 'withdrawal'",
+          "required": true,
+          "enum": [
+            "low_balance",
+            "large_transaction",
+            "deposit",
+            "withdrawal"
+          ]
+        },
+        {
+          "name": "threshold",
+          "type": "number",
+          "description": "Threshold amount for the alert",
+          "required": false
+        },
+        {
+          "name": "notification_method",
+          "type": "string",
+          "description": "Method: 'email', 'sms', 'push', 'all'",
+          "required": true,
+          "enum": [
+            "email",
+            "sms",
+            "push",
+            "all"
+          ]
+        }
       ]
     },
     {
       "name": "generate_account_statement",
       "description": "Generate an official account statement or confirmation letter",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
-        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "statement_type",
+          "type": "string",
+          "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'",
+          "required": true,
+          "enum": [
+            "full_statement",
+            "balance_confirmation",
+            "transaction_confirmation"
+          ]
+        },
+        {
+          "name": "delivery_method",
+          "type": "string",
+          "description": "Method: 'email', 'mail', 'download'",
+          "required": true,
+          "enum": [
+            "email",
+            "mail",
+            "download"
+          ]
+        }
       ]
     }
   ],
-  "initial_message": "Hi. I manage an account for my son — he has significant disabilities and relies on it for his medical equipment. His supplier just told me a payment was declined, and he needs that equipment. I really need to get this sorted out today. Can you walk through it with me?",
+  "initial_message": "Hi. I manage an account for my son \u2014 he has significant disabilities and relies on it for his medical equipment. His supplier just told me a payment was declined, and he needs that equipment. I really need to get this sorted out today. Can you walk through it with me?",
   "difficulty": "medium",
   "expected_tool_sequence": [
     "verify_customer_identity",
@@ -91,34 +263,94 @@
     "generate_account_statement"
   ],
   "ground_truth": {
-    "customer": {"customer_id": "CUST-30558", "name": "Hannah Goldberg", "ssn_last4": "7743", "verified": false, "custodian_of": ["CUST-CHK-500"]},
+    "customer": {
+      "customer_id": "{{customer_id}}",
+      "name": "{{first_name}} {{last_name}}",
+      "ssn_last4": "{{ssn_last4}}",
+      "verified": false,
+      "custodian_of": [
+        "CUST-CHK-{{chk_num}}"
+      ]
+    },
     "accounts": {
-      "CUST-CHK-500": {"type": "checking", "balance": 640.00, "available": 640.00, "daily_withdrawal_limit": 1000.00},
-      "LINK-SAV-501": {"type": "savings", "balance": 5200.00, "available": 5200.00}
+      "CUST-CHK-{{chk_num}}": {
+        "type": "checking",
+        "balance": 640.0,
+        "available": 640.0,
+        "daily_withdrawal_limit": 1000.0
+      },
+      "LINK-SAV-{{sav_num}}": {
+        "type": "savings",
+        "balance": 5200.0,
+        "available": 5200.0
+      }
     },
     "transactions": {
-      "CUST-CHK-500": [
-        {"id": "TXN-6612", "date": "2026-06-09", "amount": -1450.00, "merchant": "MEDEQUIP SUPPLY CO", "status": "declined_limit"},
-        {"id": "TXN-6611", "date": "2026-06-05", "amount": -210.00, "merchant": "PHARMACY", "status": "posted"},
-        {"id": "TXN-6610", "date": "2026-06-02", "amount": -88.00, "merchant": "MEDEQUIP SUPPLY CO", "status": "posted"}
+      "CUST-CHK-{{chk_num}}": [
+        {
+          "id": "TXN-6612",
+          "date": "2026-06-09",
+          "amount": -1450.0,
+          "merchant": "MEDEQUIP SUPPLY CO",
+          "status": "declined_limit"
+        },
+        {
+          "id": "TXN-6611",
+          "date": "2026-06-05",
+          "amount": -210.0,
+          "merchant": "PHARMACY",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-6610",
+          "date": "2026-06-02",
+          "amount": -88.0,
+          "merchant": "MEDEQUIP SUPPLY CO",
+          "status": "posted"
+        }
       ]
     },
     "recurring_transfers": [],
-    "alerts": {"CUST-CHK-500": []},
+    "alerts": {
+      "CUST-CHK-{{chk_num}}": []
+    },
     "statements_generated": []
   },
   "expected_state_changes": [
-    {"assert": "customer.verified", "op": "equals", "value": true,
-     "goal": "Find out why a payment from the custodial account to the medical supplier was declined"},
-    {"assert": "accounts.CUST-CHK-500.balance", "op": "increased_by", "value": 1000.00,
-     "goal": "Move funds from the linked savings account into the custodial account so the payment can go through"},
-    {"assert": "accounts.LINK-SAV-501.balance", "op": "decreased_by", "value": 1000.00},
-    {"assert": "alerts.CUST-CHK-500", "op": "contains",
-     "match": {"alert_type": "large_transaction"},
-     "goal": "Set up a large transaction alert so a critical payment never silently fails again"},
-    {"assert": "statements_generated", "op": "contains",
-     "match": {"account_id": "CUST-CHK-500", "statement_type_contains": "confirmation"},
-     "goal": "Get a transaction confirmation she can send the medical supplier to show payment is coming"}
+    {
+      "assert": "customer.verified",
+      "op": "equals",
+      "value": true,
+      "goal": "Find out why a payment from the custodial account to the medical supplier was declined"
+    },
+    {
+      "assert": "accounts.CUST-CHK-{{chk_num}}.balance",
+      "op": "increased_by",
+      "value": "{{transfer_amount}}",
+      "goal": "Move funds from the linked savings account into the custodial account so the payment can go through"
+    },
+    {
+      "assert": "accounts.LINK-SAV-{{sav_num}}.balance",
+      "op": "decreased_by",
+      "value": "{{transfer_amount}}"
+    },
+    {
+      "assert": "alerts.CUST-CHK-{{chk_num}}",
+      "op": "contains",
+      "match": {
+        "alert_type": "large_transaction"
+      },
+      "goal": "Set up a large transaction alert so a critical payment never silently fails again"
+    },
+    {
+      "assert": "statements_generated",
+      "op": "contains",
+      "match": {
+        "account_id": "CUST-CHK-{{chk_num}}",
+        "statement_type_contains": "confirmation"
+      },
+      "goal": "Get a transaction confirmation she can send the medical supplier to show payment is coming"
+    }
   ],
   "rubric_criteria": [
     {
@@ -129,19 +361,19 @@
     },
     {
       "id": "transfer_to_cover_payment",
-      "text": "Agent transferred $1,000 from the linked savings (LINK-SAV-501) into the custodial checking (CUST-CHK-500) so the equipment payment can clear.",
+      "text": "Agent transferred ${{transfer_amount}} from the linked savings (LINK-SAV-{{sav_num}}) into the custodial checking (CUST-CHK-{{chk_num}}) so the equipment payment can clear.",
       "dimension": "tool_selection",
       "weight": 2.0
     },
     {
       "id": "large_transaction_alert",
-      "text": "Agent set up a large_transaction alert on CUST-CHK-500 so a critical payment never silently fails again.",
+      "text": "Agent set up a large_transaction alert on CUST-CHK-{{chk_num}} so a critical payment never silently fails again.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "transaction_confirmation_for_supplier",
-      "text": "Agent generated a transaction confirmation on CUST-CHK-500 she can send the medical supplier as proof payment is coming.",
+      "text": "Agent generated a transaction confirmation on CUST-CHK-{{chk_num}} she can send the medical supplier as proof payment is coming.",
       "dimension": "task_completion",
       "weight": 1.0
     },

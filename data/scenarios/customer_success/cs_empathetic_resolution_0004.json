@@ -6,11 +6,56 @@
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Foster",
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Sandoval",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "company": {
+      "type": "choice",
+      "options": [
+        "Veritas Sales Tech",
+        "Northwind Logistics",
+        "Apex Dynamics",
+        "Sterling Components",
+        "Vantage Analytics",
+        "Pinnacle Freight"
+      ]
+    },
+    "acct_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "csm_name": {
+      "type": "first_name"
+    },
+    "renewal_date": {
+      "type": "date",
+      "start": "2026-08-15",
+      "end": "2026-10-31"
+    }
+  },
   "persona": {
-    "name": "Megan Foster",
+    "name": "{{first_name}} {{last_name}}",
     "age": 32,
     "occupation": "Sales enablement lead at a B2B software vendor",
-    "personality_traits": ["energetic", "deadline-driven", "collaborative", "occasionally pushy"],
+    "personality_traits": [
+      "energetic",
+      "deadline-driven",
+      "collaborative",
+      "occasionally pushy"
+    ],
     "tone": "fast-paced and friendly",
     "detail_level": "moderate",
     "background": "The only person at her company who knows this tool, she's running a full data migration solo against a hard deadline next week. She's exhausted, sleeping badly, and half-joking that she's ready to rip the whole thing out. Underneath the jokes she's genuinely close to giving up."
@@ -28,8 +73,18 @@
       "name": "get_account",
       "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
       "parameters": [
-        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
-        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Company name, contact name, email, or account ID to search for",
+          "required": true
+        },
+        {
+          "name": "include_contacts",
+          "type": "boolean",
+          "description": "Include the list of contacts on the account",
+          "required": false
+        }
       ],
       "response_schema": {
         "account_id": "string",
@@ -44,11 +99,23 @@
       "name": "search_knowledge_base",
       "description": "Search the knowledge base for articles, guides, and tutorials.",
       "parameters": [
-        {"name": "query", "type": "string", "description": "Search query", "required": true},
-        {"name": "category", "type": "string", "description": "Filter by category: 'getting_started', 'advanced', 'troubleshooting', 'best_practices'", "required": false}
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Search query",
+          "required": true
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "description": "Filter by category: 'getting_started', 'advanced', 'troubleshooting', 'best_practices'",
+          "required": false
+        }
       ],
       "response_schema": {
-        "articles": ["object"],
+        "articles": [
+          "object"
+        ],
         "total_count": "number"
       }
     },
@@ -56,11 +123,36 @@
       "name": "schedule_meeting",
       "description": "Schedule a meeting between the customer and their CS team.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "meeting_type", "type": "string", "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'", "required": true},
-        {"name": "preferred_dates", "type": "array", "description": "List of preferred date/time slots", "required": true},
-        {"name": "attendees", "type": "array", "description": "Email addresses of attendees", "required": false},
-        {"name": "notes", "type": "string", "description": "Meeting agenda or notes", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "meeting_type",
+          "type": "string",
+          "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'",
+          "required": true
+        },
+        {
+          "name": "preferred_dates",
+          "type": "array",
+          "description": "List of preferred date/time slots",
+          "required": true
+        },
+        {
+          "name": "attendees",
+          "type": "array",
+          "description": "Email addresses of attendees",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "string",
+          "description": "Meeting agenda or notes",
+          "required": false
+        }
       ],
       "response_schema": {
         "meeting_id": "string",
@@ -73,11 +165,36 @@
       "name": "create_ticket",
       "description": "Open a NEW support ticket for the customer. Use this when the customer reports a fresh issue that has no existing ticket. To raise the priority of an EXISTING ticket, use escalate_ticket; to leave a private CS note, use create_internal_note.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "subject", "type": "string", "description": "Ticket subject line", "required": true},
-        {"name": "description", "type": "string", "description": "Detailed description of the issue", "required": true},
-        {"name": "priority", "type": "string", "description": "Priority: 'low', 'medium', 'high', 'urgent'", "required": false},
-        {"name": "category", "type": "string", "description": "Issue category: 'bug', 'how_to', 'billing', 'feature', 'outage'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "subject",
+          "type": "string",
+          "description": "Ticket subject line",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "description": "Detailed description of the issue",
+          "required": true
+        },
+        {
+          "name": "priority",
+          "type": "string",
+          "description": "Priority: 'low', 'medium', 'high', 'urgent'",
+          "required": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "description": "Issue category: 'bug', 'how_to', 'billing', 'feature', 'outage'",
+          "required": false
+        }
       ],
       "response_schema": {
         "ticket_id": "string",
@@ -87,11 +204,26 @@
     },
     {
       "name": "create_internal_note",
-      "description": "Add an internal note to the customer's account for the CS team. Internal only — the customer never sees this. Use this to record context, risk flags, or follow-ups.",
+      "description": "Add an internal note to the customer's account for the CS team. Internal only \u2014 the customer never sees this. Use this to record context, risk flags, or follow-ups.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "note", "type": "string", "description": "Note content", "required": true},
-        {"name": "tag", "type": "string", "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "note",
+          "type": "string",
+          "description": "Note content",
+          "required": true
+        },
+        {
+          "name": "tag",
+          "type": "string",
+          "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'",
+          "required": false
+        }
       ],
       "response_schema": {
         "note_id": "string",
@@ -100,7 +232,7 @@
       }
     }
   ],
-  "initial_message": "Honestly? I'm running on fumes. I'm the only one here who touches this thing, the migration's due next week, and I keep hitting the same wall. Part of me just wants to scrap the whole project. Don't just hand me another help article, please — I've read them. I need to know actual humans are going to help me get this over the line.",
+  "initial_message": "Honestly? I'm running on fumes. I'm the only one here who touches this thing, the migration's due next week, and I keep hitting the same wall. Part of me just wants to scrap the whole project. Don't just hand me another help article, please \u2014 I've read them. I need to know actual humans are going to help me get this over the line.",
   "difficulty": "medium",
   "expected_tool_sequence": [
     "get_account",
@@ -111,30 +243,53 @@
   ],
   "ground_truth": {
     "account": {
-      "account_id": "ACCT-8830",
-      "company": "Veritas Sales Tech",
-      "contact_name": "Megan Foster",
+      "account_id": "ACCT-{{acct_num}}",
+      "company": "{{company}}",
+      "contact_name": "{{first_name}} {{last_name}}",
       "plan": "Growth",
-      "renewal_date": "2026-09-20",
-      "csm_owner": "CSM-Raj"
+      "renewal_date": "{{renewal_date}}",
+      "csm_owner": "CSM-{{csm_name}}"
     },
     "knowledge_base": [
-      {"article_id": "KB-552", "title": "Data migration runbook: field mapping and common blockers", "category": "best_practices"}
+      {
+        "article_id": "KB-552",
+        "title": "Data migration runbook: field mapping and common blockers",
+        "category": "best_practices"
+      }
     ],
     "meetings": [],
     "tickets": [],
     "internal_notes": []
   },
   "expected_state_changes": [
-    {"assert": "meetings", "op": "contains",
-     "match": {"account_id": "ACCT-8830", "meeting_type": "support"},
-     "goal": "Get a CS-led migration support session booked before her deadline next week"},
-    {"assert": "tickets", "op": "contains",
-     "match": {"account_id": "ACCT-8830", "subject_contains": "migration"},
-     "goal": "Open a support ticket for the migration blocker she keeps hitting"},
-    {"assert": "internal_notes", "op": "contains",
-     "match": {"account_id": "ACCT-8830", "note_contains": "burnout", "tag": "churn_risk"},
-     "goal": "Have the CS team log that she's a single overloaded admin and a real burnout/churn risk"}
+    {
+      "assert": "meetings",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "meeting_type": "support"
+      },
+      "goal": "Get a CS-led migration support session booked before her deadline next week"
+    },
+    {
+      "assert": "tickets",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "subject_contains": "migration"
+      },
+      "goal": "Open a support ticket for the migration blocker she keeps hitting"
+    },
+    {
+      "assert": "internal_notes",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "note_contains": "burnout",
+        "tag": "churn_risk"
+      },
+      "goal": "Have the CS team log that she's a single overloaded admin and a real burnout/churn risk"
+    }
   ],
   "rubric_criteria": [
     {
@@ -145,7 +300,7 @@
     },
     {
       "id": "book_human_support_session",
-      "text": "Agent scheduled a CS-led support session before Megan's next-week deadline.",
+      "text": "Agent scheduled a CS-led support session before {{first_name}}'s next-week deadline.",
       "dimension": "tool_selection",
       "weight": 2.0
     },
@@ -157,13 +312,13 @@
     },
     {
       "id": "flag_burnout_churn_risk",
-      "text": "Agent logged a churn_risk note flagging Megan as a single overloaded admin and burnout risk.",
+      "text": "Agent logged a churn_risk note flagging {{first_name}} as a single overloaded admin and burnout risk.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "provide_human_reassurance",
-      "text": "Agent reassured Megan that real human help is coming rather than only pointing her to more docs.",
+      "text": "Agent reassured {{first_name}} that real human help is coming rather than only pointing her to more docs.",
       "dimension": "task_completion",
       "weight": 2.0
     }

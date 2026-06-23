@@ -1,26 +1,91 @@
 {
   "id": "banking_adaptive_tool_use_0006",
   "category": "adaptive_tool_use",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Nwosu",
+        "Okonkwo",
+        "Adeyemi",
+        "Mwangi",
+        "Hollander",
+        "Andersson"
+      ]
+    },
+    "cust_num": {
+      "type": "digits",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "chk_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "cd_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "cd_amount": {
+      "type": "amount",
+      "min": 12000,
+      "max": 30000,
+      "step": 1000
+    },
+    "dup_txn": {
+      "type": "digits",
+      "length": 4
+    },
+    "dup_txn_other": {
+      "type": "digits",
+      "length": 4
+    },
+    "dup_amount": {
+      "type": "amount",
+      "min": 49.99,
+      "max": 249.99,
+      "step": 10
+    },
+    "dup_merchant": {
+      "type": "choice",
+      "options": [
+        "WELLNESS PHARMACY",
+        "CORNER DRUGSTORE",
+        "MERIDIAN PHARMACY",
+        "CARE PLUS RX"
+      ]
+    }
+  },
   "schema_version": "0.2",
   "authorship": {
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
   "persona": {
-    "name": "Beatrice Nwosu",
+    "name": "{{first_name}} {{last_name}}",
     "age": 66,
     "occupation": "Retired civil servant",
-    "personality_traits": ["dignified", "forgetful", "polite"],
+    "personality_traits": [
+      "dignified",
+      "forgetful",
+      "polite"
+    ],
     "tone": "formal and a little hesitant",
     "detail_level": "verbose",
     "background": "Manages a fixed pension income and has begun forgetting passwords and account details. Wants to be treated with respect and needs steps explained slowly."
   },
   "user_goals": [
     "Confirm the balance now sitting in her matured certificate-of-deposit account",
-    "Move the full $20,000 from the matured CD into her checking account so it is not locked up any longer",
+    "Move the full ${{cd_amount}} from the matured CD into her checking account so it is not locked up any longer",
     "Ask what the current CD rate is for a personal customer in case she decides to open a new shorter one later",
     "Look through her recent checking transactions, where she will spot what looks like the same pharmacy charge billed twice",
-    "Report the duplicate $128.40 charge from 'WELLNESS PHARMACY' as one she believes was billed in error",
+    "Report the duplicate ${{dup_amount}} charge from '{{dup_merchant}}' as one she believes was billed in error",
     "Have a confirmation letter mailed to her showing the new checking balance so she has it on paper for her records"
   ],
   "tools": [
@@ -28,9 +93,29 @@
       "name": "verify_customer_identity",
       "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
       "parameters": [
-        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
-        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
-        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
       ],
       "response_schema": {
         "verified": "boolean",
@@ -43,8 +128,23 @@
       "name": "get_account_balance",
       "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
       ],
       "response_schema": {
         "current_balance": "number",
@@ -57,23 +157,71 @@
       "name": "get_transaction_history",
       "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
-        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false},
-        {"name": "end_date", "type": "string", "description": "End date (YYYY-MM-DD)", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        },
+        {
+          "name": "end_date",
+          "type": "string",
+          "description": "End date (YYYY-MM-DD)",
+          "required": false
+        }
       ],
       "response_schema": {
-        "transactions": [{"id": "string", "date": "string", "amount": "number", "merchant": "string", "status": "string"}]
+        "transactions": [
+          {
+            "id": "string",
+            "date": "string",
+            "amount": "number",
+            "merchant": "string",
+            "status": "string"
+          }
+        ]
       }
     },
     {
       "name": "initiate_transfer",
-      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead — do not confuse the two.",
+      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead \u2014 do not confuse the two.",
       "parameters": [
-        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
-        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
-        {"name": "amount", "type": "number", "description": "Amount in USD", "required": true},
-        {"name": "memo", "type": "string", "description": "Transfer memo/description", "required": false}
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount in USD",
+          "required": true
+        },
+        {
+          "name": "memo",
+          "type": "string",
+          "description": "Transfer memo/description",
+          "required": false
+        }
       ],
       "response_schema": {
         "transfer_id": "string",
@@ -86,11 +234,42 @@
       "name": "setup_recurring_transfer",
       "description": "Set up a recurring automatic transfer on a schedule (daily/weekly/biweekly/monthly). Requires verified identity. This does NOT move money immediately; it schedules future transfers. For a single immediate move use initiate_transfer.",
       "parameters": [
-        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
-        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
-        {"name": "amount", "type": "number", "description": "Amount per transfer in USD", "required": true},
-        {"name": "frequency", "type": "string", "description": "Frequency: 'daily', 'weekly', 'biweekly', 'monthly'", "required": true, "enum": ["daily", "weekly", "biweekly", "monthly"]},
-        {"name": "start_date", "type": "string", "description": "First transfer date (YYYY-MM-DD)", "required": true}
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount per transfer in USD",
+          "required": true
+        },
+        {
+          "name": "frequency",
+          "type": "string",
+          "description": "Frequency: 'daily', 'weekly', 'biweekly', 'monthly'",
+          "required": true,
+          "enum": [
+            "daily",
+            "weekly",
+            "biweekly",
+            "monthly"
+          ]
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "First transfer date (YYYY-MM-DD)",
+          "required": true
+        }
       ],
       "response_schema": {
         "schedule_id": "string",
@@ -102,8 +281,29 @@
       "name": "get_interest_rates",
       "description": "Get current interest rates for account and product types. This is public rate information and does NOT require identity verification. Optionally scope by customer segment.",
       "parameters": [
-        {"name": "account_type", "type": "string", "description": "Type: 'savings', 'checking', 'cd', 'money_market'", "required": true, "enum": ["savings", "checking", "cd", "money_market"]},
-        {"name": "customer_segment", "type": "string", "description": "Segment: 'personal', 'business', 'premium'", "required": false, "enum": ["personal", "business", "premium"]}
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'savings', 'checking', 'cd', 'money_market'",
+          "required": true,
+          "enum": [
+            "savings",
+            "checking",
+            "cd",
+            "money_market"
+          ]
+        },
+        {
+          "name": "customer_segment",
+          "type": "string",
+          "description": "Segment: 'personal', 'business', 'premium'",
+          "required": false,
+          "enum": [
+            "personal",
+            "business",
+            "premium"
+          ]
+        }
       ],
       "response_schema": {
         "account_type": "string",
@@ -115,9 +315,24 @@
       "name": "report_suspicious_transaction",
       "description": "Flag a transaction as potentially fraudulent and open a fraud case. Requires verified identity. Use the transaction ID from get_transaction_history. Opening a case does not automatically reverse the charge.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account with the suspicious transaction", "required": true},
-        {"name": "transaction_id", "type": "string", "description": "ID of the suspicious transaction", "required": true},
-        {"name": "reason", "type": "string", "description": "Why the customer believes it's suspicious", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account with the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "transaction_id",
+          "type": "string",
+          "description": "ID of the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Why the customer believes it's suspicious",
+          "required": true
+        }
       ],
       "response_schema": {
         "case_id": "string",
@@ -129,11 +344,46 @@
       "name": "generate_account_statement",
       "description": "Generate an official account statement or confirmation letter the customer can download or have delivered. Requires verified identity. Use statement_type 'balance_confirmation' for proof-of-funds letters.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
-        {"name": "date_range_start", "type": "string", "description": "Start date", "required": false},
-        {"name": "date_range_end", "type": "string", "description": "End date", "required": false},
-        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "statement_type",
+          "type": "string",
+          "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'",
+          "required": true,
+          "enum": [
+            "full_statement",
+            "balance_confirmation",
+            "transaction_confirmation"
+          ]
+        },
+        {
+          "name": "date_range_start",
+          "type": "string",
+          "description": "Start date",
+          "required": false
+        },
+        {
+          "name": "date_range_end",
+          "type": "string",
+          "description": "End date",
+          "required": false
+        },
+        {
+          "name": "delivery_method",
+          "type": "string",
+          "description": "Method: 'email', 'mail', 'download'",
+          "required": true,
+          "enum": [
+            "email",
+            "mail",
+            "download"
+          ]
+        }
       ],
       "response_schema": {
         "document_id": "string",
@@ -142,7 +392,7 @@
       }
     }
   ],
-  "initial_message": "Hello, dear. I'm sorry, I'm not very good with this sort of thing. My certificate finally came due — the one I locked away a few years ago — and I'd like to take care of it today, along with a couple of other little things if you have the patience for me.",
+  "initial_message": "Hello, dear. I'm sorry, I'm not very good with this sort of thing. My certificate finally came due \u2014 the one I locked away a few years ago \u2014 and I'd like to take care of it today, along with a couple of other little things if you have the patience for me.",
   "difficulty": "medium",
   "expected_tool_sequence": [
     "verify_customer_identity",
@@ -154,38 +404,117 @@
     "generate_account_statement"
   ],
   "ground_truth": {
-    "customer": {"customer_id": "CUST-29055", "name": "Beatrice Nwosu", "ssn_last4": "3318", "verified": false},
+    "customer": {
+      "customer_id": "CUST-{{cust_num}}",
+      "name": "{{first_name}} {{last_name}}",
+      "ssn_last4": "{{ssn_last4}}",
+      "verified": false
+    },
     "accounts": {
-      "PER-CHK-501": {"type": "checking", "balance": 4310.65, "available": 4310.65, "label": "checking"},
-      "PER-CD-502": {"type": "savings", "balance": 20000.00, "available": 20000.00, "label": "matured certificate of deposit", "matured": true}
+      "PER-CHK-{{chk_num}}": {
+        "type": "checking",
+        "balance": 4310.65,
+        "available": 4310.65,
+        "label": "checking"
+      },
+      "PER-CD-{{cd_num}}": {
+        "type": "savings",
+        "balance": "{{cd_amount}}",
+        "available": "{{cd_amount}}",
+        "label": "matured certificate of deposit",
+        "matured": true
+      }
     },
     "transactions": {
-      "PER-CHK-501": [
-        {"id": "TXN-7702", "date": "2026-06-09", "amount": -128.40, "merchant": "WELLNESS PHARMACY", "status": "posted"},
-        {"id": "TXN-7701", "date": "2026-06-09", "amount": -128.40, "merchant": "WELLNESS PHARMACY", "status": "posted"},
-        {"id": "TXN-7700", "date": "2026-06-07", "amount": 1820.00, "merchant": "PENSION DEPOSIT - STATE RETIREMENT", "status": "posted"},
-        {"id": "TXN-7699", "date": "2026-06-05", "amount": -64.10, "merchant": "GAS & ELECTRIC", "status": "posted"},
-        {"id": "TXN-7698", "date": "2026-06-03", "amount": -41.27, "merchant": "GROCERY MART", "status": "posted"}
+      "PER-CHK-{{chk_num}}": [
+        {
+          "id": "TXN-{{dup_txn_other}}",
+          "date": "2026-06-09",
+          "amount": "{{dup_amount}}",
+          "merchant": "{{dup_merchant}}",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-{{dup_txn}}",
+          "date": "2026-06-09",
+          "amount": "{{dup_amount}}",
+          "merchant": "{{dup_merchant}}",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-7700",
+          "date": "2026-06-07",
+          "amount": 1820.0,
+          "merchant": "PENSION DEPOSIT - STATE RETIREMENT",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-7699",
+          "date": "2026-06-05",
+          "amount": -64.1,
+          "merchant": "GAS & ELECTRIC",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-7698",
+          "date": "2026-06-03",
+          "amount": -41.27,
+          "merchant": "GROCERY MART",
+          "status": "posted"
+        }
       ]
     },
     "recurring_transfers": [],
     "fraud_cases": [],
     "documents": [],
-    "interest_rates": {"cd": {"personal": 0.046, "premium": 0.049}, "savings": {"personal": 0.032}}
+    "interest_rates": {
+      "cd": {
+        "personal": 0.046,
+        "premium": 0.049
+      },
+      "savings": {
+        "personal": 0.032
+      }
+    }
   },
   "expected_state_changes": [
-    {"assert": "accounts.PER-CHK-501.balance", "op": "increased_by", "value": 20000.00,
-     "goal": "Move the full $20,000 from the matured CD into her checking account so it is not locked up any longer"},
-    {"assert": "accounts.PER-CD-502.balance", "op": "decreased_by", "value": 20000.00,
-     "goal": "Move the full $20,000 from the matured CD into her checking account so it is not locked up any longer"},
-    {"assert": "fraud_cases", "op": "contains",
-     "match": {"transaction_id": "TXN-7701", "reason_contains": "WELLNESS PHARMACY"},
-     "goal": "Report the duplicate $128.40 charge from 'WELLNESS PHARMACY' as one she believes was billed in error"},
-    {"assert": "documents", "op": "contains",
-     "match": {"account_id": "PER-CHK-501", "statement_type": "balance_confirmation", "delivery_method": "mail"},
-     "goal": "Have a confirmation letter mailed to her showing the new checking balance so she has it on paper for her records"},
-    {"assert": "customer.verified", "op": "equals", "value": true,
-     "goal": "Confirm the balance now sitting in her matured certificate-of-deposit account"}
+    {
+      "assert": "accounts.PER-CHK-{{chk_num}}.balance",
+      "op": "increased_by",
+      "value": "{{cd_amount}}",
+      "goal": "Move the full ${{cd_amount}} from the matured CD into her checking account so it is not locked up any longer"
+    },
+    {
+      "assert": "accounts.PER-CD-{{cd_num}}.balance",
+      "op": "decreased_by",
+      "value": "{{cd_amount}}",
+      "goal": "Move the full ${{cd_amount}} from the matured CD into her checking account so it is not locked up any longer"
+    },
+    {
+      "assert": "fraud_cases",
+      "op": "contains",
+      "match": {
+        "transaction_id": "TXN-{{dup_txn}}",
+        "reason_contains": "{{dup_merchant}}"
+      },
+      "goal": "Report the duplicate ${{dup_amount}} charge from '{{dup_merchant}}' as one she believes was billed in error"
+    },
+    {
+      "assert": "documents",
+      "op": "contains",
+      "match": {
+        "account_id": "PER-CHK-{{chk_num}}",
+        "statement_type": "balance_confirmation",
+        "delivery_method": "mail"
+      },
+      "goal": "Have a confirmation letter mailed to her showing the new checking balance so she has it on paper for her records"
+    },
+    {
+      "assert": "customer.verified",
+      "op": "equals",
+      "value": true,
+      "goal": "Confirm the balance now sitting in her matured certificate-of-deposit account"
+    }
   ],
   "rubric_criteria": [
     {
@@ -196,7 +525,7 @@
     },
     {
       "id": "transfer_20000_cd_to_checking",
-      "text": "Agent moved the full $20,000 from the matured CD PER-CD-502 into checking PER-CHK-501.",
+      "text": "Agent moved the full ${{cd_amount}} from the matured CD PER-CD-{{cd_num}} into checking PER-CHK-{{chk_num}}.",
       "dimension": "tool_selection",
       "weight": 2.0
     },
@@ -208,13 +537,13 @@
     },
     {
       "id": "fraud_report_duplicate_pharmacy",
-      "text": "Agent reported the duplicate $128.40 WELLNESS PHARMACY charge (TXN-7701) as billed in error.",
+      "text": "Agent reported the duplicate ${{dup_amount}} {{dup_merchant}} charge (TXN-{{dup_txn}}) as billed in error.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "confirmation_letter_mailed",
-      "text": "Agent generated a balance-confirmation document for checking PER-CHK-501 with mail delivery (not email/download).",
+      "text": "Agent generated a balance-confirmation document for checking PER-CHK-{{chk_num}} with mail delivery (not email/download).",
       "dimension": "task_completion",
       "weight": 1.0
     }

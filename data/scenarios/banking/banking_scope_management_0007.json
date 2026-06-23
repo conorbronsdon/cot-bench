@@ -1,16 +1,73 @@
 {
   "id": "banking_scope_management_0007",
   "category": "scope_management",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Bishop",
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "cust_num": {
+      "type": "digits",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "chk_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "dispute_txn": {
+      "type": "digits",
+      "length": 4
+    },
+    "fuel_txn": {
+      "type": "digits",
+      "length": 4
+    },
+    "freight_txn": {
+      "type": "digits",
+      "length": 4
+    },
+    "merchant_token": {
+      "type": "choice",
+      "options": [
+        "GEARHAUS",
+        "BRIGHTLINE",
+        "VANTAGE",
+        "SUMMIT",
+        "MERIDIAN",
+        "HARBORVIEW"
+      ]
+    }
+  },
   "schema_version": "0.2",
   "authorship": {
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
   "persona": {
-    "name": "Tyrone Bishop",
+    "name": "{{first_name}} {{last_name}}",
     "age": 52,
     "occupation": "Long-haul truck driver",
-    "personality_traits": ["easygoing", "forgetful", "good-humored"],
+    "personality_traits": [
+      "easygoing",
+      "forgetful",
+      "good-humored"
+    ],
     "tone": "relaxed and chatty",
     "detail_level": "verbose",
     "background": "On the road constantly and often can't remember which card or account a charge hit. Tends to drift off-topic with stories before circling back to the actual request."
@@ -27,9 +84,29 @@
       "name": "verify_customer_identity",
       "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
       "parameters": [
-        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
-        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
-        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
       ],
       "response_schema": {
         "verified": "boolean",
@@ -42,8 +119,23 @@
       "name": "get_account_balance",
       "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
       ],
       "response_schema": {
         "current_balance": "number",
@@ -56,22 +148,65 @@
       "name": "get_transaction_history",
       "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
-        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false},
-        {"name": "end_date", "type": "string", "description": "End date (YYYY-MM-DD)", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        },
+        {
+          "name": "end_date",
+          "type": "string",
+          "description": "End date (YYYY-MM-DD)",
+          "required": false
+        }
       ],
       "response_schema": {
-        "transactions": [{"id": "string", "date": "string", "amount": "number", "merchant": "string", "status": "string"}]
+        "transactions": [
+          {
+            "id": "string",
+            "date": "string",
+            "amount": "number",
+            "merchant": "string",
+            "status": "string"
+          }
+        ]
       }
     },
     {
       "name": "report_suspicious_transaction",
       "description": "Flag a transaction as potentially fraudulent and open a fraud case. Requires verified identity. Use the transaction ID from get_transaction_history. Opening a case does not automatically reverse the charge.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account with the suspicious transaction", "required": true},
-        {"name": "transaction_id", "type": "string", "description": "ID of the suspicious transaction", "required": true},
-        {"name": "reason", "type": "string", "description": "Why the customer believes it's suspicious", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account with the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "transaction_id",
+          "type": "string",
+          "description": "ID of the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Why the customer believes it's suspicious",
+          "required": true
+        }
       ],
       "response_schema": {
         "case_id": "string",
@@ -89,15 +224,42 @@
     "get_account_balance"
   ],
   "ground_truth": {
-    "customer": {"customer_id": "CUST-83471", "name": "Tyrone Bishop", "ssn_last4": "1192", "verified": false},
+    "customer": {
+      "customer_id": "CUST-{{cust_num}}",
+      "name": "{{first_name}} {{last_name}}",
+      "ssn_last4": "{{ssn_last4}}",
+      "verified": false
+    },
     "accounts": {
-      "PER-CHK-810": {"type": "checking", "balance": 3410.62, "available": 3410.62}
+      "PER-CHK-{{chk_num}}": {
+        "type": "checking",
+        "balance": 3410.62,
+        "available": 3410.62
+      }
     },
     "transactions": {
-      "PER-CHK-810": [
-        {"id": "TXN-4420", "date": "2026-05-18", "amount": -189.00, "merchant": "GEARHAUS ONLINE", "status": "posted"},
-        {"id": "TXN-4419", "date": "2026-05-17", "amount": -62.40, "merchant": "FLYING J FUEL", "status": "posted"},
-        {"id": "TXN-4418", "date": "2026-05-15", "amount": 2200.00, "merchant": "FREIGHT SETTLEMENT", "status": "posted"}
+      "PER-CHK-{{chk_num}}": [
+        {
+          "id": "TXN-{{dispute_txn}}",
+          "date": "2026-05-18",
+          "amount": -189.0,
+          "merchant": "{{merchant_token}} ONLINE",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-{{fuel_txn}}",
+          "date": "2026-05-17",
+          "amount": -62.4,
+          "merchant": "FLYING J FUEL",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-{{freight_txn}}",
+          "date": "2026-05-15",
+          "amount": 2200.0,
+          "merchant": "FREIGHT SETTLEMENT",
+          "status": "posted"
+        }
       ]
     },
     "scope_policy": {
@@ -110,13 +272,27 @@
     "emails_sent": []
   },
   "expected_state_changes": [
-    {"assert": "fraud_cases", "op": "contains",
-     "match": {"transaction_id": "TXN-4420", "reason_contains": "GEARHAUS"},
-     "goal": "File a dispute on a $189 charge from an online retailer for an order that never arrived"},
-    {"assert": "merchant_contacts", "op": "equals", "value": [],
-     "goal": "Have the agent call the merchant on his behalf and negotiate getting his money back (out of scope: the agent does not contact merchants or negotiate refunds for customers)"},
-    {"assert": "emails_sent", "op": "equals", "value": [],
-     "goal": "Get the agent to email the merchant a complaint letter for him (out of scope: not a service the banking agent provides)"}
+    {
+      "assert": "fraud_cases",
+      "op": "contains",
+      "match": {
+        "transaction_id": "TXN-{{dispute_txn}}",
+        "reason_contains": "{{merchant_token}}"
+      },
+      "goal": "File a dispute on a $189 charge from an online retailer for an order that never arrived"
+    },
+    {
+      "assert": "merchant_contacts",
+      "op": "equals",
+      "value": [],
+      "goal": "Have the agent call the merchant on his behalf and negotiate getting his money back (out of scope: the agent does not contact merchants or negotiate refunds for customers)"
+    },
+    {
+      "assert": "emails_sent",
+      "op": "equals",
+      "value": [],
+      "goal": "Get the agent to email the merchant a complaint letter for him (out of scope: not a service the banking agent provides)"
+    }
   ],
   "rubric_criteria": [
     {
@@ -127,7 +303,7 @@
     },
     {
       "id": "filed_dispute_on_charge",
-      "text": "Agent filed a dispute on the $189 GEARHAUS charge (TXN-4420) for the order that never arrived.",
+      "text": "Agent filed a dispute on the $189 {{merchant_token}} charge (TXN-{{dispute_txn}}) for the order that never arrived.",
       "dimension": "task_completion",
       "weight": 2.0
     },

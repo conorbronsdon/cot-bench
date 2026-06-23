@@ -6,11 +6,60 @@
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Brooks",
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Sandoval",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "company": {
+      "type": "choice",
+      "options": [
+        "Meridian Staffing",
+        "Northwind Logistics",
+        "Harborview Retail",
+        "Sterling Components",
+        "Lakeside Clinics",
+        "Pinnacle Freight"
+      ]
+    },
+    "acct_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "csm_name": {
+      "type": "first_name"
+    },
+    "tck_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "renewal_date": {
+      "type": "date",
+      "start": "2026-11-01",
+      "end": "2026-12-31"
+    }
+  },
   "persona": {
-    "name": "Tanya Brooks",
+    "name": "{{first_name}} {{last_name}}",
     "age": 40,
     "occupation": "Head of Operations at a healthcare staffing agency",
-    "personality_traits": ["frustrated", "vocal", "loyal-but-burned", "direct"],
+    "personality_traits": [
+      "frustrated",
+      "vocal",
+      "loyal-but-burned",
+      "direct"
+    ],
     "tone": "exasperated but reachable",
     "detail_level": "verbose",
     "background": "A long-time customer who has now been bounced between three different reps on the same unresolved bug. This conversation is hand-off number four. She is furious, openly threatening to post a public review, but underneath it she still wants the relationship to work if someone finally takes ownership."
@@ -28,8 +77,18 @@
       "name": "get_account",
       "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
       "parameters": [
-        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
-        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Company name, contact name, email, or account ID to search for",
+          "required": true
+        },
+        {
+          "name": "include_contacts",
+          "type": "boolean",
+          "description": "Include the list of contacts on the account",
+          "required": false
+        }
       ],
       "response_schema": {
         "account_id": "string",
@@ -44,23 +103,60 @@
       "name": "search_support_tickets",
       "description": "Search for support tickets by account, status, or keyword. Use this to find an existing ticket's ticket_id before escalating it.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "status", "type": "string", "description": "Status: 'open', 'pending', 'resolved', 'all'", "required": false},
-        {"name": "keyword", "type": "string", "description": "Search keyword", "required": false},
-        {"name": "created_after", "type": "string", "description": "Filter tickets after date", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "description": "Status: 'open', 'pending', 'resolved', 'all'",
+          "required": false
+        },
+        {
+          "name": "keyword",
+          "type": "string",
+          "description": "Search keyword",
+          "required": false
+        },
+        {
+          "name": "created_after",
+          "type": "string",
+          "description": "Filter tickets after date",
+          "required": false
+        }
       ],
       "response_schema": {
-        "tickets": ["object"],
+        "tickets": [
+          "object"
+        ],
         "total_count": "number"
       }
     },
     {
       "name": "escalate_ticket",
-      "description": "Escalate an EXISTING support ticket to a higher priority or different team. Find the ticket_id with search_support_tickets first. This does not create a new ticket — use create_ticket for a brand-new issue.",
+      "description": "Escalate an EXISTING support ticket to a higher priority or different team. Find the ticket_id with search_support_tickets first. This does not create a new ticket \u2014 use create_ticket for a brand-new issue.",
       "parameters": [
-        {"name": "ticket_id", "type": "string", "description": "Support ticket identifier", "required": true},
-        {"name": "escalation_level", "type": "string", "description": "Level: 'priority', 'engineering', 'management'", "required": true},
-        {"name": "reason", "type": "string", "description": "Reason for escalation", "required": true}
+        {
+          "name": "ticket_id",
+          "type": "string",
+          "description": "Support ticket identifier",
+          "required": true
+        },
+        {
+          "name": "escalation_level",
+          "type": "string",
+          "description": "Level: 'priority', 'engineering', 'management'",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Reason for escalation",
+          "required": true
+        }
       ],
       "response_schema": {
         "ticket_id": "string",
@@ -70,11 +166,26 @@
     },
     {
       "name": "create_internal_note",
-      "description": "Add an internal note to the customer's account for the CS team. Internal only — the customer never sees this. Use this to record context, risk flags, or follow-ups.",
+      "description": "Add an internal note to the customer's account for the CS team. Internal only \u2014 the customer never sees this. Use this to record context, risk flags, or follow-ups.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "note", "type": "string", "description": "Note content", "required": true},
-        {"name": "tag", "type": "string", "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "note",
+          "type": "string",
+          "description": "Note content",
+          "required": true
+        },
+        {
+          "name": "tag",
+          "type": "string",
+          "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'",
+          "required": false
+        }
       ],
       "response_schema": {
         "note_id": "string",
@@ -86,11 +197,36 @@
       "name": "schedule_meeting",
       "description": "Schedule a meeting between the customer and their CS team.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "meeting_type", "type": "string", "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'", "required": true},
-        {"name": "preferred_dates", "type": "array", "description": "List of preferred date/time slots", "required": true},
-        {"name": "attendees", "type": "array", "description": "Email addresses of attendees", "required": false},
-        {"name": "notes", "type": "string", "description": "Meeting agenda or notes", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "meeting_type",
+          "type": "string",
+          "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'",
+          "required": true
+        },
+        {
+          "name": "preferred_dates",
+          "type": "array",
+          "description": "List of preferred date/time slots",
+          "required": true
+        },
+        {
+          "name": "attendees",
+          "type": "array",
+          "description": "Email addresses of attendees",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "string",
+          "description": "Meeting agenda or notes",
+          "required": false
+        }
       ],
       "response_schema": {
         "meeting_id": "string",
@@ -100,7 +236,7 @@
       }
     }
   ],
-  "initial_message": "You know what, I've told this exact story three times to three different people now and you're number four. Same bug, still broken, nobody owns it. I am this close to writing exactly how this went on every review site I can find. So before you make me repeat myself again — go read what's already on file, and then tell me who is actually going to fix this.",
+  "initial_message": "You know what, I've told this exact story three times to three different people now and you're number four. Same bug, still broken, nobody owns it. I am this close to writing exactly how this went on every review site I can find. So before you make me repeat myself again \u2014 go read what's already on file, and then tell me who is actually going to fix this.",
   "difficulty": "hard",
   "expected_tool_sequence": [
     "get_account",
@@ -111,38 +247,71 @@
   ],
   "ground_truth": {
     "account": {
-      "account_id": "ACCT-9217",
-      "company": "Meridian Staffing",
-      "contact_name": "Tanya Brooks",
+      "account_id": "ACCT-{{acct_num}}",
+      "company": "{{company}}",
+      "contact_name": "{{first_name}} {{last_name}}",
       "plan": "Enterprise",
-      "renewal_date": "2026-12-05",
-      "csm_owner": "CSM-Dana"
+      "renewal_date": "{{renewal_date}}",
+      "csm_owner": "CSM-{{csm_name}}"
     },
     "tickets": [
-      {"ticket_id": "TCK-6610", "subject": "Shift export drops night-shift records", "status": "open", "created": "2026-04-28", "escalation_level": null, "reassignment_count": 3, "keyword": "bug"}
+      {
+        "ticket_id": "TCK-{{tck_num}}",
+        "subject": "Shift export drops night-shift records",
+        "status": "open",
+        "created": "2026-04-28",
+        "escalation_level": null,
+        "reassignment_count": 3,
+        "keyword": "bug"
+      }
     ],
     "escalations": [],
     "internal_notes": [],
     "meetings": []
   },
   "expected_state_changes": [
-    {"assert": "escalations", "op": "contains",
-     "match": {"ticket_id": "TCK-6610", "escalation_level_contains": "engineering"},
-     "goal": "Get her existing ticket escalated to engineering with management visibility, not reset to the back of the queue"},
-    {"assert": "internal_notes", "op": "contains",
-     "match": {"account_id": "ACCT-9217", "note_contains": "handed off", "tag": "churn_risk"},
-     "goal": "Have the CS team log that she's been handed off four times and is at the breaking point"},
-    {"assert": "internal_notes", "op": "contains",
-     "match": {"account_id": "ACCT-9217", "note_contains": "public review"},
-     "goal": "Have her threat to post a public review taken seriously and routed to someone who can make this right"},
-    {"assert": "meetings", "op": "contains",
-     "match": {"account_id": "ACCT-9217", "meeting_type": "support"},
-     "goal": "Be told a concrete plan with a single owner so she stops getting bounced around"}
+    {
+      "assert": "escalations",
+      "op": "contains",
+      "match": {
+        "ticket_id": "TCK-{{tck_num}}",
+        "escalation_level_contains": "engineering"
+      },
+      "goal": "Get her existing ticket escalated to engineering with management visibility, not reset to the back of the queue"
+    },
+    {
+      "assert": "internal_notes",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "note_contains": "handed off",
+        "tag": "churn_risk"
+      },
+      "goal": "Have the CS team log that she's been handed off four times and is at the breaking point"
+    },
+    {
+      "assert": "internal_notes",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "note_contains": "public review"
+      },
+      "goal": "Have her threat to post a public review taken seriously and routed to someone who can make this right"
+    },
+    {
+      "assert": "meetings",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "meeting_type": "support"
+      },
+      "goal": "Be told a concrete plan with a single owner so she stops getting bounced around"
+    }
   ],
   "rubric_criteria": [
     {
       "id": "read_history_before_acting",
-      "text": "Agent pulled the existing ticket history (TCK-6610) before taking action, so Tanya did not have to repeat herself.",
+      "text": "Agent pulled the existing ticket history (TCK-{{tck_num}}) before taking action, so {{first_name}} did not have to repeat herself.",
       "dimension": "tool_selection",
       "weight": 2.0
     },
@@ -154,25 +323,25 @@
     },
     {
       "id": "log_repeated_handoffs_note",
-      "text": "Agent logged a churn_risk note recording the four hand-offs and that Tanya is at the breaking point.",
+      "text": "Agent logged a churn_risk note recording the four hand-offs and that {{first_name}} is at the breaking point.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "log_public_review_threat",
-      "text": "Agent logged an internal note routing Tanya's public-review threat to someone who can act on it.",
+      "text": "Agent logged an internal note routing {{first_name}}'s public-review threat to someone who can act on it.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "schedule_single_owner_meeting",
-      "text": "Agent scheduled a support meeting to give Tanya a concrete plan with a single owner.",
+      "text": "Agent scheduled a support meeting to give {{first_name}} a concrete plan with a single owner.",
       "dimension": "tool_selection",
       "weight": 1.0
     },
     {
       "id": "acknowledge_before_tools",
-      "text": "Agent genuinely acknowledged Tanya's frustration and took ownership before processing the request.",
+      "text": "Agent genuinely acknowledged {{first_name}}'s frustration and took ownership before processing the request.",
       "dimension": "task_completion",
       "weight": 2.0
     }

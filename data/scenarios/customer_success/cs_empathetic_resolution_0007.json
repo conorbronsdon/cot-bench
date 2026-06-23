@@ -6,11 +6,78 @@
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Lindqvist",
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Sandoval",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "company": {
+      "type": "choice",
+      "options": [
+        "Wayfarer Travel Platform",
+        "Northwind Logistics",
+        "Harborview Retail",
+        "Brightline Media",
+        "Vantage Analytics",
+        "Pinnacle Freight"
+      ]
+    },
+    "acct_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "csm_name": {
+      "type": "first_name"
+    },
+    "self_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "u2_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "u3_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "u4_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "inactive_user_3": {
+      "type": "first_name"
+    },
+    "active_user_4": {
+      "type": "first_name"
+    },
+    "renewal_date": {
+      "type": "date",
+      "start": "2026-12-01",
+      "end": "2027-02-28"
+    }
+  },
   "persona": {
-    "name": "Trevor Lindqvist",
+    "name": "{{first_name}} {{last_name}}",
     "age": 24,
     "occupation": "Junior support analyst at a B2B travel platform",
-    "personality_traits": ["inexperienced", "eager-to-please", "uncertain", "apologetic"],
+    "personality_traits": [
+      "inexperienced",
+      "eager-to-please",
+      "uncertain",
+      "apologetic"
+    ],
     "tone": "nervous and deferential",
     "detail_level": "verbose",
     "background": "Just inherited admin of the account after the previous admin was fired. The setup is a misconfigured mess he doesn't understand, and he's embarrassed to be asking what feel like basic questions. He keeps apologizing for not knowing things that weren't his fault."
@@ -27,8 +94,18 @@
       "name": "get_account",
       "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
       "parameters": [
-        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
-        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Company name, contact name, email, or account ID to search for",
+          "required": true
+        },
+        {
+          "name": "include_contacts",
+          "type": "boolean",
+          "description": "Include the list of contacts on the account",
+          "required": false
+        }
       ],
       "response_schema": {
         "account_id": "string",
@@ -43,12 +120,29 @@
       "name": "get_user_list",
       "description": "List all users under a customer account with their status and last activity.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "status_filter", "type": "string", "description": "Filter: 'active', 'inactive', 'invited', 'all'", "required": false},
-        {"name": "sort_by", "type": "string", "description": "Sort: 'last_active', 'name', 'role'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "status_filter",
+          "type": "string",
+          "description": "Filter: 'active', 'inactive', 'invited', 'all'",
+          "required": false
+        },
+        {
+          "name": "sort_by",
+          "type": "string",
+          "description": "Sort: 'last_active', 'name', 'role'",
+          "required": false
+        }
       ],
       "response_schema": {
-        "users": ["object"],
+        "users": [
+          "object"
+        ],
         "total_count": "number"
       }
     },
@@ -56,11 +150,23 @@
       "name": "search_knowledge_base",
       "description": "Search the knowledge base for articles, guides, and tutorials.",
       "parameters": [
-        {"name": "query", "type": "string", "description": "Search query", "required": true},
-        {"name": "category", "type": "string", "description": "Filter by category: 'getting_started', 'advanced', 'troubleshooting', 'best_practices'", "required": false}
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Search query",
+          "required": true
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "description": "Filter by category: 'getting_started', 'advanced', 'troubleshooting', 'best_practices'",
+          "required": false
+        }
       ],
       "response_schema": {
-        "articles": ["object"],
+        "articles": [
+          "object"
+        ],
         "total_count": "number"
       }
     },
@@ -68,11 +174,36 @@
       "name": "schedule_meeting",
       "description": "Schedule a meeting between the customer and their CS team.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "meeting_type", "type": "string", "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'", "required": true},
-        {"name": "preferred_dates", "type": "array", "description": "List of preferred date/time slots", "required": true},
-        {"name": "attendees", "type": "array", "description": "Email addresses of attendees", "required": false},
-        {"name": "notes", "type": "string", "description": "Meeting agenda or notes", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "meeting_type",
+          "type": "string",
+          "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'",
+          "required": true
+        },
+        {
+          "name": "preferred_dates",
+          "type": "array",
+          "description": "List of preferred date/time slots",
+          "required": true
+        },
+        {
+          "name": "attendees",
+          "type": "array",
+          "description": "Email addresses of attendees",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "string",
+          "description": "Meeting agenda or notes",
+          "required": false
+        }
       ],
       "response_schema": {
         "meeting_id": "string",
@@ -83,11 +214,26 @@
     },
     {
       "name": "create_internal_note",
-      "description": "Add an internal note to the customer's account for the CS team. Internal only — the customer never sees this. Use this to record context, risk flags, or follow-ups.",
+      "description": "Add an internal note to the customer's account for the CS team. Internal only \u2014 the customer never sees this. Use this to record context, risk flags, or follow-ups.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "note", "type": "string", "description": "Note content", "required": true},
-        {"name": "tag", "type": "string", "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "note",
+          "type": "string",
+          "description": "Note content",
+          "required": true
+        },
+        {
+          "name": "tag",
+          "type": "string",
+          "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'",
+          "required": false
+        }
       ],
       "response_schema": {
         "note_id": "string",
@@ -96,7 +242,7 @@
       }
     }
   ],
-  "initial_message": "Hi, sorry in advance — I just got handed admin of our account after the last person left, and honestly it's kind of a mess and I don't really know what I'm looking at. I feel a bit silly asking what are probably really basic questions. Could you help me figure out where things stand and how I start cleaning this up?",
+  "initial_message": "Hi, sorry in advance \u2014 I just got handed admin of our account after the last person left, and honestly it's kind of a mess and I don't really know what I'm looking at. I feel a bit silly asking what are probably really basic questions. Could you help me figure out where things stand and how I start cleaning this up?",
   "difficulty": "easy",
   "expected_tool_sequence": [
     "get_account",
@@ -107,32 +253,69 @@
   ],
   "ground_truth": {
     "account": {
-      "account_id": "ACCT-3015",
-      "company": "Wayfarer Travel Platform",
-      "contact_name": "Trevor Lindqvist",
+      "account_id": "ACCT-{{acct_num}}",
+      "company": "{{company}}",
+      "contact_name": "{{first_name}} {{last_name}}",
       "plan": "Growth",
-      "renewal_date": "2027-01-12",
-      "csm_owner": "CSM-Dana"
+      "renewal_date": "{{renewal_date}}",
+      "csm_owner": "CSM-{{csm_name}}"
     },
     "users": [
-      {"user_id": "U-401", "name": "Trevor Lindqvist", "status": "active", "last_active": "2026-06-10"},
-      {"user_id": "U-388", "name": "Former Admin (deactivated)", "status": "inactive", "last_active": "2026-03-30"},
-      {"user_id": "U-392", "name": "Ravi Singh", "status": "inactive", "last_active": "2026-04-15"},
-      {"user_id": "U-399", "name": "Dana Pope", "status": "active", "last_active": "2026-06-08"}
+      {
+        "user_id": "U-{{self_num}}",
+        "name": "{{first_name}} {{last_name}}",
+        "status": "active",
+        "last_active": "2026-06-10"
+      },
+      {
+        "user_id": "U-{{u2_num}}",
+        "name": "Former Admin (deactivated)",
+        "status": "inactive",
+        "last_active": "2026-03-30"
+      },
+      {
+        "user_id": "U-{{u3_num}}",
+        "name": "{{inactive_user_3}} Singh",
+        "status": "inactive",
+        "last_active": "2026-04-15"
+      },
+      {
+        "user_id": "U-{{u4_num}}",
+        "name": "{{active_user_4}} Pope",
+        "status": "active",
+        "last_active": "2026-06-08"
+      }
     ],
     "knowledge_base": [
-      {"article_id": "KB-120", "title": "Admin basics: auditing users and fixing a messy setup", "category": "getting_started"}
+      {
+        "article_id": "KB-120",
+        "title": "Admin basics: auditing users and fixing a messy setup",
+        "category": "getting_started"
+      }
     ],
     "meetings": [],
     "internal_notes": []
   },
   "expected_state_changes": [
-    {"assert": "meetings", "op": "contains",
-     "match": {"account_id": "ACCT-3015", "meeting_type": "onboarding"},
-     "goal": "Get a CS onboarding or training session booked so a human can walk him through it"},
-    {"assert": "internal_notes", "op": "contains",
-     "match": {"account_id": "ACCT-3015", "note_contains": "new admin", "tag": "support_needed"},
-     "goal": "Have the CS team note that he's a brand-new admin who inherited this with no handoff"}
+    {
+      "assert": "meetings",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "meeting_type": "onboarding"
+      },
+      "goal": "Get a CS onboarding or training session booked so a human can walk him through it"
+    },
+    {
+      "assert": "internal_notes",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "note_contains": "new admin",
+        "tag": "support_needed"
+      },
+      "goal": "Have the CS team note that he's a brand-new admin who inherited this with no handoff"
+    }
   ],
   "rubric_criteria": [
     {

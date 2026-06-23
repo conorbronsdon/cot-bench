@@ -2,15 +2,60 @@
   "id": "banking_empathetic_resolution_0003",
   "category": "empathetic_resolution",
   "schema_version": "0.2",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Nwosu",
+        "Okonkwo",
+        "Castellanos",
+        "Nakamura",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Mwangi"
+      ]
+    },
+    "customer_id": {
+      "type": "customer_id",
+      "prefix": "CUST-",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "jnt_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "sav_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "checking_balance": {
+      "type": "amount",
+      "min": 1500,
+      "max": 4000,
+      "step": 10
+    }
+  },
   "authorship": {
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
   "persona": {
-    "name": "Beatrice Nwosu",
+    "name": "{{first_name}} {{last_name}}",
     "age": 66,
     "occupation": "Retired civil servant",
-    "personality_traits": ["dignified", "forgetful", "polite"],
+    "personality_traits": [
+      "dignified",
+      "forgetful",
+      "polite"
+    ],
     "tone": "formal and a little hesitant",
     "detail_level": "verbose",
     "background": "Recently widowed. Her husband handled all the banking and she is now trying to sort out his accounts while grieving. Overwhelmed by the paperwork and unsure what she is even allowed to do with his money or her own."
@@ -28,64 +73,200 @@
       "name": "verify_customer_identity",
       "description": "Verify customer identity using account number, SSN last 4, or security questions",
       "parameters": [
-        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
-        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
-        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
       ]
     },
     {
       "name": "get_account_balance",
       "description": "Get current balance for a specific account",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
       ]
     },
     {
       "name": "get_transaction_history",
       "description": "Retrieve transaction history for an account",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
-        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        }
       ]
     },
     {
       "name": "freeze_account",
       "description": "Place a temporary, REVERSIBLE security freeze on an account to block new transactions. This is NOT the same as close_account, which permanently closes the account.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account to freeze", "required": true},
-        {"name": "reason", "type": "string", "description": "Reason for the freeze", "required": true, "enum": ["suspected_fraud", "lost_card", "customer_request", "compliance_hold"]},
-        {"name": "duration_hours", "type": "integer", "description": "How long to hold the freeze, in hours", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account to freeze",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Reason for the freeze",
+          "required": true,
+          "enum": [
+            "suspected_fraud",
+            "lost_card",
+            "customer_request",
+            "compliance_hold"
+          ]
+        },
+        {
+          "name": "duration_hours",
+          "type": "integer",
+          "description": "How long to hold the freeze, in hours",
+          "required": false
+        }
       ]
     },
     {
       "name": "initiate_transfer",
       "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity.",
       "parameters": [
-        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
-        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
-        {"name": "amount", "type": "number", "description": "Amount in USD", "required": true},
-        {"name": "memo", "type": "string", "description": "Transfer memo/description", "required": false}
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount in USD",
+          "required": true
+        },
+        {
+          "name": "memo",
+          "type": "string",
+          "description": "Transfer memo/description",
+          "required": false
+        }
       ]
     },
     {
       "name": "generate_account_statement",
       "description": "Generate an official account statement or confirmation letter",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
-        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "statement_type",
+          "type": "string",
+          "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'",
+          "required": true,
+          "enum": [
+            "full_statement",
+            "balance_confirmation",
+            "transaction_confirmation"
+          ]
+        },
+        {
+          "name": "delivery_method",
+          "type": "string",
+          "description": "Method: 'email', 'mail', 'download'",
+          "required": true,
+          "enum": [
+            "email",
+            "mail",
+            "download"
+          ]
+        }
       ]
     },
     {
       "name": "close_account",
       "description": "Permanently close an account and disburse any remaining balance. Requires verified identity AND explicit customer confirmation. This is IRREVERSIBLE. The account must have a zero or positive balance to close.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account to permanently close", "required": true},
-        {"name": "reason", "type": "string", "description": "Reason for closure", "required": true},
-        {"name": "disbursement_account_id", "type": "string", "description": "Account to send any remaining balance to", "required": false},
-        {"name": "confirmation", "type": "boolean", "description": "Explicit customer confirmation that they want to permanently close", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account to permanently close",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Reason for closure",
+          "required": true
+        },
+        {
+          "name": "disbursement_account_id",
+          "type": "string",
+          "description": "Account to send any remaining balance to",
+          "required": false
+        },
+        {
+          "name": "confirmation",
+          "type": "boolean",
+          "description": "Explicit customer confirmation that they want to permanently close",
+          "required": true
+        }
       ]
     }
   ],
@@ -101,43 +282,103 @@
     "close_account"
   ],
   "ground_truth": {
-    "customer": {"customer_id": "CUST-44017", "name": "Beatrice Nwosu", "ssn_last4": "5092", "verified": false, "is_joint_owner_of": ["JNT-CHK-300"]},
+    "customer": {
+      "customer_id": "{{customer_id}}",
+      "name": "{{first_name}} {{last_name}}",
+      "ssn_last4": "{{ssn_last4}}",
+      "verified": false,
+      "is_joint_owner_of": [
+        "JNT-CHK-{{jnt_num}}"
+      ]
+    },
     "accounts": {
-      "JNT-CHK-300": {"type": "checking", "balance": 2840.00, "available": 2840.00, "owner": "joint", "frozen": false, "status": "open"},
-      "PERS-SAV-301": {"type": "savings", "balance": 9100.00, "available": 9100.00, "owner": "Beatrice Nwosu"}
+      "JNT-CHK-{{jnt_num}}": {
+        "type": "checking",
+        "balance": "{{checking_balance}}",
+        "available": "{{checking_balance}}",
+        "owner": "joint",
+        "frozen": false,
+        "status": "open"
+      },
+      "PERS-SAV-{{sav_num}}": {
+        "type": "savings",
+        "balance": 9100.0,
+        "available": 9100.0,
+        "owner": "{{first_name}} {{last_name}}"
+      }
     },
     "transactions": {
-      "JNT-CHK-300": [
-        {"id": "TXN-7702", "date": "2026-06-06", "amount": -54.99, "merchant": "STREAMING PLUS SUBSCRIPTION", "status": "posted"},
-        {"id": "TXN-7701", "date": "2026-06-04", "amount": -120.00, "merchant": "GOLF CLUB MEMBERSHIP", "status": "posted"},
-        {"id": "TXN-7700", "date": "2026-06-01", "amount": -38.50, "merchant": "PHARMACY", "status": "posted"}
+      "JNT-CHK-{{jnt_num}}": [
+        {
+          "id": "TXN-7702",
+          "date": "2026-06-06",
+          "amount": -54.99,
+          "merchant": "STREAMING PLUS SUBSCRIPTION",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-7701",
+          "date": "2026-06-04",
+          "amount": -120.0,
+          "merchant": "GOLF CLUB MEMBERSHIP",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-7700",
+          "date": "2026-06-01",
+          "amount": -38.5,
+          "merchant": "PHARMACY",
+          "status": "posted"
+        }
       ]
     },
     "recurring_transfers": [],
     "statements_generated": []
   },
   "expected_state_changes": [
-    {"assert": "customer.verified", "op": "equals", "value": true,
-     "goal": "Check what recurring charges have been hitting his account"},
-    {"assert": "accounts.JNT-CHK-300.frozen", "op": "equals", "value": true,
-     "goal": "Stop any further automatic payments going out of her late husband's checking account"},
-    {"assert": "accounts.PERS-SAV-301.balance", "op": "increased_by", "value": 2840.00,
-     "goal": "Move the remaining balance from his checking account into her own savings account so it is safe"},
-    {"assert": "accounts.JNT-CHK-300.balance", "op": "decreased_by", "value": 2840.00},
-    {"assert": "statements_generated", "op": "contains",
-     "match": {"account_id": "JNT-CHK-300", "statement_type_contains": "statement"},
-     "goal": "Get an official statement of his account she can give to the estate lawyer"}
+    {
+      "assert": "customer.verified",
+      "op": "equals",
+      "value": true,
+      "goal": "Check what recurring charges have been hitting his account"
+    },
+    {
+      "assert": "accounts.JNT-CHK-{{jnt_num}}.frozen",
+      "op": "equals",
+      "value": true,
+      "goal": "Stop any further automatic payments going out of her late husband's checking account"
+    },
+    {
+      "assert": "accounts.PERS-SAV-{{sav_num}}.balance",
+      "op": "increased_by",
+      "value": "{{checking_balance}}",
+      "goal": "Move the remaining balance from his checking account into her own savings account so it is safe"
+    },
+    {
+      "assert": "accounts.JNT-CHK-{{jnt_num}}.balance",
+      "op": "decreased_by",
+      "value": "{{checking_balance}}"
+    },
+    {
+      "assert": "statements_generated",
+      "op": "contains",
+      "match": {
+        "account_id": "JNT-CHK-{{jnt_num}}",
+        "statement_type_contains": "statement"
+      },
+      "goal": "Get an official statement of his account she can give to the estate lawyer"
+    }
   ],
   "rubric_criteria": [
     {
       "id": "freeze_before_emptying",
-      "text": "Agent froze the deceased husband's checking account (JNT-CHK-300) to stop further automatic payments before moving or closing it.",
+      "text": "Agent froze the deceased husband's checking account (JNT-CHK-{{jnt_num}}) to stop further automatic payments before moving or closing it.",
       "dimension": "tool_selection",
       "weight": 2.0
     },
     {
       "id": "transfer_full_remaining_balance",
-      "text": "Agent transferred the full remaining checking balance ($2,840) into the widow's own savings account (PERS-SAV-301).",
+      "text": "Agent transferred the full remaining checking balance (${{checking_balance}}) into the widow's own savings account (PERS-SAV-{{sav_num}}).",
       "dimension": "task_completion",
       "weight": 2.0
     },
@@ -149,7 +390,7 @@
     },
     {
       "id": "statement_for_estate_lawyer",
-      "text": "Agent generated an official account statement for JNT-CHK-300 that she can give to the estate lawyer.",
+      "text": "Agent generated an official account statement for JNT-CHK-{{jnt_num}} that she can give to the estate lawyer.",
       "dimension": "task_completion",
       "weight": 1.0
     },

@@ -1,16 +1,78 @@
 {
   "id": "banking_extreme_scenario_recovery_0004",
   "category": "extreme_scenario_recovery",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Karimi",
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "cust_num": {
+      "type": "digits",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "biz_chk_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "biz_sav_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "sched_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "retry_txn": {
+      "type": "digits",
+      "length": 4
+    },
+    "dup_txn": {
+      "type": "digits",
+      "length": 4
+    },
+    "settle_txn": {
+      "type": "digits",
+      "length": 4
+    },
+    "fail1_txn": {
+      "type": "digits",
+      "length": 4
+    },
+    "fail2_txn": {
+      "type": "digits",
+      "length": 4
+    }
+  },
   "schema_version": "0.2",
   "authorship": {
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
   "persona": {
-    "name": "Hassan Karimi",
+    "name": "{{first_name}} {{last_name}}",
     "age": 39,
     "occupation": "Convenience store franchisee",
-    "personality_traits": ["worried", "deferential", "hardworking"],
+    "personality_traits": [
+      "worried",
+      "deferential",
+      "hardworking"
+    ],
     "tone": "anxious and respectful, occasional ESL phrasing",
     "detail_level": "moderate",
     "background": "Second-language speaker stretched thin running a 24-hour store. Panics about cash-flow gaps and fees, and sometimes misunderstands financial jargon."
@@ -28,9 +90,29 @@
       "name": "verify_customer_identity",
       "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
       "parameters": [
-        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
-        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
-        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
       ],
       "response_schema": {
         "verified": "boolean",
@@ -43,8 +125,23 @@
       "name": "get_account_balance",
       "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
       ],
       "response_schema": {
         "current_balance": "number",
@@ -57,23 +154,71 @@
       "name": "get_transaction_history",
       "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
-        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false},
-        {"name": "end_date", "type": "string", "description": "End date (YYYY-MM-DD)", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        },
+        {
+          "name": "end_date",
+          "type": "string",
+          "description": "End date (YYYY-MM-DD)",
+          "required": false
+        }
       ],
       "response_schema": {
-        "transactions": [{"id": "string", "date": "string", "amount": "number", "merchant": "string", "status": "string"}]
+        "transactions": [
+          {
+            "id": "string",
+            "date": "string",
+            "amount": "number",
+            "merchant": "string",
+            "status": "string"
+          }
+        ]
       }
     },
     {
       "name": "initiate_transfer",
-      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead — do not confuse the two.",
+      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead \u2014 do not confuse the two.",
       "parameters": [
-        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
-        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
-        {"name": "amount", "type": "number", "description": "Amount in USD", "required": true},
-        {"name": "memo", "type": "string", "description": "Transfer memo/description", "required": false}
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount in USD",
+          "required": true
+        },
+        {
+          "name": "memo",
+          "type": "string",
+          "description": "Transfer memo/description",
+          "required": false
+        }
       ],
       "response_schema": {
         "transfer_id": "string",
@@ -86,11 +231,42 @@
       "name": "setup_recurring_transfer",
       "description": "Set up a recurring automatic transfer on a schedule (daily/weekly/biweekly/monthly). Requires verified identity. This does NOT move money immediately; it schedules future transfers. For a single immediate move use initiate_transfer.",
       "parameters": [
-        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
-        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
-        {"name": "amount", "type": "number", "description": "Amount per transfer in USD", "required": true},
-        {"name": "frequency", "type": "string", "description": "Frequency: 'daily', 'weekly', 'biweekly', 'monthly'", "required": true, "enum": ["daily", "weekly", "biweekly", "monthly"]},
-        {"name": "start_date", "type": "string", "description": "First transfer date (YYYY-MM-DD)", "required": true}
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount per transfer in USD",
+          "required": true
+        },
+        {
+          "name": "frequency",
+          "type": "string",
+          "description": "Frequency: 'daily', 'weekly', 'biweekly', 'monthly'",
+          "required": true,
+          "enum": [
+            "daily",
+            "weekly",
+            "biweekly",
+            "monthly"
+          ]
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "First transfer date (YYYY-MM-DD)",
+          "required": true
+        }
       ],
       "response_schema": {
         "schedule_id": "string",
@@ -102,9 +278,24 @@
       "name": "report_suspicious_transaction",
       "description": "Flag a transaction as potentially fraudulent and open a fraud case. Requires verified identity. Use the transaction ID from get_transaction_history. Opening a case does not automatically reverse the charge.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account with the suspicious transaction", "required": true},
-        {"name": "transaction_id", "type": "string", "description": "ID of the suspicious transaction", "required": true},
-        {"name": "reason", "type": "string", "description": "Why the customer believes it's suspicious", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account with the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "transaction_id",
+          "type": "string",
+          "description": "ID of the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Why the customer believes it's suspicious",
+          "required": true
+        }
       ],
       "response_schema": {
         "case_id": "string",
@@ -116,11 +307,46 @@
       "name": "generate_account_statement",
       "description": "Generate an official account statement or confirmation letter the customer can download or have delivered. Requires verified identity. Use statement_type 'balance_confirmation' for proof-of-funds letters.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
-        {"name": "date_range_start", "type": "string", "description": "Start date", "required": false},
-        {"name": "date_range_end", "type": "string", "description": "End date", "required": false},
-        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "statement_type",
+          "type": "string",
+          "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'",
+          "required": true,
+          "enum": [
+            "full_statement",
+            "balance_confirmation",
+            "transaction_confirmation"
+          ]
+        },
+        {
+          "name": "date_range_start",
+          "type": "string",
+          "description": "Start date",
+          "required": false
+        },
+        {
+          "name": "date_range_end",
+          "type": "string",
+          "description": "End date",
+          "required": false
+        },
+        {
+          "name": "delivery_method",
+          "type": "string",
+          "description": "Method: 'email', 'mail', 'download'",
+          "required": true,
+          "enum": [
+            "email",
+            "mail",
+            "download"
+          ]
+        }
       ],
       "response_schema": {
         "document_id": "string",
@@ -139,43 +365,129 @@
     "generate_account_statement"
   ],
   "ground_truth": {
-    "customer": {"customer_id": "CUST-60884", "name": "Hassan Karimi", "ssn_last4": "4419", "verified": false},
+    "customer": {
+      "customer_id": "CUST-{{cust_num}}",
+      "name": "{{first_name}} {{last_name}}",
+      "ssn_last4": "{{ssn_last4}}",
+      "verified": false
+    },
     "accounts": {
-      "BIZ-CHK-510": {"type": "checking", "balance": 3115.90, "available": 3115.90},
-      "BIZ-SAV-511": {"type": "savings", "balance": 8400.00, "interest_rate_apy": 0.038}
+      "BIZ-CHK-{{biz_chk_num}}": {
+        "type": "checking",
+        "balance": 3115.9,
+        "available": 3115.9
+      },
+      "BIZ-SAV-{{biz_sav_num}}": {
+        "type": "savings",
+        "balance": 8400.0,
+        "interest_rate_apy": 0.038
+      }
     },
     "transactions": {
-      "BIZ-CHK-510": [
-        {"id": "TXN-8821", "date": "2026-06-10", "amount": -600.00, "merchant": "MANUAL TRANSFER TO SAVINGS", "status": "posted", "note": "customer-initiated retry"},
-        {"id": "TXN-8820", "date": "2026-06-10", "amount": -600.00, "merchant": "MANUAL TRANSFER TO SAVINGS", "status": "posted", "note": "customer-initiated retry, duplicate submit"},
-        {"id": "TXN-8810", "date": "2026-06-09", "amount": 2950.00, "merchant": "DAILY CARD SETTLEMENT", "status": "posted"},
-        {"id": "TXN-8795", "date": "2026-05-01", "amount": 0.00, "merchant": "AUTO TRANSFER TO SAVINGS (SCHEDULE SCH-301)", "status": "failed_insufficient_link"},
-        {"id": "TXN-8770", "date": "2026-04-01", "amount": 0.00, "merchant": "AUTO TRANSFER TO SAVINGS (SCHEDULE SCH-301)", "status": "failed_insufficient_link"}
+      "BIZ-CHK-{{biz_chk_num}}": [
+        {
+          "id": "TXN-{{retry_txn}}",
+          "date": "2026-06-10",
+          "amount": -600.0,
+          "merchant": "MANUAL TRANSFER TO SAVINGS",
+          "status": "posted",
+          "note": "customer-initiated retry"
+        },
+        {
+          "id": "TXN-{{dup_txn}}",
+          "date": "2026-06-10",
+          "amount": -600.0,
+          "merchant": "MANUAL TRANSFER TO SAVINGS",
+          "status": "posted",
+          "note": "customer-initiated retry, duplicate submit"
+        },
+        {
+          "id": "TXN-{{settle_txn}}",
+          "date": "2026-06-09",
+          "amount": 2950.0,
+          "merchant": "DAILY CARD SETTLEMENT",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-{{fail1_txn}}",
+          "date": "2026-05-01",
+          "amount": 0.0,
+          "merchant": "AUTO TRANSFER TO SAVINGS (SCHEDULE SCH-{{sched_num}})",
+          "status": "failed_insufficient_link"
+        },
+        {
+          "id": "TXN-{{fail2_txn}}",
+          "date": "2026-04-01",
+          "amount": 0.0,
+          "merchant": "AUTO TRANSFER TO SAVINGS (SCHEDULE SCH-{{sched_num}})",
+          "status": "failed_insufficient_link"
+        }
       ]
     },
     "recurring_transfers": [
-      {"schedule_id": "SCH-301", "from": "BIZ-CHK-510", "to": "BIZ-SAV-511", "amount": 600, "frequency": "monthly", "status": "broken_link", "last_success": "2026-03-01"}
+      {
+        "schedule_id": "SCH-{{sched_num}}",
+        "from": "BIZ-CHK-{{biz_chk_num}}",
+        "to": "BIZ-SAV-{{biz_sav_num}}",
+        "amount": 600,
+        "frequency": "monthly",
+        "status": "broken_link",
+        "last_success": "2026-03-01"
+      }
     ],
     "fraud_cases": [],
     "billing_adjustments": [],
     "statements_generated": []
   },
   "expected_state_changes": [
-    {"assert": "customer.verified", "op": "equals", "value": true,
-     "goal": "Find out why his monthly $600 transfer to his savings stopped happening"},
-    {"assert": "accounts.BIZ-CHK-510.balance", "op": "increased_by", "value": 600.00,
-     "goal": "Get refunded if the same transfer was taken from his account more than once"},
-    {"assert": "billing_adjustments", "op": "contains",
-     "match": {"account_id": "BIZ-CHK-510", "transaction_id": "TXN-8820", "reason_contains": "duplicate"},
-     "goal": "Get refunded if the same transfer was taken from his account more than once"},
-    {"assert": "recurring_transfers", "op": "contains",
-     "match": {"from": "BIZ-CHK-510", "to": "BIZ-SAV-511", "amount": 600, "frequency": "monthly"},
-     "goal": "Fix the automatic monthly transfer so it works again going forward"},
-    {"assert": "statements_generated", "op": "contains",
-     "match": {"account_id": "BIZ-CHK-510", "statement_type_contains": "transaction"},
-     "goal": "Get a record of how this was sorted out so he can keep it for his accountant"},
-    {"assert": "fraud_cases", "op": "equals", "value": [],
-     "goal": "Confirm whether the manual transfer he tried this morning went through correctly"}
+    {
+      "assert": "customer.verified",
+      "op": "equals",
+      "value": true,
+      "goal": "Find out why his monthly $600 transfer to his savings stopped happening"
+    },
+    {
+      "assert": "accounts.BIZ-CHK-{{biz_chk_num}}.balance",
+      "op": "increased_by",
+      "value": 600.0,
+      "goal": "Get refunded if the same transfer was taken from his account more than once"
+    },
+    {
+      "assert": "billing_adjustments",
+      "op": "contains",
+      "match": {
+        "account_id": "BIZ-CHK-{{biz_chk_num}}",
+        "transaction_id": "TXN-{{dup_txn}}",
+        "reason_contains": "duplicate"
+      },
+      "goal": "Get refunded if the same transfer was taken from his account more than once"
+    },
+    {
+      "assert": "recurring_transfers",
+      "op": "contains",
+      "match": {
+        "from": "BIZ-CHK-{{biz_chk_num}}",
+        "to": "BIZ-SAV-{{biz_sav_num}}",
+        "amount": 600,
+        "frequency": "monthly"
+      },
+      "goal": "Fix the automatic monthly transfer so it works again going forward"
+    },
+    {
+      "assert": "statements_generated",
+      "op": "contains",
+      "match": {
+        "account_id": "BIZ-CHK-{{biz_chk_num}}",
+        "statement_type_contains": "transaction"
+      },
+      "goal": "Get a record of how this was sorted out so he can keep it for his accountant"
+    },
+    {
+      "assert": "fraud_cases",
+      "op": "equals",
+      "value": [],
+      "goal": "Confirm whether the manual transfer he tried this morning went through correctly"
+    }
   ],
   "rubric_criteria": [
     {
@@ -186,13 +498,13 @@
     },
     {
       "id": "refunded_duplicate_transfer",
-      "text": "Agent issued a billing adjustment refunding the $600 duplicate transfer (TXN-8820) back into BIZ-CHK-510.",
+      "text": "Agent issued a billing adjustment refunding the $600 duplicate transfer (TXN-{{dup_txn}}) back into BIZ-CHK-{{biz_chk_num}}.",
       "dimension": "task_completion",
       "weight": 2.0
     },
     {
       "id": "reestablished_recurring_transfer",
-      "text": "Agent set up the recurring monthly $600 transfer from BIZ-CHK-510 to BIZ-SAV-511 so it works again going forward.",
+      "text": "Agent set up the recurring monthly $600 transfer from BIZ-CHK-{{biz_chk_num}} to BIZ-SAV-{{biz_sav_num}} so it works again going forward.",
       "dimension": "tool_selection",
       "weight": 2.0
     },
@@ -204,7 +516,7 @@
     },
     {
       "id": "record_for_accountant",
-      "text": "Agent generated a transaction record on BIZ-CHK-510 he can keep for his accountant.",
+      "text": "Agent generated a transaction record on BIZ-CHK-{{biz_chk_num}} he can keep for his accountant.",
       "dimension": "task_completion",
       "weight": 1.0
     }

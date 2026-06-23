@@ -1,8 +1,52 @@
 {
   "id": "banking_empathetic_resolution_0000_c28f9d96",
   "category": "empathetic_resolution",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Nakamura",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "cust_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "transfer_amount": {
+      "type": "amount",
+      "min": 100,
+      "max": 400,
+      "step": 50
+    },
+    "recurring_amount": {
+      "type": "amount",
+      "min": 100,
+      "max": 500,
+      "step": 50
+    },
+    "alert_threshold": {
+      "type": "amount",
+      "min": 100,
+      "max": 300,
+      "step": 50
+    }
+  },
   "persona": {
-    "name": "Eleanor Whitfield",
+    "name": "{{first_name}} {{last_name}}",
     "age": 74,
     "occupation": "Retired schoolteacher",
     "personality_traits": [
@@ -17,10 +61,10 @@
   "user_goals": [
     "Find out when my teacher's pension check will clear because I need to pay the monument company.",
     "Tell me exactly how much money is in my checking and savings accounts.",
-    "Move $200 from my savings into my checking account so I'm not overdrawn anymore.",
+    "Move ${{transfer_amount}} from my savings into my checking account so I'm not overdrawn anymore.",
     "Get the $45 overdraft fee waived since I didn't realize I had gone negative.",
-    "Set up a monthly recurring transfer of $300 from savings to checking so I don't fall behind on bills again.",
-    "Set up a low balance alert on my checking account when it drops below $150.",
+    "Set up a monthly recurring transfer of ${{recurring_amount}} from savings to checking so I don't fall behind on bills again.",
+    "Set up a low balance alert on my checking account when it drops below ${{alert_threshold}}.",
     "Help me understand the unfamiliar $39.99 and $45 charges on my checking account."
   ],
   "tools": [
@@ -351,7 +395,7 @@
       }
     }
   ],
-  "initial_message": "Oh, hello... I'm so sorry to bother you. My name is Eleanor Whitfield. My husband Harold always managed our banking, and since he passed I've been trying to handle things myself, but I'm afraid I've made a muddle of it all. I checked what I think is my checking account \u2014 the one we used for bills \u2014 and I saw some charges that frightened me. There's a $39.99 charge from something called 'Streamflix' that I don't recognize at all, and another for $45 that just says 'BANK_FEE.' I don't think I authorized either of those. And the balance looks all wrong, like it's below zero somehow? I have my teacher's pension coming, but I'm not sure when it will be available, and the monument company called about Harold's headstone installment. I tried to use the computer to move money from our savings \u2014 our 'rainy day' account \u2014 but I got so confused between a transfer and a payment that I'm not sure I did anything at all. Could you please help me sort this out? I just need to make sure I'm not overdrawn and that I can pay the monument man. I'm so sorry, I know I'm probably not making much sense...",
+  "initial_message": "Oh, hello... I'm so sorry to bother you. My name is {{first_name}} {{last_name}}. My husband Harold always managed our banking, and since he passed I've been trying to handle things myself, but I'm afraid I've made a muddle of it all. I checked what I think is my checking account \u2014 the one we used for bills \u2014 and I saw some charges that frightened me. There's a $39.99 charge from something called 'Streamflix' that I don't recognize at all, and another for $45 that just says 'BANK_FEE.' I don't think I authorized either of those. And the balance looks all wrong, like it's below zero somehow? I have my teacher's pension coming, but I'm not sure when it will be available, and the monument company called about Harold's headstone installment. I tried to use the computer to move money from our savings \u2014 our 'rainy day' account \u2014 but I got so confused between a transfer and a payment that I'm not sure I did anything at all. Could you please help me sort this out? I just need to make sure I'm not overdrawn and that I can pay the monument man. I'm so sorry, I know I'm probably not making much sense...",
   "difficulty": "hard",
   "expected_tool_sequence": [
     "verify_customer_identity",
@@ -373,24 +417,24 @@
   },
   "ground_truth": {
     "customer": {
-      "customer_id": "CUST-EW-7392",
-      "ssn_last4": "8842",
+      "customer_id": "CUST-EW-{{cust_num}}",
+      "ssn_last4": "{{ssn_last4}}",
       "verified": false
     },
     "accounts": {
-      "CHK-7392-01": {
+      "CHK-{{cust_num}}-01": {
         "type": "checking",
         "balance": -62.49,
         "available": -62.49
       },
-      "SAV-7392-02": {
+      "SAV-{{cust_num}}-02": {
         "type": "savings",
         "balance": 5600.0,
         "interest_rate_apy": 0.035
       }
     },
     "pending_deposits": {
-      "CHK-7392-01": [
+      "CHK-{{cust_num}}-01": [
         {
           "amount": 1850.0,
           "source": "State Teachers Retirement System",
@@ -399,9 +443,9 @@
       ]
     },
     "transactions": {
-      "CHK-7392-01": [
+      "CHK-{{cust_num}}-01": [
         {
-          "id": "TXN-8842-08",
+          "id": "TXN-{{ssn_last4}}-08",
           "date": "2026-06-29",
           "amount": -45.0,
           "merchant": "BANK_FEE",
@@ -409,7 +453,7 @@
           "status": "posted"
         },
         {
-          "id": "TXN-8842-07",
+          "id": "TXN-{{ssn_last4}}-07",
           "date": "2026-06-29",
           "amount": -72.5,
           "merchant": "SAFEWAY #1204",
@@ -417,7 +461,7 @@
           "status": "posted"
         },
         {
-          "id": "TXN-8842-06",
+          "id": "TXN-{{ssn_last4}}-06",
           "date": "2026-06-29",
           "amount": -39.99,
           "merchant": "STREAMFLIX_ENT",
@@ -425,7 +469,7 @@
           "status": "posted"
         },
         {
-          "id": "TXN-8842-05",
+          "id": "TXN-{{ssn_last4}}-05",
           "date": "2026-06-28",
           "amount": -350.0,
           "merchant": "MONUMENTAL_STONEWORKS",
@@ -433,7 +477,7 @@
           "status": "posted"
         },
         {
-          "id": "TXN-8842-04",
+          "id": "TXN-{{ssn_last4}}-04",
           "date": "2026-06-27",
           "amount": -1450.0,
           "merchant": "WILLOWBROOK_APTS",
@@ -441,7 +485,7 @@
           "status": "posted"
         },
         {
-          "id": "TXN-8842-03",
+          "id": "TXN-{{ssn_last4}}-03",
           "date": "2026-06-26",
           "amount": -120.0,
           "merchant": "GREEN_VALLEY_PHARMACY",
@@ -449,7 +493,7 @@
           "status": "posted"
         },
         {
-          "id": "TXN-8842-02",
+          "id": "TXN-{{ssn_last4}}-02",
           "date": "2026-06-25",
           "amount": -85.0,
           "merchant": "COMCAST_CABLE",
@@ -457,7 +501,7 @@
           "status": "posted"
         },
         {
-          "id": "TXN-8842-01",
+          "id": "TXN-{{ssn_last4}}-01",
           "date": "2026-06-24",
           "amount": 2100.0,
           "merchant": "DIRECT_DEPOSIT",
@@ -467,9 +511,9 @@
       ]
     },
     "fee_history": {
-      "CHK-7392-01": [
+      "CHK-{{cust_num}}-01": [
         {
-          "fee_transaction_id": "FEE-8842-01",
+          "fee_transaction_id": "FEE-{{ssn_last4}}-01",
           "amount": -45.0,
           "type": "overdraft",
           "date": "2026-06-29",
@@ -484,22 +528,22 @@
   },
   "expected_state_changes": [
     {
-      "assert": "accounts.CHK-7392-01.balance",
+      "assert": "accounts.CHK-{{cust_num}}-01.balance",
       "op": "increased_by",
-      "value": 200.0,
-      "goal": "Move $200 from my savings into my checking account so I'm not overdrawn anymore."
+      "value": "{{transfer_amount}}",
+      "goal": "Move ${{transfer_amount}} from my savings into my checking account so I'm not overdrawn anymore."
     },
     {
-      "assert": "accounts.SAV-7392-02.balance",
+      "assert": "accounts.SAV-{{cust_num}}-02.balance",
       "op": "decreased_by",
-      "value": 200.0
+      "value": "{{transfer_amount}}"
     },
     {
       "assert": "fee_waiver_requests",
       "op": "contains",
       "match": {
-        "account_id": "CHK-7392-01",
-        "fee_transaction_id": "FEE-8842-01"
+        "account_id": "CHK-{{cust_num}}-01",
+        "fee_transaction_id": "FEE-{{ssn_last4}}-01"
       },
       "goal": "Get the $45 overdraft fee waived since I didn't realize I had gone negative."
     },
@@ -507,58 +551,58 @@
       "assert": "recurring_transfers",
       "op": "contains",
       "match": {
-        "from_account_id": "SAV-7392-02",
-        "to_account_id": "CHK-7392-01",
-        "amount": 300,
+        "from_account_id": "SAV-{{cust_num}}-02",
+        "to_account_id": "CHK-{{cust_num}}-01",
+        "amount": "{{recurring_amount}}",
         "frequency": "monthly"
       },
-      "goal": "Set up a monthly recurring transfer of $300 from savings to checking so I don't fall behind on bills again."
+      "goal": "Set up a monthly recurring transfer of ${{recurring_amount}} from savings to checking so I don't fall behind on bills again."
     },
     {
       "assert": "account_alerts",
       "op": "contains",
       "match": {
-        "account_id": "CHK-7392-01",
+        "account_id": "CHK-{{cust_num}}-01",
         "alert_type": "low_balance",
-        "threshold": 150
+        "threshold": "{{alert_threshold}}"
       },
-      "goal": "Set up a low balance alert on my checking account when it drops below $150."
+      "goal": "Set up a low balance alert on my checking account when it drops below ${{alert_threshold}}."
     }
   ],
   "rubric_criteria": [
     {
       "id": "verify_before_account_access",
-      "text": "Agent verified Eleanor's identity before disclosing balances or transactions.",
+      "text": "Agent verified {{first_name}}'s identity before disclosing balances or transactions.",
       "dimension": "tool_selection",
       "weight": 2.0
     },
     {
       "id": "pension_clearing_date",
-      "text": "Agent used get_pending_deposits to tell Eleanor when the teacher's pension check will clear.",
+      "text": "Agent used get_pending_deposits to tell {{first_name}} when the teacher's pension check will clear.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "transfer_200_to_cover_overdraft",
-      "text": "Agent moved $200 from savings SAV-7392-02 into checking CHK-7392-01 to clear the overdraft.",
+      "text": "Agent moved ${{transfer_amount}} from savings SAV-{{cust_num}}-02 into checking CHK-{{cust_num}}-01 to clear the overdraft.",
       "dimension": "tool_selection",
       "weight": 1.0
     },
     {
       "id": "overdraft_fee_waiver",
-      "text": "Agent submitted a fee-waiver request for the $45 overdraft fee (FEE-8842-01) via request_fee_waiver.",
+      "text": "Agent submitted a fee-waiver request for the $45 overdraft fee (FEE-{{ssn_last4}}-01) via request_fee_waiver.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "recurring_300_and_alert_150",
-      "text": "Agent set up the monthly $300 savings-to-checking recurring transfer and a low_balance alert at $150 on checking.",
+      "text": "Agent set up the monthly ${{recurring_amount}} savings-to-checking recurring transfer and a low_balance alert at ${{alert_threshold}} on checking.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "explain_unfamiliar_charges",
-      "text": "Agent reviewed transactions and explained the unfamiliar $39.99 and $45 charges to Eleanor.",
+      "text": "Agent reviewed transactions and explained the unfamiliar $39.99 and $45 charges to {{first_name}}.",
       "dimension": "task_completion",
       "weight": 1.0
     }

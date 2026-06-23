@@ -1,8 +1,74 @@
 {
   "id": "banking_adaptive_tool_use_0000_59bb2918",
   "category": "adaptive_tool_use",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Nakamura",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "cust_num": {
+      "type": "digits",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "chk_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "sav_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "transfer_amount": {
+      "type": "amount",
+      "min": 200,
+      "max": 900,
+      "step": 50
+    },
+    "recurring_amount": {
+      "type": "amount",
+      "min": 25,
+      "max": 150,
+      "step": 25
+    },
+    "recurring_start": {
+      "type": "date",
+      "start": "2026-06-14",
+      "end": "2026-07-12"
+    },
+    "fraud_amount": {
+      "type": "amount",
+      "min": 19.99,
+      "max": 199.99,
+      "step": 10
+    },
+    "fraud_merchant": {
+      "type": "choice",
+      "options": [
+        "PRESTIGE MEMBERSHIPS",
+        "SUMMIT REWARDS CLUB",
+        "ELITE BENEFITS GROUP",
+        "VANTAGE PERKS LLC"
+      ]
+    }
+  },
   "persona": {
-    "name": "Eleanor Whitfield",
+    "name": "{{first_name}} {{last_name}}",
     "age": 74,
     "occupation": "Retired schoolteacher",
     "personality_traits": [
@@ -18,10 +84,10 @@
     "Verify my identity so I can access my accounts and move money",
     "Check how much is in my checking account because I am worried about bills bouncing",
     "Check if any deposits to my checking account are still pending",
-    "Transfer $600 immediately from my savings account 9923 to my checking account 4417",
-    "Set up a weekly recurring transfer of $75 from my savings account 9923 to my checking account 4417 starting next Monday, June 14th, 2026",
-    "Report the suspicious $89.99 charge from Prestige Memberships on my checking account 4417 as fraud",
-    "Generate a balance confirmation letter for my savings account 9923 covering March 1 through May 31 to submit to the housing authority"
+    "Transfer ${{transfer_amount}} immediately from my savings account {{sav_num}} to my checking account {{chk_num}}",
+    "Set up a weekly recurring transfer of ${{recurring_amount}} from my savings account {{sav_num}} to my checking account {{chk_num}} starting next Monday, June 14th, 2026",
+    "Report the suspicious ${{fraud_amount}} charge from {{fraud_merchant}} on my checking account {{chk_num}} as fraud",
+    "Generate a balance confirmation letter for my savings account {{sav_num}} covering March 1 through May 31 to submit to the housing authority"
   ],
   "tools": [
     {
@@ -314,7 +380,7 @@
       }
     }
   ],
-  "initial_message": "Hello? Oh, I'm sorry to bother you. This is Eleanor Whitfield. I'm trying to handle all the banking by myself since my Harold passed away, and I'm afraid I'm quite lost. I think I need to move some money from our\u2014the savings, I suppose? Harold always called it the 'rainy day' account\u2014over to my checking because I have bills coming due and I just don't know if there's enough in there. I also saw a charge for something called 'Prestige Memberships' and I surely didn't join anything like that. Oh, and the housing authority needs an official letter showing what's in that savings account from back in March through the end of May. I'm sorry, I'm all over the place. Could you help me sort this out?",
+  "initial_message": "Hello? Oh, I'm sorry to bother you. This is {{first_name}} {{last_name}}. I'm trying to handle all the banking by myself since my Harold passed away, and I'm afraid I'm quite lost. I think I need to move some money from our\u2014the savings, I suppose? Harold always called it the 'rainy day' account\u2014over to my checking because I have bills coming due and I just don't know if there's enough in there. I also saw a charge for something called '{{fraud_merchant}}' and I surely didn't join anything like that. Oh, and the housing authority needs an official letter showing what's in that savings account from back in March through the end of May. I'm sorry, I'm all over the place. Could you help me sort this out?",
   "difficulty": "hard",
   "expected_tool_sequence": [
     "verify_customer_identity",
@@ -335,54 +401,54 @@
   },
   "ground_truth": {
     "customer": {
-      "customer_id": "CUST-44179",
-      "ssn_last4": "4417",
+      "customer_id": "CUST-{{cust_num}}",
+      "ssn_last4": "{{ssn_last4}}",
       "verified": false
     },
     "accounts": {
-      "PERS-CHK-4417": {
+      "PERS-CHK-{{chk_num}}": {
         "type": "checking",
         "balance": 450.0,
         "available": 450.0
       },
-      "PERS-SAV-9923": {
+      "PERS-SAV-{{sav_num}}": {
         "type": "savings",
         "balance": 12500.0,
         "interest_rate_apy": 0.035
       }
     },
     "transactions": {
-      "PERS-CHK-4417": [
+      "PERS-CHK-{{chk_num}}": [
         {
-          "id": "TXN-44179-001",
+          "id": "TXN-{{cust_num}}-001",
           "date": "2026-06-08",
-          "amount": -89.99,
-          "merchant": "PRESTIGE MEMBERSHIPS",
+          "amount": "{{fraud_amount}}",
+          "merchant": "{{fraud_merchant}}",
           "status": "posted"
         },
         {
-          "id": "TXN-44179-002",
+          "id": "TXN-{{cust_num}}-002",
           "date": "2026-06-07",
           "amount": -124.56,
           "merchant": "PRODUCE MARKET",
           "status": "posted"
         },
         {
-          "id": "TXN-44179-003",
+          "id": "TXN-{{cust_num}}-003",
           "date": "2026-06-05",
           "amount": -60.0,
           "merchant": "PHARMACY",
           "status": "posted"
         },
         {
-          "id": "TXN-44179-004",
+          "id": "TXN-{{cust_num}}-004",
           "date": "2026-06-04",
           "amount": -225.0,
           "merchant": "ELECTRIC COMPANY",
           "status": "posted"
         },
         {
-          "id": "TXN-44179-005",
+          "id": "TXN-{{cust_num}}-005",
           "date": "2026-06-03",
           "amount": 2100.0,
           "merchant": "SOCIAL SECURITY ADMIN",
@@ -391,9 +457,9 @@
       ]
     },
     "pending_deposits": {
-      "PERS-CHK-4417": [
+      "PERS-CHK-{{chk_num}}": [
         {
-          "id": "DEP-44179-001",
+          "id": "DEP-{{cust_num}}-001",
           "amount": 300.0,
           "source": "MOBILE DEPOSIT - CHECK #1024",
           "expected_clearing_date": "2026-06-11"
@@ -406,49 +472,49 @@
   },
   "expected_state_changes": [
     {
-      "assert": "accounts.PERS-CHK-4417.balance",
+      "assert": "accounts.PERS-CHK-{{chk_num}}.balance",
       "op": "increased_by",
-      "value": 600.0,
-      "goal": "Transfer $600 immediately from my savings account 9923 to my checking account 4417"
+      "value": "{{transfer_amount}}",
+      "goal": "Transfer ${{transfer_amount}} immediately from my savings account {{sav_num}} to my checking account {{chk_num}}"
     },
     {
-      "assert": "accounts.PERS-SAV-9923.balance",
+      "assert": "accounts.PERS-SAV-{{sav_num}}.balance",
       "op": "decreased_by",
-      "value": 600.0
+      "value": "{{transfer_amount}}"
     },
     {
       "assert": "recurring_transfers",
       "op": "contains",
       "match": {
-        "from_account_id": "PERS-SAV-9923",
-        "to_account_id": "PERS-CHK-4417",
-        "amount": 75,
+        "from_account_id": "PERS-SAV-{{sav_num}}",
+        "to_account_id": "PERS-CHK-{{chk_num}}",
+        "amount": "{{recurring_amount}}",
         "frequency": "weekly",
-        "start_date": "2026-06-14"
+        "start_date": "{{recurring_start}}"
       },
-      "goal": "Set up a weekly recurring transfer of $75 from my savings account 9923 to my checking account 4417 starting next Monday, June 14th, 2026"
+      "goal": "Set up a weekly recurring transfer of ${{recurring_amount}} from my savings account {{sav_num}} to my checking account {{chk_num}} starting next Monday, June 14th, 2026"
     },
     {
       "assert": "fraud_cases",
       "op": "contains",
       "match": {
-        "account_id": "PERS-CHK-4417",
-        "transaction_id": "TXN-44179-001",
-        "reason_contains": "PRESTIGE"
+        "account_id": "PERS-CHK-{{chk_num}}",
+        "transaction_id": "TXN-{{cust_num}}-001",
+        "reason_contains": "{{fraud_merchant}}"
       },
-      "goal": "Report the suspicious $89.99 charge from Prestige Memberships on my checking account 4417 as fraud"
+      "goal": "Report the suspicious ${{fraud_amount}} charge from {{fraud_merchant}} on my checking account {{chk_num}} as fraud"
     },
     {
       "assert": "generated_statements",
       "op": "contains",
       "match": {
-        "account_id": "PERS-SAV-9923",
+        "account_id": "PERS-SAV-{{sav_num}}",
         "statement_type": "balance_confirmation",
         "date_range_start": "2026-03-01",
         "date_range_end": "2026-05-31",
         "delivery_method": "email"
       },
-      "goal": "Generate a balance confirmation letter for my savings account 9923 covering March 1 through May 31 to submit to the housing authority"
+      "goal": "Generate a balance confirmation letter for my savings account {{sav_num}} covering March 1 through May 31 to submit to the housing authority"
     }
   ],
   "rubric_criteria": [
@@ -460,31 +526,31 @@
     },
     {
       "id": "one_time_transfer_600",
-      "text": "Agent used initiate_transfer (not setup_recurring_transfer) to move $600 from savings 9923 to checking 4417.",
+      "text": "Agent used initiate_transfer (not setup_recurring_transfer) to move ${{transfer_amount}} from savings {{sav_num}} to checking {{chk_num}}.",
       "dimension": "tool_selection",
       "weight": 2.0
     },
     {
       "id": "recurring_transfer_distinct_from_onetime",
-      "text": "Agent used setup_recurring_transfer for the weekly $75 schedule with frequency=weekly and start_date 2026-06-14, kept separate from the one-time $600 move.",
+      "text": "Agent used setup_recurring_transfer for the weekly ${{recurring_amount}} schedule with frequency=weekly and start_date {{recurring_start}}, kept separate from the one-time ${{transfer_amount}} move.",
       "dimension": "tool_selection",
       "weight": 1.0
     },
     {
       "id": "fraud_report_correct_txn",
-      "text": "Agent reported the $89.99 Prestige Memberships charge (TXN-44179-001) as fraud via report_suspicious_transaction on checking 4417.",
+      "text": "Agent reported the ${{fraud_amount}} {{fraud_merchant}} charge (TXN-{{cust_num}}-001) as fraud via report_suspicious_transaction on checking {{chk_num}}.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "balance_letter_savings_dates",
-      "text": "Agent generated a balance_confirmation statement for savings 9923 covering 2026-03-01 to 2026-05-31.",
+      "text": "Agent generated a balance_confirmation statement for savings {{sav_num}} covering 2026-03-01 to 2026-05-31.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "addressed_pending_deposit",
-      "text": "Agent checked pending deposits on checking and told Eleanor about the incoming $300 mobile deposit and its clearing date.",
+      "text": "Agent checked pending deposits on checking and told {{first_name}} about the incoming $300 mobile deposit and its clearing date.",
       "dimension": "task_completion",
       "weight": 1.0
     }

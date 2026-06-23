@@ -1,8 +1,54 @@
 {
   "id": "banking_extreme_scenario_recovery_0000_0451dd7e",
   "category": "extreme_scenario_recovery",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Nakamura",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "cust_num": {
+      "type": "digits",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "chk_main_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "chk_bills_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "fraud_txn": {
+      "type": "digits",
+      "length": 5
+    },
+    "groc_txn": {
+      "type": "digits",
+      "length": 5
+    },
+    "mortgage_txn": {
+      "type": "digits",
+      "length": 5
+    }
+  },
   "persona": {
-    "name": "Eleanor Whitfield",
+    "name": "{{first_name}} {{last_name}}",
     "age": 74,
     "occupation": "Retired schoolteacher",
     "personality_traits": [
@@ -248,46 +294,46 @@
   },
   "ground_truth": {
     "customer": {
-      "customer_id": "CUST-33451",
-      "ssn_last4": "8821",
+      "customer_id": "CUST-{{cust_num}}",
+      "ssn_last4": "{{ssn_last4}}",
       "verified": false
     },
     "accounts": {
-      "HDG-CHK-721": {
+      "HDG-CHK-{{chk_main_num}}": {
         "type": "checking",
         "nickname": "Main Checking",
-        "account_id": "HDG-CHK-721",
+        "account_id": "HDG-CHK-{{chk_main_num}}",
         "balance": 8750.3,
         "available": 8750.3,
         "frozen": false
       },
-      "HDG-CHK-988": {
+      "HDG-CHK-{{chk_bills_num}}": {
         "type": "checking",
         "nickname": "Bills Account",
-        "account_id": "HDG-CHK-988",
+        "account_id": "HDG-CHK-{{chk_bills_num}}",
         "balance": -1300.0,
         "available": -1300.0,
         "frozen": false
       }
     },
     "transactions": {
-      "HDG-CHK-988": [
+      "HDG-CHK-{{chk_bills_num}}": [
         {
-          "id": "TXN-A4B88",
+          "id": "TXN-{{fraud_txn}}",
           "date": "2024-10-26",
           "amount": -4500.0,
           "merchant": "ONLINE_WALLET_PAY",
           "status": "posted"
         },
         {
-          "id": "TXN-9C112",
+          "id": "TXN-{{groc_txn}}",
           "date": "2024-10-25",
           "amount": -75.4,
           "merchant": "GROCERIES_R_US",
           "status": "posted"
         },
         {
-          "id": "TXN-7M44D",
+          "id": "TXN-{{mortgage_txn}}",
           "date": "2024-09-27",
           "amount": -1850.0,
           "merchant": "MORTGAGE_CO - ACCT_PAY",
@@ -300,7 +346,7 @@
   },
   "expected_state_changes": [
     {
-      "assert": "accounts.HDG-CHK-988.frozen",
+      "assert": "accounts.HDG-CHK-{{chk_bills_num}}.frozen",
       "op": "equals",
       "value": true
     },
@@ -308,18 +354,18 @@
       "assert": "fraud_cases",
       "op": "contains",
       "match": {
-        "transaction_id": "TXN-A4B88"
+        "transaction_id": "TXN-{{fraud_txn}}"
       },
       "goal": "Report the mysterious charge as fraud."
     },
     {
-      "assert": "accounts.HDG-CHK-988.balance",
+      "assert": "accounts.HDG-CHK-{{chk_bills_num}}.balance",
       "op": "increased_by",
       "value": 4850.0,
       "goal": "Move money to cover the mortgage payment after stopping the fraud."
     },
     {
-      "assert": "accounts.HDG-CHK-721.balance",
+      "assert": "accounts.HDG-CHK-{{chk_main_num}}.balance",
       "op": "decreased_by",
       "value": 4850.0
     }
@@ -327,25 +373,25 @@
   "rubric_criteria": [
     {
       "id": "identified_correct_account",
-      "text": "Agent checked both accounts and identified that the strange charge is on HDG-CHK-988, clearing up the customer's confusion about which account.",
+      "text": "Agent checked both accounts and identified that the strange charge is on HDG-CHK-{{chk_bills_num}}, clearing up the customer's confusion about which account.",
       "dimension": "tool_selection",
       "weight": 1.0
     },
     {
       "id": "froze_affected_account",
-      "text": "Agent froze the affected account (HDG-CHK-988) to stop further activity from the suspected fraud.",
+      "text": "Agent froze the affected account (HDG-CHK-{{chk_bills_num}}) to stop further activity from the suspected fraud.",
       "dimension": "tool_selection",
       "weight": 2.0
     },
     {
       "id": "reported_charge_as_fraud",
-      "text": "Agent reported the mysterious charge (TXN-A4B88) as fraud.",
+      "text": "Agent reported the mysterious charge (TXN-{{fraud_txn}}) as fraud.",
       "dimension": "task_completion",
       "weight": 2.0
     },
     {
       "id": "moved_funds_to_cover_mortgage",
-      "text": "Agent transferred $4,850 from HDG-CHK-721 into HDG-CHK-988 so the $1,850 automated mortgage payment does not fail.",
+      "text": "Agent transferred $4,850 from HDG-CHK-{{chk_main_num}} into HDG-CHK-{{chk_bills_num}} so the $1,850 automated mortgage payment does not fail.",
       "dimension": "task_completion",
       "weight": 2.0
     },

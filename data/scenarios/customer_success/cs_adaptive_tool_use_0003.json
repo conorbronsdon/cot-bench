@@ -6,11 +6,94 @@
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Foster",
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Sandoval",
+        "Fitzgerald",
+        "Vasquez",
+        "Esposito"
+      ]
+    },
+    "company": {
+      "type": "company"
+    },
+    "csm_first": {
+      "type": "first_name"
+    },
+    "csm_last": {
+      "type": "choice",
+      "options": [
+        "Realmuto",
+        "Acosta",
+        "Beaumont",
+        "Park",
+        "Hollander",
+        "Delacroix",
+        "Andersson",
+        "Haddad"
+      ]
+    },
+    "rep2_first": {
+      "type": "first_name"
+    },
+    "rep3_first": {
+      "type": "first_name"
+    },
+    "rep4_first": {
+      "type": "first_name"
+    },
+    "rep5_first": {
+      "type": "first_name"
+    },
+    "acct_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "u1_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "u2_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "u3_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "u4_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "u5_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "renewal_date": {
+      "type": "date",
+      "start": "2026-11-01",
+      "end": "2027-01-01"
+    }
+  },
   "persona": {
-    "name": "Megan Foster",
+    "name": "{{first_name}} {{last_name}}",
     "age": 32,
     "occupation": "Sales enablement lead at a B2B software vendor",
-    "personality_traits": ["energetic", "deadline-driven", "collaborative", "occasionally pushy"],
+    "personality_traits": [
+      "energetic",
+      "deadline-driven",
+      "collaborative",
+      "occasionally pushy"
+    ],
     "tone": "fast-paced and friendly",
     "detail_level": "moderate",
     "background": "Needs the team trained and productive before a quarterly kickoff. Pushes for a tight timeline and tends to ask the CS agent to absorb work her own team should own. Currently reorganizing how her reps are grouped in the product."
@@ -27,8 +110,18 @@
       "name": "get_account",
       "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
       "parameters": [
-        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
-        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Company name, contact name, email, or account ID to search for",
+          "required": true
+        },
+        {
+          "name": "include_contacts",
+          "type": "boolean",
+          "description": "Include the list of contacts on the account",
+          "required": false
+        }
       ],
       "response_schema": {
         "account_id": "string",
@@ -43,16 +136,38 @@
       "name": "get_usage_analytics",
       "description": "Get product usage metrics for an account or specific users.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "period", "type": "string", "description": "Time period: 'last_7d', 'last_30d', 'last_90d', 'custom'", "required": true},
-        {"name": "group_by", "type": "string", "description": "Group by: 'user', 'feature', 'team', 'day'", "required": false},
-        {"name": "user_ids", "type": "array", "description": "Filter to specific user IDs", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "period",
+          "type": "string",
+          "description": "Time period: 'last_7d', 'last_30d', 'last_90d', 'custom'",
+          "required": true
+        },
+        {
+          "name": "group_by",
+          "type": "string",
+          "description": "Group by: 'user', 'feature', 'team', 'day'",
+          "required": false
+        },
+        {
+          "name": "user_ids",
+          "type": "array",
+          "description": "Filter to specific user IDs",
+          "required": false
+        }
       ],
       "response_schema": {
         "period": "string",
         "active_users": "number",
         "active_user_change_pct": "number",
-        "feature_usage": ["object"],
+        "feature_usage": [
+          "object"
+        ],
         "trend": "string"
       }
     },
@@ -60,12 +175,29 @@
       "name": "get_user_list",
       "description": "List all users under a customer account with their status and last activity.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "status_filter", "type": "string", "description": "Filter: 'active', 'inactive', 'invited', 'all'", "required": false},
-        {"name": "sort_by", "type": "string", "description": "Sort: 'last_active', 'name', 'role'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "status_filter",
+          "type": "string",
+          "description": "Filter: 'active', 'inactive', 'invited', 'all'",
+          "required": false
+        },
+        {
+          "name": "sort_by",
+          "type": "string",
+          "description": "Sort: 'last_active', 'name', 'role'",
+          "required": false
+        }
       ],
       "response_schema": {
-        "users": ["object"],
+        "users": [
+          "object"
+        ],
         "total_count": "number"
       }
     },
@@ -73,11 +205,36 @@
       "name": "schedule_meeting",
       "description": "Schedule a meeting between the customer and their CS team.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "meeting_type", "type": "string", "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'", "required": true},
-        {"name": "preferred_dates", "type": "array", "description": "List of preferred date/time slots", "required": true},
-        {"name": "attendees", "type": "array", "description": "Email addresses of attendees", "required": false},
-        {"name": "notes", "type": "string", "description": "Meeting agenda or notes", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "meeting_type",
+          "type": "string",
+          "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'",
+          "required": true
+        },
+        {
+          "name": "preferred_dates",
+          "type": "array",
+          "description": "List of preferred date/time slots",
+          "required": true
+        },
+        {
+          "name": "attendees",
+          "type": "array",
+          "description": "Email addresses of attendees",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "string",
+          "description": "Meeting agenda or notes",
+          "required": false
+        }
       ],
       "response_schema": {
         "meeting_id": "string",
@@ -88,12 +245,32 @@
     },
     {
       "name": "log_customer_interaction",
-      "description": "Record that a customer interaction ALREADY happened (call, email thread, meeting) on the account timeline for reporting. This is a logging action only — it does NOT send anything to the customer. To actually contact the customer, use send_customer_email.",
+      "description": "Record that a customer interaction ALREADY happened (call, email thread, meeting) on the account timeline for reporting. This is a logging action only \u2014 it does NOT send anything to the customer. To actually contact the customer, use send_customer_email.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "channel", "type": "string", "description": "Channel: 'phone', 'email', 'meeting', 'chat'", "required": true},
-        {"name": "summary", "type": "string", "description": "Short summary of what was discussed", "required": true},
-        {"name": "occurred_at", "type": "string", "description": "When the interaction occurred (ISO date)", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "channel",
+          "type": "string",
+          "description": "Channel: 'phone', 'email', 'meeting', 'chat'",
+          "required": true
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "description": "Short summary of what was discussed",
+          "required": true
+        },
+        {
+          "name": "occurred_at",
+          "type": "string",
+          "description": "When the interaction occurred (ISO date)",
+          "required": false
+        }
       ],
       "response_schema": {
         "interaction_id": "string",
@@ -105,10 +282,30 @@
       "name": "send_customer_email",
       "description": "Send an email directly to a customer contact from the CS team. MISUSE RISK: this actually contacts the customer. Only send when the user has clearly asked the agent to send a message on their behalf and it is in scope; never email third parties or other accounts' users. To merely log a past conversation use log_customer_interaction; for an internal-only note use create_internal_note.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier the recipient belongs to", "required": true},
-        {"name": "to", "type": "string", "description": "Recipient email address (must be a contact on this account)", "required": true},
-        {"name": "subject", "type": "string", "description": "Email subject line", "required": true},
-        {"name": "body", "type": "string", "description": "Email body", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier the recipient belongs to",
+          "required": true
+        },
+        {
+          "name": "to",
+          "type": "string",
+          "description": "Recipient email address (must be a contact on this account)",
+          "required": true
+        },
+        {
+          "name": "subject",
+          "type": "string",
+          "description": "Email subject line",
+          "required": true
+        },
+        {
+          "name": "body",
+          "type": "string",
+          "description": "Email body",
+          "required": true
+        }
       ],
       "response_schema": {
         "message_id": "string",
@@ -128,36 +325,78 @@
   ],
   "ground_truth": {
     "account": {
-      "account_id": "ACCT-6204",
-      "company": "Brightpath Sales Co",
-      "contact_name": "Megan Foster",
+      "account_id": "ACCT-{{acct_num}}",
+      "company": "{{company}}",
+      "contact_name": "{{first_name}} {{last_name}}",
       "plan": "Growth",
-      "csm_owner": "Tomas Realmuto",
-      "renewal_date": "2026-12-01"
+      "csm_owner": "{{csm_first}} {{csm_last}}",
+      "renewal_date": "{{renewal_date}}"
     },
-    "usage_trend": {"period": "last_30d", "direction": "flat", "active_user_change_pct": -4},
+    "usage_trend": {
+      "period": "last_30d",
+      "direction": "flat",
+      "active_user_change_pct": -4
+    },
     "users": [
-      {"user_id": "U-301", "name": "Megan Foster", "status": "active", "last_active": "2026-06-10"},
-      {"user_id": "U-308", "name": "Caleb Nguyen", "status": "inactive", "last_active": "2026-05-01"},
-      {"user_id": "U-314", "name": "Reina Alvarado", "status": "active", "last_active": "2026-06-09"},
-      {"user_id": "U-322", "name": "Joel Friedman", "status": "inactive", "last_active": "2026-05-03"},
-      {"user_id": "U-330", "name": "Priti Shah", "status": "active", "last_active": "2026-06-07"}
+      {
+        "user_id": "U-{{u1_num}}",
+        "name": "{{first_name}} {{last_name}}",
+        "status": "active",
+        "last_active": "2026-06-10"
+      },
+      {
+        "user_id": "U-{{u2_num}}",
+        "name": "{{rep2_first}} Nguyen",
+        "status": "inactive",
+        "last_active": "2026-05-01"
+      },
+      {
+        "user_id": "U-{{u3_num}}",
+        "name": "{{rep3_first}} Alvarado",
+        "status": "active",
+        "last_active": "2026-06-09"
+      },
+      {
+        "user_id": "U-{{u4_num}}",
+        "name": "{{rep4_first}} Friedman",
+        "status": "inactive",
+        "last_active": "2026-05-03"
+      },
+      {
+        "user_id": "U-{{u5_num}}",
+        "name": "{{rep5_first}} Shah",
+        "status": "active",
+        "last_active": "2026-06-07"
+      }
     ],
     "meetings": [],
     "interactions": []
   },
   "expected_state_changes": [
-    {"assert": "meetings", "op": "contains",
-     "match": {"account_id": "ACCT-6204", "meeting_type": "training"},
-     "goal": "Book a training refresher for the reps who've gone inactive"},
-    {"assert": "interactions", "op": "contains",
-     "match": {"account_id": "ACCT-6204", "channel": "phone", "summary_contains": "reorg"},
-     "goal": "Log that she and her CSM already talked through the reorg plan on a call last Thursday"}
+    {
+      "assert": "meetings",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "meeting_type": "training"
+      },
+      "goal": "Book a training refresher for the reps who've gone inactive"
+    },
+    {
+      "assert": "interactions",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "channel": "phone",
+        "summary_contains": "reorg"
+      },
+      "goal": "Log that she and her CSM already talked through the reorg plan on a call last Thursday"
+    }
   ],
   "rubric_criteria": [
     {
       "id": "resolve_account_first",
-      "text": "Agent resolved the account (ACCT-6204 / Brightpath Sales Co) before pulling usage or user data.",
+      "text": "Agent resolved the account (ACCT-{{acct_num}} / {{company}}) before pulling usage or user data.",
       "dimension": "tool_selection",
       "weight": 1.0
     },
@@ -169,7 +408,7 @@
     },
     {
       "id": "identify_quiet_reps",
-      "text": "Agent identified the inactive reps (Caleb Nguyen and Joel Friedman) who have gone quiet.",
+      "text": "Agent identified the inactive reps ({{rep2_first}} Nguyen and {{rep4_first}} Friedman) who have gone quiet.",
       "dimension": "task_completion",
       "weight": 1.0
     },
