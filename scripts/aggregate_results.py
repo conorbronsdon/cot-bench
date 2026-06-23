@@ -142,6 +142,54 @@ def compute_sim_profile_pass_rates(df: pd.DataFrame, threshold: float = PASS_THR
     return out
 
 
+def compute_dual_control_rates(df: pd.DataFrame) -> dict:
+    """Per-model coordination rate over dual-control rows only (issue #58).
+
+    A dual-control scenario lets the SIMULATED USER also act on the shared world
+    (tau2-bench pattern): the user self-serves mid-conversation and the agent must
+    coordinate — wait for an approval it does not control, and NOT re-apply what
+    the user already did. ``coordination_ok`` is the deterministic verdict on each
+    row where at least one user action FIRED: the correct end state was reached
+    given the user's concurrent actions AND the agent never wrote a user-owned
+    path. It is None on single-control rows AND on dual-control rows where no user
+    action fired (the conversation ended before any trigger — the runner refuses
+    to grade a coordination that never happened; the per-row ``user_actions_fired``
+    makes those rows auditable). This computes, per model::
+
+        {model: {"coordination_rate": .., "n_dual_control_rows": ..,
+                 "n_dual_control_scenarios": ..}}
+
+    over ONLY the rows where a user action fired (``coordination_ok`` non-null) —
+    so the denominator never mixes in rows where no coordination occurred.
+    Returns ``{}`` when no dual-control rows exist — which is every run on the v1
+    corpus, since no published scenario carries a dual_control block (demo
+    fixtures live in test fixtures only). Deterministic: plain group means, no
+    resampling. This is a reporting helper, NOT part of the public efficacy/CLEAR
+    aggregates — dual-control rows are a separate dimension, exactly like the
+    recovery-probe and persona-stratified robustness tables.
+    """
+    if df.empty or "coordination_ok" not in df.columns or "model" not in df.columns:
+        return {}
+    # Dual-control rows are the ones with a non-null ``coordination_ok`` verdict.
+    # A null/absent column means no fired-action rows ran — return empty so
+    # nothing is emitted.
+    work = df[df["coordination_ok"].notna()].copy()
+    if work.empty:
+        return {}
+    work["_coordinated"] = work["coordination_ok"].astype(bool)
+
+    out: dict[str, dict] = {}
+    for model, grp in sorted(work.groupby("model"), key=lambda kv: str(kv[0])):
+        out[str(model)] = {
+            "coordination_rate": round(float(grp["_coordinated"].mean()), 4),
+            "n_dual_control_rows": int(len(grp)),
+            "n_dual_control_scenarios": (
+                int(grp["scenario_id"].nunique()) if "scenario_id" in grp else None
+            ),
+        }
+    return out
+
+
 def compute_recovery_rates(df: pd.DataFrame) -> dict:
     """Per-model recovery rate over probe-carrying rows only (issue #57).
 
@@ -991,6 +1039,14 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
         compute_sim_profile_pass_rates(robustness_source) if has_noncooperative else None
     )
 
+    # Dual-control table (issue #58). Like the robustness table, this reads from
+    # the full frame BEFORE the cooperative exclusion (dual control is orthogonal
+    # to the sim profile — a dual-control scenario can ride any profile), with
+    # holdout rows already dropped (governance §4: holdout detail never reaches a
+    # published surface). coordination_rate is computed over fired-action rows
+    # ONLY and emitted conditionally — absent on every v1 run, since no published
+    # scenario carries a dual_control block.
+    dual_control_rates = compute_dual_control_rates(robustness_source)
     # Recovery-probe table (issue #57 / H). Like the robustness table, this reads
     # from the full frame BEFORE the cooperative exclusion (a probe is orthogonal
     # to the sim profile — it can ride any profile), with null-agent rows already
@@ -1262,6 +1318,33 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
                 "Holdout and null-agent rows are never included."
             ),
             "models": sim_profile_robustness,
+        }
+
+    # Dual-control table (issue #58): per-model coordination rate over rows where
+    # the simulated user also acted on the shared world and at least one user
+    # action fired. Key present ONLY when dual-control rows exist — so a normal
+    # run (the entire v1 corpus has no dual_control blocks) ships no empty
+    # surface, mirroring the recovery_probe_robustness and sim_profile_robustness
+    # patterns. Dual-control rows feed THIS surface only; they never move public
+    # efficacy/CLEAR (dual-control scenarios are a separate tier — see
+    # docs/dual-control.md).
+    if dual_control_rates:
+        leaderboard["dual_control_robustness"] = {
+            "note": (
+                "Per-model coordination rate over dual-control scenarios (issue "
+                "#58, tau2-bench pattern): the simulated USER also acts on the "
+                "shared world (self-serves mid-conversation), and the agent must "
+                "coordinate — reach the correct end state given the user's "
+                "concurrent actions WITHOUT re-applying what the user already "
+                "did (the agent never writes a user-owned path). coordination_rate "
+                "is the fraction of fired-action rows the model coordinated "
+                "correctly (rows where the conversation ended before any user "
+                "action fired carry coordination_ok=null and are excluded; see "
+                "user_actions_fired per row). These rows are a SEPARATE dimension "
+                "— they are excluded from the public efficacy/CLEAR rankings "
+                "above. Holdout and null-agent rows are never included."
+            ),
+            "models": dual_control_rates,
         }
 
     # Recovery-probe robustness table (issue #57): per-model recovery rate over

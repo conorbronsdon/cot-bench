@@ -204,6 +204,17 @@ def _scenario_to_canonical_dict(scenario) -> dict:
     rubric_criteria = getattr(scenario, "rubric_criteria", None)
     if rubric_criteria:
         data["rubric_criteria"] = rubric_criteria
+    # Dual control (issue #58) changes what a run DOES (the simulated user also
+    # acts on the shared world), so it MUST be covered by the corpus hash when
+    # present — but included CONDITIONALLY, exactly like rubric_criteria above,
+    # so single-control scenarios (the entire public corpus today) hash
+    # identically to before this field existed. Serialized back to the same plain
+    # dict shape the scenario JSON carries (user_tools + user_actions) so the
+    # canonical bytes match the on-disk content regardless of whether the
+    # Scenario holds a DualControl object or the loader passed a raw dict.
+    dual_control = getattr(scenario, "dual_control", None)
+    if dual_control is not None:
+        data["dual_control"] = _dual_control_to_dict(dual_control)
     # Recovery probe (issue #57) changes what a run DOES (it injects a scripted
     # perturbation and grades recovery), so it MUST be covered by the corpus hash
     # when present — but included CONDITIONALLY, exactly like rubric_criteria
@@ -216,6 +227,67 @@ def _scenario_to_canonical_dict(scenario) -> dict:
     if recovery_probe is not None:
         data["recovery_probe"] = _recovery_probe_to_dict(recovery_probe)
     return data
+
+
+def _dual_control_to_dict(dc) -> dict:
+    """Canonical plain-dict form of a dual-control block for hashing (issue #58).
+
+    Accepts either a ``DualControl`` object (the loaded form) or an already-raw
+    dict (defensive), and returns the two content lists — ``user_tools`` (each
+    with name/description/parameters/scope) and ``user_actions`` (each with
+    tool/trigger/trigger_value/arguments/state_delta/user_message). Empty
+    optional fields are normalized (``arguments``/``state_delta`` -> ``{}``,
+    ``scope``/``parameters`` -> ``[]``, ``user_message`` -> ``None``) to match the
+    object's own normalization, so a block authored with an omitted optional
+    hashes the same as one with the explicit empty value.
+    """
+    if isinstance(dc, dict):
+        tools = dc.get("user_tools", [])
+        actions = dc.get("user_actions", [])
+        return {
+            "user_tools": [
+                {
+                    "name": t.get("name"),
+                    "description": t.get("description", ""),
+                    "parameters": t.get("parameters") or [],
+                    "scope": t.get("scope") or [],
+                }
+                for t in tools
+            ],
+            "user_actions": [
+                {
+                    "tool": a.get("tool"),
+                    "trigger": a.get("trigger"),
+                    "trigger_value": a.get("trigger_value"),
+                    "arguments": a.get("arguments") or {},
+                    "state_delta": a.get("state_delta") or {},
+                    "user_message": a.get("user_message"),
+                }
+                for a in actions
+            ],
+        }
+    return {
+        "user_tools": [
+            {
+                "name": t.name,
+                "description": t.description,
+                "parameters": t.parameters,
+                "scope": t.scope,
+            }
+            for t in dc.user_tools.values()
+        ],
+        "user_actions": [
+            {
+                "tool": a.tool,
+                "trigger": a.trigger,
+                "trigger_value": a.trigger_value,
+                "arguments": a.arguments,
+                "state_delta": a.state_delta,
+                "user_message": a.user_message,
+            }
+            for a in dc.user_actions
+        ],
+    }
 
 
 def _recovery_probe_to_dict(probe) -> dict:

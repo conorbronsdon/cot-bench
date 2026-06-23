@@ -19,7 +19,7 @@ the corpus migrate file-by-file without breaking the build.
 | `category` | string | yes | One of the five categories (see methodology) |
 | `persona` | object | yes | `name`, `age`, `occupation`, `personality_traits`, `tone`, `detail_level`, `background` |
 | `user_goals` | string[] | yes | 3–10 interconnected goals (typically 5–8) |
-| `tools` | object[] | yes | ≥2 tool definitions with `name`, `description`, `parameters`, optional `response_schema` |
+| `tools` | object[] | yes | ≥2 tool definitions with `name`, `description`, `parameters`, optional `response_schema`, optional `writes` (top-level state keys the tool may mutate; clamps the tool-sim delta — required on every tool of a `dual_control` scenario, read-only tools use `[]`) |
 | `initial_message` | string | yes | In-character opening message; do **not** leak goal text or canonical IDs |
 | `difficulty` | string | no | `easy` \| `medium` \| `hard` |
 | `expected_tool_sequence` | string[] | no | Advisory ideal tool order (sequence-agnostic once state assertions exist) |

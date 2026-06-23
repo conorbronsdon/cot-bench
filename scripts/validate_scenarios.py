@@ -19,6 +19,13 @@ from pathlib import Path
 from pydantic import BaseModel, ValidationError
 
 from eval.config import MODELS_UNDER_TEST
+from eval.simulation.dual_control import (
+    TRIGGER_AFTER_TURN,
+    TRIGGER_AGENT_CALLED,
+    TRIGGER_KINDS,
+    USER_ACTION_TURN_MAX,
+    USER_ACTION_TURN_MIN,
+)
 from eval.simulation.probes import PROBE_KINDS, PROBE_TURN_MAX, PROBE_TURN_MIN
 from eval.templating import (
     DEFAULT_INSTANTIATION_SEED,
@@ -84,6 +91,18 @@ class Tool(BaseModel):
     description: str
     parameters: list[ToolParameter]
     response_schema: dict | None = None
+    # Write-scope declaration (Option A, issue #58 determinism fix) — OPTIONAL.
+    # The top-level state keys this tool is permitted to mutate. When present, the
+    # tool simulator's state_delta is CLAMPED to these keys at runtime (see
+    # SimulationRunner._simulate_tool_stateful), so a hallucinated out-of-scope
+    # write can never reach the world or the dual-control attribution set. A
+    # read-only tool declares ``writes: []``. None (the field absent) means no
+    # clamping — backwards-compatible for the entire single-control public corpus,
+    # where no tool declares ``writes``, so those scenarios hash and run
+    # identically to before this field existed. REQUIRED on every tool of a
+    # dual_control scenario (see _validate_dual_control), where the deterministic
+    # coordination metric depends on the clamp being in force.
+    writes: list[str] | None = None
 
 
 class Persona(BaseModel):
@@ -147,6 +166,11 @@ class ScenarioSchema(BaseModel):
     # present, criteria_authorship is required (see _validate_criteria).
     rubric_criteria: list[RubricCriterion] | None = None
     criteria_authorship: CriteriaAuthorship | None = None
+    # Dual control (issue #58) — optional. Kept as a raw dict (its user_actions'
+    # ``state_delta`` and the user_tools' ``scope`` are validated by hand against
+    # ground_truth in _validate_dual_control, and its assertion-free deltas use
+    # the same dotted-path format as expected_state_changes).
+    dual_control: dict | None = None
     # Recovery probe (issue #57) — optional deterministic mid-conversation
     # perturbation. Kept as a raw dict (its ``recovery_assertions`` use the
     # ``assert`` key, a Python keyword) and validated by hand in
@@ -332,6 +356,146 @@ def _validate_criteria(scenario: ScenarioSchema) -> list[str]:
                     f"matches MODELS_UNDER_TEST entry '{blocked}' "
                     "(a contestant must not write the grading criteria for its own exam)"
                 )
+
+    return errors
+
+
+def _validate_dual_control(scenario: ScenarioSchema) -> list[str]:
+    """Validate a dual_control block when present (issue #58).
+
+    Presence-gated on any schema version: a scenario without ``dual_control`` is
+    untouched. With a block: non-empty ``expected_state_changes`` (the empty-
+    assertions no-unauthorized-mutation contract is incompatible with a user who
+    legitimately mutates the world); at least one user_tool (each with a
+    non-empty name and a declared ``scope`` list of top-level keys it may
+    mutate) and at least one user_action; and — the authorization boundary, the
+    subtle part of #58 — every action must name a DECLARED user_tool and write
+    ONLY within that tool's declared scope. The trigger vocabulary and turn
+    bounds mirror
+    ``DualControl``/``UserAction`` so the on-disk validator and the runtime
+    object agree on what a valid block is.
+    """
+    block = scenario.dual_control
+    if block is None:
+        return []
+
+    errors: list[str] = []
+    if not isinstance(block, dict):
+        return ["dual_control must be an object"]
+
+    # A dual-control scenario MUST declare non-empty expected_state_changes.
+    # With empty assertions ([] or absent) the state grader evaluates the
+    # no-unauthorized-mutation contract instead (final world == initial world,
+    # see score_state_changes) — and in a dual-control scenario the USER always
+    # mutates the world, so the agent would be charged with an unauthorized
+    # mutation for the user's own legitimate self-serve (coordination_ok
+    # permanently False and the efficacy grade failing with the user's key
+    # named). The two contracts are incompatible by construction, so this is a
+    # validation failure, caught before any run.
+    if not scenario.expected_state_changes:
+        errors.append(
+            "dual_control requires non-empty 'expected_state_changes': with empty "
+            "assertions the state grader enforces the no-unauthorized-mutation "
+            "contract (final world == initial world), which the user's own scripted "
+            "mutations always violate — the agent would be charged for the user's "
+            "legitimate actions"
+        )
+
+    # Write-scope requirement (Option A, issue #58 determinism fix). In a
+    # dual-control scenario the coordination verdict flags any agent write to a
+    # user-owned key as a trespass, so a tool-sim hallucination of such a write
+    # would be a FALSE, nondeterministic failure. The runtime clamp (each agent
+    # tool's ``writes`` allow-list bounds its tool-sim delta) eliminates that, but
+    # ONLY for tools that declare ``writes``. So in a dual-control scenario every
+    # agent tool MUST declare it (read-only tools declare ``writes: []``);
+    # otherwise the metric is not deterministic. Non-dual-control scenarios leave
+    # ``writes`` optional and are unaffected.
+    for tool in scenario.tools:
+        if getattr(tool, "writes", None) is None:
+            errors.append(
+                f"dual_control requires every agent tool to declare 'writes' "
+                f"(the top-level state keys it may mutate; read-only tools declare "
+                f"'writes': []), but tool '{tool.name}' does not — the per-tool "
+                f"write-scope clamp must be in force for the coordination metric to "
+                f"be deterministic"
+            )
+
+    tools_raw = block.get("user_tools")
+    if not isinstance(tools_raw, list) or not tools_raw:
+        errors.append("dual_control requires a non-empty 'user_tools' list")
+        tools_raw = tools_raw if isinstance(tools_raw, list) else []
+
+    # Map tool name -> declared scope (top-level keys it may mutate).
+    tool_scopes: dict[str, list[str]] = {}
+    for i, t in enumerate(tools_raw):
+        loc = f"dual_control.user_tools[{i}]"
+        if not isinstance(t, dict):
+            errors.append(f"{loc}: must be an object")
+            continue
+        name = t.get("name")
+        if not isinstance(name, str) or not name.strip():
+            errors.append(f"{loc}: missing non-empty 'name'")
+            continue
+        scope = t.get("scope") or []
+        if not isinstance(scope, list):
+            errors.append(f"{loc}: 'scope' must be a list of top-level state keys")
+            scope = []
+        tool_scopes[name] = [str(s) for s in scope]
+
+    actions_raw = block.get("user_actions")
+    if not isinstance(actions_raw, list) or not actions_raw:
+        errors.append("dual_control requires a non-empty 'user_actions' list")
+        actions_raw = actions_raw if isinstance(actions_raw, list) else []
+
+    for i, a in enumerate(actions_raw):
+        loc = f"dual_control.user_actions[{i}]"
+        if not isinstance(a, dict):
+            errors.append(f"{loc}: must be an object")
+            continue
+
+        tool_name = a.get("tool")
+        if tool_name not in tool_scopes:
+            errors.append(f"{loc}: references undeclared user_tool '{tool_name}'")
+
+        trigger = a.get("trigger")
+        if trigger not in TRIGGER_KINDS:
+            errors.append(f"{loc}: unknown trigger '{trigger}' (allowed: {sorted(TRIGGER_KINDS)})")
+        elif trigger == TRIGGER_AFTER_TURN:
+            tv = a.get("trigger_value")
+            if not isinstance(tv, int) or isinstance(tv, bool):
+                errors.append(f"{loc}: after_turn trigger_value must be an int turn")
+            elif not (USER_ACTION_TURN_MIN <= tv <= USER_ACTION_TURN_MAX):
+                errors.append(
+                    f"{loc}: after_turn turn {tv} out of range "
+                    f"[{USER_ACTION_TURN_MIN}, {USER_ACTION_TURN_MAX}]"
+                )
+        elif trigger == TRIGGER_AGENT_CALLED:
+            tv = a.get("trigger_value")
+            if not isinstance(tv, str) or not tv.strip():
+                errors.append(f"{loc}: agent_called trigger_value must be a non-empty tool name")
+
+        # Authorization boundary: the action's state delta may only write
+        # top-level keys within the named tool's declared scope. This is the
+        # no-unauthorized-mutation contract on the USER side — a user action
+        # cannot reach into agent-only / server-only state.
+        delta = a.get("state_delta") or {}
+        if not isinstance(delta, dict):
+            errors.append(f"{loc}: 'state_delta' must be an object of dotted-path -> value")
+            delta = {}
+        allowed = set(tool_scopes.get(tool_name, []))
+        for dotted in delta:
+            top = str(dotted).split(".", 1)[0]
+            if top not in allowed:
+                errors.append(
+                    f"{loc}: state_delta path '{dotted}' writes top-level key '{top}' "
+                    f"outside the declared scope {sorted(allowed)} of user_tool '{tool_name}' "
+                    "(authorization boundary: user tools may only touch user-legible state)"
+                )
+            # A delta that targets a key that doesn't exist in ground_truth at all
+            # is suspicious for a user self-serve action (the user mutates their
+            # OWN existing state), but absence is allowed (e.g. appending the first
+            # item to an as-yet-absent list) — so this is a soft check, only the
+            # scope breach above is a hard error.
 
     return errors
 
@@ -560,6 +724,9 @@ def validate_scenario_dict(data: dict) -> list[str]:
 
     # Atomic rubric criteria (issue #54) — presence-gated, any schema version.
     errors.extend(_validate_criteria(scenario))
+
+    # Dual control (issue #58) — presence-gated, any schema version.
+    errors.extend(_validate_dual_control(scenario))
 
     # Recovery probe (issue #57) — presence-gated, any schema version.
     errors.extend(_validate_recovery_probe(scenario))

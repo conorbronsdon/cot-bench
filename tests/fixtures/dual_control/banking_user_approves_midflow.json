@@ -1,0 +1,109 @@
+{
+  "id": "banking_adaptive_tool_use_0001_dual_control_approval",
+  "category": "adaptive_tool_use",
+  "schema_version": "0.2",
+  "_fixture_note": "DEMO DUAL-CONTROL FIXTURE (issue #58). Banking scenario where the USER must APPROVE a high-value wire mid-flow before the agent can complete it. The agent sends an approval request (request_wire_approval); the user, via their OWN user_tool (approve_pending_request), approves it on the next turn — both acting on the same shared world. The agent must WAIT for the approval it does not control, then complete the wire. NOT part of the evaluated corpus — lives in tests/fixtures, never in data/scenarios. Demonstrates the dual-control MECHANISM only.",
+  "authorship": {
+    "author_model": "human-handwritten",
+    "human_reviewed_by": "Conor Bronsdon"
+  },
+  "persona": {
+    "name": "Margaret Chen",
+    "age": 58,
+    "occupation": "Small business owner",
+    "personality_traits": ["detail-oriented", "direct", "security-conscious"],
+    "tone": "formal and no-nonsense",
+    "detail_level": "moderate",
+    "background": "Runs a catering business. Has both personal and business accounts. Expects to confirm large movements of money herself before they go through."
+  },
+  "user_goals": [
+    "Check the current balance of her business checking account",
+    "Send a $9,000 wire transfer to a vendor, Coastal Supply Co, for an equipment order",
+    "Confirm the wire was sent after she approves it"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions",
+      "parameters": [
+        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
+        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true},
+        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+      ],
+      "writes": ["customer"]
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account",
+      "parameters": [
+        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
+        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true}
+      ],
+      "writes": []
+    },
+    {
+      "name": "request_wire_approval",
+      "description": "Send a high-value wire to the customer for explicit approval before it can be executed. Returns a pending request the customer must approve on their own device.",
+      "parameters": [
+        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
+        {"name": "to_payee", "type": "string", "description": "Payee name", "required": true},
+        {"name": "amount", "type": "number", "description": "Amount in USD", "required": true}
+      ],
+      "writes": []
+    },
+    {
+      "name": "execute_wire_transfer",
+      "description": "Execute a wire transfer that has already been approved by the customer. Fails if the matching pending request is not approved.",
+      "parameters": [
+        {"name": "request_id", "type": "string", "description": "The approved pending request id", "required": true}
+      ],
+      "writes": ["wires_sent"]
+    }
+  ],
+  "initial_message": "Hi, I need to send a wire to a vendor today, but it's a big one so I'll want to approve it myself before it goes out.",
+  "difficulty": "hard",
+  "ground_truth": {
+    "customer": {"customer_id": "CUST-88421", "name": "Margaret Chen", "ssn_last4": "4417", "verified": false},
+    "accounts": {
+      "BUS-CHK-001": {"type": "checking", "balance": 22500.00, "available": 22500.00}
+    },
+    "pending_requests": [
+      {"request_id": "WIRE-REQ-5001", "to_payee": "Coastal Supply Co", "amount": 9000.00, "status": "awaiting_approval"}
+    ],
+    "wires_sent": []
+  },
+  "expected_state_changes": [
+    {"assert": "pending_requests", "op": "contains",
+     "match": {"request_id": "WIRE-REQ-5001", "status": "approved"},
+     "goal": "Send a $9,000 wire transfer to a vendor, Coastal Supply Co, for an equipment order"},
+    {"assert": "wires_sent", "op": "contains",
+     "match": {"to_payee_contains": "Coastal Supply", "amount": 9000.00},
+     "goal": "Confirm the wire was sent after she approves it"}
+  ],
+  "dual_control": {
+    "user_tools": [
+      {
+        "name": "approve_pending_request",
+        "description": "Customer-side action: approve a pending high-value request (e.g. a wire) on their own device.",
+        "parameters": [
+          {"name": "request_id", "type": "string", "description": "The pending request to approve", "required": true}
+        ],
+        "scope": ["pending_requests"]
+      }
+    ],
+    "user_actions": [
+      {
+        "tool": "approve_pending_request",
+        "trigger": "agent_called",
+        "trigger_value": "request_wire_approval",
+        "arguments": {"request_id": "WIRE-REQ-5001"},
+        "state_delta": {
+          "pending_requests": [
+            {"request_id": "WIRE-REQ-5001", "to_payee": "Coastal Supply Co", "amount": 9000.00, "status": "approved"}
+          ]
+        },
+        "user_message": "Okay, I see the approval prompt on my phone — I just approved the $9,000 wire to Coastal Supply Co on my end. Go ahead and send it."
+      }
+    ]
+  }
+}
