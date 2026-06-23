@@ -106,7 +106,14 @@ The pre-registration records:
   from the public leaderboard aggregates). The record states explicitly that the
   user and tool simulators run **unseeded** and that the user simulator runs at
   temperature > 0, so runs are **not bit-for-bit reproducible** — the honest
-  caveat is part of the artifact, not a footnote elsewhere.
+  caveat is part of the artifact, not a footnote elsewhere. This caveat extends
+  to the deterministic **state grade**: `score_state_changes` is a deterministic
+  *function* (same world in, same `state_score` out, no LLM in the grading step),
+  but the *world it grades* is mutated by the **unseeded LLM tool simulator**, so
+  the determinism claim is about the **grading function, not end-to-end
+  reproducibility** — temperature 0 is not bit-determinism on a hosted API, and
+  the same scenario can yield slightly different final worlds (and `state_score`)
+  across runs. See `docs/methodology.md` ("What 'deterministic' means here").
 - **Judge-prompt mode** — combined single-prompt (default) or the legacy
   separate-prompt path.
 

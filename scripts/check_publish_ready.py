@@ -32,7 +32,13 @@ a scheduled publish when:
      --random-instantiation-seed. Non-templated runs have no templating block in
      the manifest and are never gated on this condition.
 
-  7. Templating was used and the instantiated surface was ALREADY published. The
+  7. scenario_limit was set (> 0). run_eval's --scenario-limit slices a fixed
+     lexicographic prefix of each domain, so a positive limit ships a
+     deterministic subset, not a representative sample — its orderings are not
+     comparable to a full-corpus board. The per-domain scenario minimum does not
+     catch this (a limit can still clear the minimum), so this is a distinct
+     gate. Absent / 0 => unlimited (the full corpus), which passes.
+  8. Templating was used and the instantiated surface was ALREADY published. The
      seed gate (6) only blocks seed 0; it does not stop reusing the same FRESH
      seed across two published runs, which re-exposes a byte-identical surface and
      defeats the anti-memorization goal exactly like seed 0. The committed ledger
@@ -40,6 +46,14 @@ a scheduled publish when:
      of every published run; if this run's surface hash already appears there, a
      prior board exposed this exact surface and the publish is blocked. A novel
      surface, or a missing/empty ledger (no prior publishes), passes.
+
+  9. The run's ungradable rate (issue #88) exceeds MAX_UNGRADABLE_RATE. An
+     ungradable episode is one the HARNESS left unscoreable — a simulator/judge
+     exception, no valid judge, or an incomplete graded world — not an in-task
+     tool error the agent could recover from. Above the ceiling the board would
+     silently drop or mis-score a meaningful slice of episodes, so a degraded run
+     is blocked rather than shipped (Inspect AI's fail_on_error proportion
+     model). Absent (legacy manifest) => skipped.
 
 Conditions 3-5 only trip via an explicit ``workflow_dispatch`` with non-default
 inputs; the scheduled path always uses the defaults, so it passes them silently.
@@ -61,7 +75,12 @@ import os
 import sys
 from pathlib import Path
 
-from eval.config import JUDGES, MIN_SCENARIOS_FOR_PUBLISH, RELIABILITY_RUNS
+from eval.config import (
+    JUDGES,
+    MAX_UNGRADABLE_RATE,
+    MIN_SCENARIOS_FOR_PUBLISH,
+    RELIABILITY_RUNS,
+)
 from eval.simulation.profiles import DEFAULT_SIM_PROFILE
 from eval.templating import DEFAULT_INSTANTIATION_SEED
 from scripts.record_published_surface import (
@@ -219,6 +238,46 @@ def check_publish_ready(
                 "draw a fresh seed via --random-instantiation-seed so the surface "
                 "differs. Reusing the same seed re-exposes a byte-identical surface, "
                 "which a memorized surface defeats just like seed 0."
+            )
+
+    # --- S1: scenario-limited (non-representative) run -----------------------
+    # run_eval's --scenario-limit slices a fixed lexicographic prefix of each
+    # domain (scenarios[:N]). A positive limit therefore ships a deterministic
+    # subset, NOT a representative sample of the corpus, so its leaderboard
+    # orderings are not comparable to a full-corpus board. The scenario-count
+    # minimum above does not catch this: a limit of 30 can still clear the
+    # minimum while quietly publishing a prefix-subset. Absent => legacy manifest
+    # (treated as the unlimited default), skip.
+    scenario_limit = manifest.get("scenario_limit")
+    if scenario_limit is not None and scenario_limit > 0:
+        blockers.append(
+            f"scenario_limit was {scenario_limit} (> 0), so the run evaluated only a "
+            "fixed lexicographic-prefix subset of each domain, not the full corpus. "
+            "A prefix-subset board is non-representative and not comparable to a "
+            "full-corpus leaderboard; re-run with --scenario-limit 0 (all scenarios) "
+            "before publishing."
+        )
+
+    # --- #88: ungradable-rate gate ------------------------------------------
+    # A run whose harness left too many episodes unscoreable (simulator errors,
+    # no valid judge, incomplete graded worlds) is degraded infrastructure, not a
+    # measurement — publishing it would silently drop or mis-score a meaningful
+    # slice of episodes. Block when the run's ungradable_rate exceeds the
+    # configured ceiling (Inspect AI's fail_on_error proportion model). Absent =>
+    # legacy manifest predating gradability accounting, skip.
+    gradability = manifest.get("gradability")
+    if gradability is not None:
+        rate = gradability.get("ungradable_rate")
+        if rate is not None and rate > MAX_UNGRADABLE_RATE:
+            n_ung = gradability.get("n_ungradable")
+            n_tot = gradability.get("n_episodes")
+            blockers.append(
+                f"ungradable rate was {rate:.1%} ({n_ung}/{n_tot} episodes), above the "
+                f"{MAX_UNGRADABLE_RATE:.0%} ceiling. These episodes were left unscoreable "
+                "by the harness (simulator error, no valid judge, or an incomplete graded "
+                "world), not by the agent — publishing would silently drop or mis-score "
+                "them. Investigate the harness faults (often a flaky simulator/judge "
+                "provider — check the per-row 'outcome' column) and re-run."
             )
 
     if not blockers:

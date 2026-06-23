@@ -2,15 +2,54 @@
   "id": "banking_empathetic_resolution_0004",
   "category": "empathetic_resolution",
   "schema_version": "0.2",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Beaumont",
+        "Okonkwo",
+        "Castellanos",
+        "Nakamura",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Delacroix"
+      ]
+    },
+    "customer_id": {
+      "type": "customer_id",
+      "prefix": "CUST-",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "chk_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "fee_txn": {
+      "type": "digits",
+      "length": 4
+    }
+  },
   "authorship": {
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
   "persona": {
-    "name": "Chloe Beaumont",
+    "name": "{{first_name}} {{last_name}}",
     "age": 22,
     "occupation": "Barista and part-time art student",
-    "personality_traits": ["overwhelmed", "self-deprecating", "scattered"],
+    "personality_traits": [
+      "overwhelmed",
+      "self-deprecating",
+      "scattered"
+    ],
     "tone": "informal and a bit panicked",
     "detail_level": "verbose",
     "background": "Lives paycheck to paycheck and also picks up delivery gig shifts. A gig platform deposited her pay, then reversed it two days ago, leaving her account overdrawn. Rent is due in two days and she is spiraling."
@@ -28,64 +67,193 @@
       "name": "verify_customer_identity",
       "description": "Verify customer identity using account number, SSN last 4, or security questions",
       "parameters": [
-        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
-        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
-        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
       ]
     },
     {
       "name": "get_account_balance",
       "description": "Get current balance for a specific account",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
       ]
     },
     {
       "name": "get_transaction_history",
       "description": "Retrieve transaction history for an account",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
-        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        }
       ]
     },
     {
       "name": "get_fee_history",
       "description": "Retrieve fees charged to an account",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "fee_type", "type": "string", "description": "Type: 'overdraft', 'maintenance', 'wire', 'all'", "required": false, "enum": ["overdraft", "maintenance", "wire", "all"]},
-        {"name": "period_months", "type": "integer", "description": "Look back period in months", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "fee_type",
+          "type": "string",
+          "description": "Type: 'overdraft', 'maintenance', 'wire', 'all'",
+          "required": false,
+          "enum": [
+            "overdraft",
+            "maintenance",
+            "wire",
+            "all"
+          ]
+        },
+        {
+          "name": "period_months",
+          "type": "integer",
+          "description": "Look back period in months",
+          "required": false
+        }
       ]
     },
     {
       "name": "request_fee_waiver",
-      "description": "Submit a request to waive a specific fee. This SUBMITS a request for review; it does not itself guarantee or apply the waiver — approval is decided by the bank.",
+      "description": "Submit a request to waive a specific fee. This SUBMITS a request for review; it does not itself guarantee or apply the waiver \u2014 approval is decided by the bank.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "fee_transaction_id", "type": "string", "description": "Transaction ID of the fee", "required": true},
-        {"name": "reason", "type": "string", "description": "Reason for waiver request", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "fee_transaction_id",
+          "type": "string",
+          "description": "Transaction ID of the fee",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Reason for waiver request",
+          "required": true
+        }
       ]
     },
     {
       "name": "get_pending_deposits",
       "description": "Check pending deposits and their expected clearing dates",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        }
       ],
       "response_schema": {
-        "pending_deposits": [{"amount": "number", "source": "string", "expected_clear_date": "string"}]
+        "pending_deposits": [
+          {
+            "amount": "number",
+            "source": "string",
+            "expected_clear_date": "string"
+          }
+        ]
       }
     },
     {
       "name": "setup_account_alerts",
       "description": "Configure account alerts and notifications",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "alert_type", "type": "string", "description": "Type: 'low_balance', 'large_transaction', 'deposit', 'withdrawal'", "required": true, "enum": ["low_balance", "large_transaction", "deposit", "withdrawal"]},
-        {"name": "threshold", "type": "number", "description": "Threshold amount for the alert", "required": false},
-        {"name": "notification_method", "type": "string", "description": "Method: 'email', 'sms', 'push', 'all'", "required": true, "enum": ["email", "sms", "push", "all"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "alert_type",
+          "type": "string",
+          "description": "Type: 'low_balance', 'large_transaction', 'deposit', 'withdrawal'",
+          "required": true,
+          "enum": [
+            "low_balance",
+            "large_transaction",
+            "deposit",
+            "withdrawal"
+          ]
+        },
+        {
+          "name": "threshold",
+          "type": "number",
+          "description": "Threshold amount for the alert",
+          "required": false
+        },
+        {
+          "name": "notification_method",
+          "type": "string",
+          "description": "Method: 'email', 'sms', 'push', 'all'",
+          "required": true,
+          "enum": [
+            "email",
+            "sms",
+            "push",
+            "all"
+          ]
+        }
       ]
     }
   ],
@@ -101,41 +269,103 @@
     "setup_account_alerts"
   ],
   "ground_truth": {
-    "customer": {"customer_id": "CUST-77310", "name": "Chloe Beaumont", "ssn_last4": "1186", "verified": false},
+    "customer": {
+      "customer_id": "{{customer_id}}",
+      "name": "{{first_name}} {{last_name}}",
+      "ssn_last4": "{{ssn_last4}}",
+      "verified": false
+    },
     "accounts": {
-      "PERS-CHK-410": {"type": "checking", "balance": -28.45, "available": -28.45, "overdraft_protection": false}
+      "PERS-CHK-{{chk_num}}": {
+        "type": "checking",
+        "balance": -28.45,
+        "available": -28.45,
+        "overdraft_protection": false
+      }
     },
     "transactions": {
-      "PERS-CHK-410": [
-        {"id": "TXN-5520", "date": "2026-06-08", "amount": -35.00, "merchant": "OVERDRAFT FEE", "status": "posted"},
-        {"id": "TXN-5519", "date": "2026-06-08", "amount": -184.20, "merchant": "REVERSAL - QUIKDASH GIG PAY", "status": "posted"},
-        {"id": "TXN-5518", "date": "2026-06-06", "amount": 184.20, "merchant": "QUIKDASH GIG PAY", "status": "posted"},
-        {"id": "TXN-5517", "date": "2026-06-05", "amount": -22.00, "merchant": "CAMPUS CAFE", "status": "posted"}
+      "PERS-CHK-{{chk_num}}": [
+        {
+          "id": "TXN-{{fee_txn}}",
+          "date": "2026-06-08",
+          "amount": -35.0,
+          "merchant": "OVERDRAFT FEE",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-5519",
+          "date": "2026-06-08",
+          "amount": -184.2,
+          "merchant": "REVERSAL - QUIKDASH GIG PAY",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-5518",
+          "date": "2026-06-06",
+          "amount": 184.2,
+          "merchant": "QUIKDASH GIG PAY",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-5517",
+          "date": "2026-06-05",
+          "amount": -22.0,
+          "merchant": "CAMPUS CAFE",
+          "status": "posted"
+        }
       ]
     },
     "fees": {
-      "PERS-CHK-410": [
-        {"id": "TXN-5520", "type": "overdraft", "amount": 35.00, "date": "2026-06-08", "waived": false}
+      "PERS-CHK-{{chk_num}}": [
+        {
+          "id": "TXN-{{fee_txn}}",
+          "type": "overdraft",
+          "amount": 35.0,
+          "date": "2026-06-08",
+          "waived": false
+        }
       ]
     },
     "fee_waivers_used_this_year": 0,
     "fee_waiver_requests": [],
     "pending_deposits": {
-      "PERS-CHK-410": [
-        {"amount": 210.75, "source": "QUIKDASH GIG PAY", "expected_clear_date": "2026-06-11"}
+      "PERS-CHK-{{chk_num}}": [
+        {
+          "amount": 210.75,
+          "source": "QUIKDASH GIG PAY",
+          "expected_clear_date": "2026-06-11"
+        }
       ]
     },
-    "alerts": {"PERS-CHK-410": []}
+    "alerts": {
+      "PERS-CHK-{{chk_num}}": []
+    }
   },
   "expected_state_changes": [
-    {"assert": "customer.verified", "op": "equals", "value": true,
-     "goal": "Understand why her account is suddenly negative when she thought she got paid"},
-    {"assert": "fee_waiver_requests", "op": "contains",
-     "match": {"account_id": "PERS-CHK-410", "fee_transaction_id": "TXN-5520", "reason_contains": "reversal"},
-     "goal": "Request that the overdraft fee be waived since the reversal was not her fault"},
-    {"assert": "alerts.PERS-CHK-410", "op": "contains",
-     "match": {"alert_type": "deposit"},
-     "goal": "Set up a deposit alert so she knows the moment money lands or is pulled back"}
+    {
+      "assert": "customer.verified",
+      "op": "equals",
+      "value": true,
+      "goal": "Understand why her account is suddenly negative when she thought she got paid"
+    },
+    {
+      "assert": "fee_waiver_requests",
+      "op": "contains",
+      "match": {
+        "account_id": "PERS-CHK-{{chk_num}}",
+        "fee_transaction_id": "TXN-{{fee_txn}}",
+        "reason_contains": "reversal"
+      },
+      "goal": "Request that the overdraft fee be waived since the reversal was not her fault"
+    },
+    {
+      "assert": "alerts.PERS-CHK-{{chk_num}}",
+      "op": "contains",
+      "match": {
+        "alert_type": "deposit"
+      },
+      "goal": "Set up a deposit alert so she knows the moment money lands or is pulled back"
+    }
   ],
   "rubric_criteria": [
     {
@@ -152,7 +382,7 @@
     },
     {
       "id": "waiver_with_reversal_reason",
-      "text": "Agent submitted a fee waiver request for fee TXN-5520 on PERS-CHK-410 citing the deposit reversal as the reason.",
+      "text": "Agent submitted a fee waiver request for fee TXN-{{fee_txn}} on PERS-CHK-{{chk_num}} citing the deposit reversal as the reason.",
       "dimension": "task_completion",
       "weight": 2.0
     },
@@ -164,7 +394,7 @@
     },
     {
       "id": "deposit_alert_setup",
-      "text": "Agent set up a deposit alert on PERS-CHK-410 so she is notified when money lands or is pulled back.",
+      "text": "Agent set up a deposit alert on PERS-CHK-{{chk_num}} so she is notified when money lands or is pulled back.",
       "dimension": "task_completion",
       "weight": 1.0
     }

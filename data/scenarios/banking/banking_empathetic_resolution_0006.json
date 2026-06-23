@@ -2,15 +2,54 @@
   "id": "banking_empathetic_resolution_0006",
   "category": "empathetic_resolution",
   "schema_version": "0.2",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Karimi",
+        "Okonkwo",
+        "Castellanos",
+        "Nakamura",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Haddad"
+      ]
+    },
+    "customer_id": {
+      "type": "customer_id",
+      "prefix": "CUST-",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "chk_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "fee_txn": {
+      "type": "digits",
+      "length": 4
+    }
+  },
   "authorship": {
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
   "persona": {
-    "name": "Hassan Karimi",
+    "name": "{{first_name}} {{last_name}}",
     "age": 39,
     "occupation": "Convenience store franchisee",
-    "personality_traits": ["worried", "deferential", "hardworking"],
+    "personality_traits": [
+      "worried",
+      "deferential",
+      "hardworking"
+    ],
     "tone": "anxious and respectful, occasional ESL phrasing",
     "detail_level": "moderate",
     "background": "A kitchen fire shut down the prepared-food side of his store. His business account went negative and was hit with a fee while he waits on an insurance payout. He is scared of damaging the credit he worked years to build."
@@ -29,73 +68,227 @@
       "name": "verify_customer_identity",
       "description": "Verify customer identity using account number, SSN last 4, or security questions",
       "parameters": [
-        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
-        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
-        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
       ]
     },
     {
       "name": "get_account_balance",
       "description": "Get current balance for a specific account",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
       ]
     },
     {
       "name": "get_transaction_history",
       "description": "Retrieve transaction history for an account",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
-        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        }
       ]
     },
     {
       "name": "get_fee_history",
       "description": "Retrieve fees charged to an account",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "fee_type", "type": "string", "description": "Type: 'overdraft', 'maintenance', 'wire', 'all'", "required": false, "enum": ["overdraft", "maintenance", "wire", "all"]},
-        {"name": "period_months", "type": "integer", "description": "Look back period in months", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "fee_type",
+          "type": "string",
+          "description": "Type: 'overdraft', 'maintenance', 'wire', 'all'",
+          "required": false,
+          "enum": [
+            "overdraft",
+            "maintenance",
+            "wire",
+            "all"
+          ]
+        },
+        {
+          "name": "period_months",
+          "type": "integer",
+          "description": "Look back period in months",
+          "required": false
+        }
       ]
     },
     {
       "name": "request_fee_waiver",
-      "description": "Submit a request to waive a specific fee. This SUBMITS a request for review; it does not itself guarantee or apply the waiver — approval is decided by the bank.",
+      "description": "Submit a request to waive a specific fee. This SUBMITS a request for review; it does not itself guarantee or apply the waiver \u2014 approval is decided by the bank.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "fee_transaction_id", "type": "string", "description": "Transaction ID of the fee", "required": true},
-        {"name": "reason", "type": "string", "description": "Reason for waiver request", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "fee_transaction_id",
+          "type": "string",
+          "description": "Transaction ID of the fee",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Reason for waiver request",
+          "required": true
+        }
       ]
     },
     {
       "name": "get_pending_deposits",
       "description": "Check pending deposits and their expected clearing dates",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        }
       ],
       "response_schema": {
-        "pending_deposits": [{"amount": "number", "source": "string", "expected_clear_date": "string"}]
+        "pending_deposits": [
+          {
+            "amount": "number",
+            "source": "string",
+            "expected_clear_date": "string"
+          }
+        ]
       }
     },
     {
       "name": "setup_account_alerts",
       "description": "Configure account alerts and notifications",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "alert_type", "type": "string", "description": "Type: 'low_balance', 'large_transaction', 'deposit', 'withdrawal'", "required": true, "enum": ["low_balance", "large_transaction", "deposit", "withdrawal"]},
-        {"name": "threshold", "type": "number", "description": "Threshold amount for the alert", "required": false},
-        {"name": "notification_method", "type": "string", "description": "Method: 'email', 'sms', 'push', 'all'", "required": true, "enum": ["email", "sms", "push", "all"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "alert_type",
+          "type": "string",
+          "description": "Type: 'low_balance', 'large_transaction', 'deposit', 'withdrawal'",
+          "required": true,
+          "enum": [
+            "low_balance",
+            "large_transaction",
+            "deposit",
+            "withdrawal"
+          ]
+        },
+        {
+          "name": "threshold",
+          "type": "number",
+          "description": "Threshold amount for the alert",
+          "required": false
+        },
+        {
+          "name": "notification_method",
+          "type": "string",
+          "description": "Method: 'email', 'sms', 'push', 'all'",
+          "required": true,
+          "enum": [
+            "email",
+            "sms",
+            "push",
+            "all"
+          ]
+        }
       ]
     },
     {
       "name": "generate_account_statement",
       "description": "Generate an official account statement or confirmation letter",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
-        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "statement_type",
+          "type": "string",
+          "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'",
+          "required": true,
+          "enum": [
+            "full_statement",
+            "balance_confirmation",
+            "transaction_confirmation"
+          ]
+        },
+        {
+          "name": "delivery_method",
+          "type": "string",
+          "description": "Method: 'email', 'mail', 'download'",
+          "required": true,
+          "enum": [
+            "email",
+            "mail",
+            "download"
+          ]
+        }
       ]
     }
   ],
@@ -112,55 +305,117 @@
     "generate_account_statement"
   ],
   "ground_truth": {
-    "customer": {"customer_id": "CUST-90233", "name": "Hassan Karimi", "ssn_last4": "4408", "verified": false},
+    "customer": {
+      "customer_id": "{{customer_id}}",
+      "name": "{{first_name}} {{last_name}}",
+      "ssn_last4": "{{ssn_last4}}",
+      "verified": false
+    },
     "accounts": {
-      "BUS-CHK-600": {"type": "checking", "balance": -64.00, "available": -64.00, "overdraft_protection": false}
+      "BUS-CHK-{{chk_num}}": {
+        "type": "checking",
+        "balance": -64.0,
+        "available": -64.0,
+        "overdraft_protection": false
+      }
     },
     "transactions": {
-      "BUS-CHK-600": [
-        {"id": "TXN-8810", "date": "2026-06-09", "amount": -29.00, "merchant": "OVERDRAFT FEE", "status": "posted"},
-        {"id": "TXN-8809", "date": "2026-06-09", "amount": -540.00, "merchant": "FOODSERVICE WHOLESALE", "status": "posted"},
-        {"id": "TXN-8808", "date": "2026-06-07", "amount": -118.50, "merchant": "UTILITY - CITY POWER", "status": "posted"}
+      "BUS-CHK-{{chk_num}}": [
+        {
+          "id": "TXN-{{fee_txn}}",
+          "date": "2026-06-09",
+          "amount": -29.0,
+          "merchant": "OVERDRAFT FEE",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8809",
+          "date": "2026-06-09",
+          "amount": -540.0,
+          "merchant": "FOODSERVICE WHOLESALE",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8808",
+          "date": "2026-06-07",
+          "amount": -118.5,
+          "merchant": "UTILITY - CITY POWER",
+          "status": "posted"
+        }
       ]
     },
     "fees": {
-      "BUS-CHK-600": [
-        {"id": "TXN-8810", "type": "overdraft", "amount": 29.00, "date": "2026-06-09", "waived": false}
+      "BUS-CHK-{{chk_num}}": [
+        {
+          "id": "TXN-{{fee_txn}}",
+          "type": "overdraft",
+          "amount": 29.0,
+          "date": "2026-06-09",
+          "waived": false
+        }
       ]
     },
     "fee_waivers_used_this_year": 0,
     "fee_waiver_requests": [],
     "pending_deposits": {
-      "BUS-CHK-600": [
-        {"amount": 18500.00, "source": "MERIDIAN INSURANCE - CLAIM PAYOUT", "expected_clear_date": "2026-06-19"}
+      "BUS-CHK-{{chk_num}}": [
+        {
+          "amount": 18500.0,
+          "source": "MERIDIAN INSURANCE - CLAIM PAYOUT",
+          "expected_clear_date": "2026-06-19"
+        }
       ]
     },
-    "alerts": {"BUS-CHK-600": []},
+    "alerts": {
+      "BUS-CHK-{{chk_num}}": []
+    },
     "statements_generated": []
   },
   "expected_state_changes": [
-    {"assert": "customer.verified", "op": "equals", "value": true,
-     "goal": "Confirm the current balance and recent activity on his business checking account"},
-    {"assert": "fee_waiver_requests", "op": "contains",
-     "match": {"account_id": "BUS-CHK-600", "fee_transaction_id": "TXN-8810", "reason_contains": "fire"},
-     "goal": "Ask the bank to waive that fee given the fire hardship"},
-    {"assert": "alerts.BUS-CHK-600", "op": "contains",
-     "match": {"alert_type": "deposit"},
-     "goal": "Set up a deposit alert so he knows the moment the insurance money arrives"},
-    {"assert": "statements_generated", "op": "contains",
-     "match": {"account_id": "BUS-CHK-600", "statement_type_contains": "confirmation"},
-     "goal": "Get a written confirmation he can share with his insurance adjuster"}
+    {
+      "assert": "customer.verified",
+      "op": "equals",
+      "value": true,
+      "goal": "Confirm the current balance and recent activity on his business checking account"
+    },
+    {
+      "assert": "fee_waiver_requests",
+      "op": "contains",
+      "match": {
+        "account_id": "BUS-CHK-{{chk_num}}",
+        "fee_transaction_id": "TXN-{{fee_txn}}",
+        "reason_contains": "fire"
+      },
+      "goal": "Ask the bank to waive that fee given the fire hardship"
+    },
+    {
+      "assert": "alerts.BUS-CHK-{{chk_num}}",
+      "op": "contains",
+      "match": {
+        "alert_type": "deposit"
+      },
+      "goal": "Set up a deposit alert so he knows the moment the insurance money arrives"
+    },
+    {
+      "assert": "statements_generated",
+      "op": "contains",
+      "match": {
+        "account_id": "BUS-CHK-{{chk_num}}",
+        "statement_type_contains": "confirmation"
+      },
+      "goal": "Get a written confirmation he can share with his insurance adjuster"
+    }
   ],
   "rubric_criteria": [
     {
       "id": "confirmed_balance_and_activity",
-      "text": "Agent retrieved the current balance and recent transactions on the business checking account (BUS-CHK-600).",
+      "text": "Agent retrieved the current balance and recent transactions on the business checking account (BUS-CHK-{{chk_num}}).",
       "dimension": "tool_selection",
       "weight": 1.0
     },
     {
       "id": "fee_waiver_fire_hardship",
-      "text": "Agent submitted a waiver request for fee TXN-8810 on BUS-CHK-600 citing the fire hardship as the reason.",
+      "text": "Agent submitted a waiver request for fee TXN-{{fee_txn}} on BUS-CHK-{{chk_num}} citing the fire hardship as the reason.",
       "dimension": "task_completion",
       "weight": 2.0
     },
@@ -172,13 +427,13 @@
     },
     {
       "id": "deposit_alert_insurance",
-      "text": "Agent set up a deposit alert on BUS-CHK-600 so he is notified the moment the insurance money arrives.",
+      "text": "Agent set up a deposit alert on BUS-CHK-{{chk_num}} so he is notified the moment the insurance money arrives.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "written_confirmation_for_adjuster",
-      "text": "Agent generated a written confirmation document on BUS-CHK-600 he can share with his insurance adjuster.",
+      "text": "Agent generated a written confirmation document on BUS-CHK-{{chk_num}} he can share with his insurance adjuster.",
       "dimension": "task_completion",
       "weight": 1.0
     }

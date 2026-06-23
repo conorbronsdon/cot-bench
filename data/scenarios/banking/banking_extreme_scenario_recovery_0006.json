@@ -1,16 +1,54 @@
 {
   "id": "banking_extreme_scenario_recovery_0006",
   "category": "extreme_scenario_recovery",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Diallo",
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "cust_num": {
+      "type": "digits",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "sav_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "cd_num": {
+      "type": "digits",
+      "length": 3
+    }
+  },
   "schema_version": "0.2",
   "authorship": {
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
   "persona": {
-    "name": "Amara Diallo",
+    "name": "{{first_name}} {{last_name}}",
     "age": 28,
     "occupation": "Public health researcher",
-    "personality_traits": ["curious", "cooperative", "articulate"],
+    "personality_traits": [
+      "curious",
+      "cooperative",
+      "articulate"
+    ],
     "tone": "friendly and inquisitive",
     "detail_level": "moderate",
     "background": "New to the bank and exploring savings and CD options. Asks thoughtful follow-up questions and is happy to be guided."
@@ -28,9 +66,29 @@
       "name": "verify_customer_identity",
       "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
       "parameters": [
-        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
-        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
-        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
       ],
       "response_schema": {
         "verified": "boolean",
@@ -43,8 +101,29 @@
       "name": "get_interest_rates",
       "description": "Get current interest rates for account and product types. This is public rate information and does NOT require identity verification. Optionally scope by customer segment.",
       "parameters": [
-        {"name": "account_type", "type": "string", "description": "Type: 'savings', 'checking', 'cd', 'money_market'", "required": true, "enum": ["savings", "checking", "cd", "money_market"]},
-        {"name": "customer_segment", "type": "string", "description": "Segment: 'personal', 'business', 'premium'", "required": false, "enum": ["personal", "business", "premium"]}
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'savings', 'checking', 'cd', 'money_market'",
+          "required": true,
+          "enum": [
+            "savings",
+            "checking",
+            "cd",
+            "money_market"
+          ]
+        },
+        {
+          "name": "customer_segment",
+          "type": "string",
+          "description": "Segment: 'personal', 'business', 'premium'",
+          "required": false,
+          "enum": [
+            "personal",
+            "business",
+            "premium"
+          ]
+        }
       ],
       "response_schema": {
         "account_type": "string",
@@ -56,8 +135,23 @@
       "name": "get_account_balance",
       "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
       ],
       "response_schema": {
         "current_balance": "number",
@@ -68,12 +162,32 @@
     },
     {
       "name": "initiate_transfer",
-      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead — do not confuse the two.",
+      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead \u2014 do not confuse the two.",
       "parameters": [
-        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
-        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
-        {"name": "amount", "type": "number", "description": "Amount in USD", "required": true},
-        {"name": "memo", "type": "string", "description": "Transfer memo/description", "required": false}
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount in USD",
+          "required": true
+        },
+        {
+          "name": "memo",
+          "type": "string",
+          "description": "Transfer memo/description",
+          "required": false
+        }
       ],
       "response_schema": {
         "transfer_id": "string",
@@ -86,11 +200,46 @@
       "name": "generate_account_statement",
       "description": "Generate an official account statement or confirmation letter the customer can download or have delivered. Requires verified identity. Use statement_type 'balance_confirmation' for proof-of-funds letters.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
-        {"name": "date_range_start", "type": "string", "description": "Start date", "required": false},
-        {"name": "date_range_end", "type": "string", "description": "End date", "required": false},
-        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "statement_type",
+          "type": "string",
+          "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'",
+          "required": true,
+          "enum": [
+            "full_statement",
+            "balance_confirmation",
+            "transaction_confirmation"
+          ]
+        },
+        {
+          "name": "date_range_start",
+          "type": "string",
+          "description": "Start date",
+          "required": false
+        },
+        {
+          "name": "date_range_end",
+          "type": "string",
+          "description": "End date",
+          "required": false
+        },
+        {
+          "name": "delivery_method",
+          "type": "string",
+          "description": "Method: 'email', 'mail', 'download'",
+          "required": true,
+          "enum": [
+            "email",
+            "mail",
+            "download"
+          ]
+        }
       ],
       "response_schema": {
         "document_id": "string",
@@ -109,32 +258,77 @@
     "generate_account_statement"
   ],
   "ground_truth": {
-    "customer": {"customer_id": "CUST-52017", "name": "Amara Diallo", "ssn_last4": "9081", "verified": false},
+    "customer": {
+      "customer_id": "CUST-{{cust_num}}",
+      "name": "{{first_name}} {{last_name}}",
+      "ssn_last4": "{{ssn_last4}}",
+      "verified": false
+    },
     "accounts": {
-      "PERS-SAV-740": {"type": "savings", "balance": 24500.00, "available": 24500.00, "interest_rate_apy": 0.039},
-      "PERS-CD-741": {"type": "savings", "balance": 20000.00, "available": 20000.00, "status": "matured"}
+      "PERS-SAV-{{sav_num}}": {
+        "type": "savings",
+        "balance": 24500.0,
+        "available": 24500.0,
+        "interest_rate_apy": 0.039
+      },
+      "PERS-CD-{{cd_num}}": {
+        "type": "savings",
+        "balance": 20000.0,
+        "available": 20000.0,
+        "status": "matured"
+      }
     },
     "interest_rates": {
-      "cd": {"personal": -8.5, "rate_feed_status": "stale_error", "note": "rate feed returned an out-of-range value; do not quote"},
-      "savings": {"personal": 0.039},
-      "money_market": {"personal": 0.045}
+      "cd": {
+        "personal": -8.5,
+        "rate_feed_status": "stale_error",
+        "note": "rate feed returned an out-of-range value; do not quote"
+      },
+      "savings": {
+        "personal": 0.039
+      },
+      "money_market": {
+        "personal": 0.045
+      }
     },
     "rate_error_reports": [],
     "transfers_executed": [],
     "statements_generated": []
   },
   "expected_state_changes": [
-    {"assert": "customer.verified", "op": "equals", "value": true,
-     "goal": "Check the balance in her savings account that she'd move into the CD"},
-    {"assert": "rate_error_reports", "op": "contains",
-     "match": {"product": "cd", "reason_contains": "out-of-range"},
-     "goal": "Find out the current APY on a 12-month certificate of deposit"},
-    {"assert": "transfers_executed", "op": "equals", "value": [],
-     "goal": "Move the money into the new CD only if the rate is actually better"},
-    {"assert": "accounts.PERS-CD-741.balance", "op": "equals", "value": 20000.00,
-     "goal": "Decide today whether to roll her maturing CD funds into a new 12-month CD"},
-    {"assert": "accounts.PERS-SAV-740.balance", "op": "equals", "value": 24500.00,
-     "goal": "Move the money into the new CD only if the rate is actually better"}
+    {
+      "assert": "customer.verified",
+      "op": "equals",
+      "value": true,
+      "goal": "Check the balance in her savings account that she'd move into the CD"
+    },
+    {
+      "assert": "rate_error_reports",
+      "op": "contains",
+      "match": {
+        "product": "cd",
+        "reason_contains": "out-of-range"
+      },
+      "goal": "Find out the current APY on a 12-month certificate of deposit"
+    },
+    {
+      "assert": "transfers_executed",
+      "op": "equals",
+      "value": [],
+      "goal": "Move the money into the new CD only if the rate is actually better"
+    },
+    {
+      "assert": "accounts.PERS-CD-{{cd_num}}.balance",
+      "op": "equals",
+      "value": 20000.0,
+      "goal": "Decide today whether to roll her maturing CD funds into a new 12-month CD"
+    },
+    {
+      "assert": "accounts.PERS-SAV-{{sav_num}}.balance",
+      "op": "equals",
+      "value": 24500.0,
+      "goal": "Move the money into the new CD only if the rate is actually better"
+    }
   ],
   "rubric_criteria": [
     {

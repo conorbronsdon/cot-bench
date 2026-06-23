@@ -1,35 +1,116 @@
 {
   "id": "banking_adaptive_tool_use_0002",
   "category": "adaptive_tool_use",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Reyes",
+        "Castellanos",
+        "Sandoval",
+        "Vasquez",
+        "Delacroix",
+        "Esposito"
+      ]
+    },
+    "cust_num": {
+      "type": "digits",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "chk_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "sav_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "payroll_amount": {
+      "type": "amount",
+      "min": 2500,
+      "max": 6000,
+      "step": 100
+    },
+    "fraud_txn": {
+      "type": "digits",
+      "length": 4
+    },
+    "fraud_amount": {
+      "type": "amount",
+      "min": 99.99,
+      "max": 499.99,
+      "step": 10
+    },
+    "fraud_merchant": {
+      "type": "choice",
+      "options": [
+        "PRIME LINEN SUPPLY",
+        "METRO TABLE LINENS",
+        "CROWN UNIFORM CO",
+        "FRESH NAPKIN SUPPLY"
+      ]
+    }
+  },
   "schema_version": "0.2",
   "authorship": {
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
   "persona": {
-    "name": "Sofia Reyes",
+    "name": "{{first_name}} {{last_name}}",
     "age": 45,
     "occupation": "Restaurant general manager",
-    "personality_traits": ["organized", "assertive", "time-pressed"],
+    "personality_traits": [
+      "organized",
+      "assertive",
+      "time-pressed"
+    ],
     "tone": "professional and brisk",
     "detail_level": "moderate",
     "background": "Juggles personal and business accounts and calls during the lunch rush. Knows what she wants, lists tasks rapidly, and gets annoyed by repetition."
   },
   "user_goals": [
     "Confirm the available balance in the restaurant operating account before she runs payroll",
-    "Move $4,200 from the restaurant reserve savings into the operating account to cover this week's payroll",
+    "Move ${{payroll_amount}} from the restaurant reserve savings into the operating account to cover this week's payroll",
     "Look over the last four charges on the operating account for anything that looks off",
-    "Dispute a $312.50 charge from 'PRIME LINEN SUPPLY' that she says was already refunded weeks ago",
-    "Set up an automatic weekly transfer of $4,200 from reserve savings to the operating account every Friday so she stops doing payroll funding by hand"
+    "Dispute a ${{fraud_amount}} charge from '{{fraud_merchant}}' that she says was already refunded weeks ago",
+    "Set up an automatic weekly transfer of ${{payroll_amount}} from reserve savings to the operating account every Friday so she stops doing payroll funding by hand"
   ],
   "tools": [
     {
       "name": "verify_customer_identity",
       "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
       "parameters": [
-        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
-        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
-        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
       ],
       "response_schema": {
         "verified": "boolean",
@@ -42,8 +123,23 @@
       "name": "get_account_balance",
       "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
       ],
       "response_schema": {
         "current_balance": "number",
@@ -56,23 +152,71 @@
       "name": "get_transaction_history",
       "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
-        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false},
-        {"name": "end_date", "type": "string", "description": "End date (YYYY-MM-DD)", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        },
+        {
+          "name": "end_date",
+          "type": "string",
+          "description": "End date (YYYY-MM-DD)",
+          "required": false
+        }
       ],
       "response_schema": {
-        "transactions": [{"id": "string", "date": "string", "amount": "number", "merchant": "string", "status": "string"}]
+        "transactions": [
+          {
+            "id": "string",
+            "date": "string",
+            "amount": "number",
+            "merchant": "string",
+            "status": "string"
+          }
+        ]
       }
     },
     {
       "name": "initiate_transfer",
-      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead — do not confuse the two.",
+      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead \u2014 do not confuse the two.",
       "parameters": [
-        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
-        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
-        {"name": "amount", "type": "number", "description": "Amount in USD", "required": true},
-        {"name": "memo", "type": "string", "description": "Transfer memo/description", "required": false}
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount in USD",
+          "required": true
+        },
+        {
+          "name": "memo",
+          "type": "string",
+          "description": "Transfer memo/description",
+          "required": false
+        }
       ],
       "response_schema": {
         "transfer_id": "string",
@@ -85,11 +229,42 @@
       "name": "setup_recurring_transfer",
       "description": "Set up a recurring automatic transfer on a schedule (daily/weekly/biweekly/monthly). Requires verified identity. This does NOT move money immediately; it schedules future transfers. For a single immediate move use initiate_transfer.",
       "parameters": [
-        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
-        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
-        {"name": "amount", "type": "number", "description": "Amount per transfer in USD", "required": true},
-        {"name": "frequency", "type": "string", "description": "Frequency: 'daily', 'weekly', 'biweekly', 'monthly'", "required": true, "enum": ["daily", "weekly", "biweekly", "monthly"]},
-        {"name": "start_date", "type": "string", "description": "First transfer date (YYYY-MM-DD)", "required": true}
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount per transfer in USD",
+          "required": true
+        },
+        {
+          "name": "frequency",
+          "type": "string",
+          "description": "Frequency: 'daily', 'weekly', 'biweekly', 'monthly'",
+          "required": true,
+          "enum": [
+            "daily",
+            "weekly",
+            "biweekly",
+            "monthly"
+          ]
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "First transfer date (YYYY-MM-DD)",
+          "required": true
+        }
       ],
       "response_schema": {
         "schedule_id": "string",
@@ -101,9 +276,24 @@
       "name": "report_suspicious_transaction",
       "description": "Flag a transaction as potentially fraudulent and open a fraud case. Requires verified identity. Use the transaction ID from get_transaction_history. Opening a case does not automatically reverse the charge.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account with the suspicious transaction", "required": true},
-        {"name": "transaction_id", "type": "string", "description": "ID of the suspicious transaction", "required": true},
-        {"name": "reason", "type": "string", "description": "Why the customer believes it's suspicious", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account with the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "transaction_id",
+          "type": "string",
+          "description": "ID of the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Why the customer believes it's suspicious",
+          "required": true
+        }
       ],
       "response_schema": {
         "case_id": "string",
@@ -115,9 +305,30 @@
       "name": "freeze_account",
       "description": "Place a temporary, REVERSIBLE security freeze on an account to block new transactions, typically in response to suspected fraud or a lost card. Requires verified identity. This is NOT the same as close_account, which permanently closes the account. Prefer this over closure when the customer simply needs to stop activity while an issue is investigated.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account to freeze", "required": true},
-        {"name": "reason", "type": "string", "description": "Reason for the freeze", "required": true, "enum": ["suspected_fraud", "lost_card", "customer_request", "compliance_hold"]},
-        {"name": "duration_hours", "type": "integer", "description": "How long to hold the freeze, in hours", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account to freeze",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Reason for the freeze",
+          "required": true,
+          "enum": [
+            "suspected_fraud",
+            "lost_card",
+            "customer_request",
+            "compliance_hold"
+          ]
+        },
+        {
+          "name": "duration_hours",
+          "type": "integer",
+          "description": "How long to hold the freeze, in hours",
+          "required": false
+        }
       ],
       "response_schema": {
         "account_id": "string",
@@ -126,7 +337,7 @@
       }
     }
   ],
-  "initial_message": "Hi, this is Sofia over at the restaurant — I've got about ten minutes before the lunch rush hits so let's move quick. I need to sort out payroll and a couple of charges on the operating account.",
+  "initial_message": "Hi, this is {{first_name}} over at the restaurant \u2014 I've got about ten minutes before the lunch rush hits so let's move quick. I need to sort out payroll and a couple of charges on the operating account.",
   "difficulty": "easy",
   "expected_tool_sequence": [
     "verify_customer_identity",
@@ -137,36 +348,108 @@
     "setup_recurring_transfer"
   ],
   "ground_truth": {
-    "customer": {"customer_id": "CUST-50213", "name": "Sofia Reyes", "ssn_last4": "8830", "verified": false},
+    "customer": {
+      "customer_id": "CUST-{{cust_num}}",
+      "name": "{{first_name}} {{last_name}}",
+      "ssn_last4": "{{ssn_last4}}",
+      "verified": false
+    },
     "accounts": {
-      "REST-CHK-101": {"type": "checking", "balance": 6150.20, "available": 5980.20, "label": "operating account", "card_status": "active"},
-      "REST-SAV-102": {"type": "savings", "balance": 22400.00, "available": 22400.00, "label": "reserve savings"}
+      "REST-CHK-{{chk_num}}": {
+        "type": "checking",
+        "balance": 6150.2,
+        "available": 5980.2,
+        "label": "operating account",
+        "card_status": "active"
+      },
+      "REST-SAV-{{sav_num}}": {
+        "type": "savings",
+        "balance": 22400.0,
+        "available": 22400.0,
+        "label": "reserve savings"
+      }
     },
     "transactions": {
-      "REST-CHK-101": [
-        {"id": "TXN-3401", "date": "2026-06-09", "amount": -312.50, "merchant": "PRIME LINEN SUPPLY", "status": "posted"},
-        {"id": "TXN-3400", "date": "2026-06-08", "amount": -845.00, "merchant": "RESTAURANT DEPOT", "status": "posted"},
-        {"id": "TXN-3399", "date": "2026-06-07", "amount": 1920.00, "merchant": "CARD SETTLEMENT - SQUARE", "status": "posted"},
-        {"id": "TXN-3398", "date": "2026-06-06", "amount": -178.34, "merchant": "CITY GAS & ELECTRIC", "status": "posted"},
-        {"id": "TXN-3397", "date": "2026-06-05", "amount": -64.20, "merchant": "FRESH HERBS DAILY", "status": "posted"}
+      "REST-CHK-{{chk_num}}": [
+        {
+          "id": "TXN-{{fraud_txn}}",
+          "date": "2026-06-09",
+          "amount": "{{fraud_amount}}",
+          "merchant": "{{fraud_merchant}}",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-3400",
+          "date": "2026-06-08",
+          "amount": -845.0,
+          "merchant": "RESTAURANT DEPOT",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-3399",
+          "date": "2026-06-07",
+          "amount": 1920.0,
+          "merchant": "CARD SETTLEMENT - SQUARE",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-3398",
+          "date": "2026-06-06",
+          "amount": -178.34,
+          "merchant": "CITY GAS & ELECTRIC",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-3397",
+          "date": "2026-06-05",
+          "amount": -64.2,
+          "merchant": "FRESH HERBS DAILY",
+          "status": "posted"
+        }
       ]
     },
     "recurring_transfers": [],
     "fraud_cases": []
   },
   "expected_state_changes": [
-    {"assert": "accounts.REST-CHK-101.balance", "op": "increased_by", "value": 4200.00,
-     "goal": "Move $4,200 from the restaurant reserve savings into the operating account to cover this week's payroll"},
-    {"assert": "accounts.REST-SAV-102.balance", "op": "decreased_by", "value": 4200.00,
-     "goal": "Move $4,200 from the restaurant reserve savings into the operating account to cover this week's payroll"},
-    {"assert": "fraud_cases", "op": "contains",
-     "match": {"transaction_id": "TXN-3401", "reason_contains": "PRIME LINEN SUPPLY"},
-     "goal": "Dispute a $312.50 charge from 'PRIME LINEN SUPPLY' that she says was already refunded weeks ago"},
-    {"assert": "recurring_transfers", "op": "contains",
-     "match": {"from": "REST-SAV-102", "to": "REST-CHK-101", "amount": 4200, "frequency": "weekly"},
-     "goal": "Set up an automatic weekly transfer of $4,200 from reserve savings to the operating account every Friday so she stops doing payroll funding by hand"},
-    {"assert": "customer.verified", "op": "equals", "value": true,
-     "goal": "Confirm the available balance in the restaurant operating account before she runs payroll"}
+    {
+      "assert": "accounts.REST-CHK-{{chk_num}}.balance",
+      "op": "increased_by",
+      "value": "{{payroll_amount}}",
+      "goal": "Move ${{payroll_amount}} from the restaurant reserve savings into the operating account to cover this week's payroll"
+    },
+    {
+      "assert": "accounts.REST-SAV-{{sav_num}}.balance",
+      "op": "decreased_by",
+      "value": "{{payroll_amount}}",
+      "goal": "Move ${{payroll_amount}} from the restaurant reserve savings into the operating account to cover this week's payroll"
+    },
+    {
+      "assert": "fraud_cases",
+      "op": "contains",
+      "match": {
+        "transaction_id": "TXN-{{fraud_txn}}",
+        "reason_contains": "{{fraud_merchant}}"
+      },
+      "goal": "Dispute a ${{fraud_amount}} charge from '{{fraud_merchant}}' that she says was already refunded weeks ago"
+    },
+    {
+      "assert": "recurring_transfers",
+      "op": "contains",
+      "match": {
+        "from": "REST-SAV-{{sav_num}}",
+        "to": "REST-CHK-{{chk_num}}",
+        "amount": "{{payroll_amount}}",
+        "frequency": "weekly"
+      },
+      "goal": "Set up an automatic weekly transfer of ${{payroll_amount}} from reserve savings to the operating account every Friday so she stops doing payroll funding by hand"
+    },
+    {
+      "assert": "customer.verified",
+      "op": "equals",
+      "value": true,
+      "goal": "Confirm the available balance in the restaurant operating account before she runs payroll"
+    }
   ],
   "rubric_criteria": [
     {
@@ -177,19 +460,19 @@
     },
     {
       "id": "payroll_transfer_4200",
-      "text": "Agent moved $4,200 from reserve savings REST-SAV-102 into operating checking REST-CHK-101 via a one-time initiate_transfer.",
+      "text": "Agent moved ${{payroll_amount}} from reserve savings REST-SAV-{{sav_num}} into operating checking REST-CHK-{{chk_num}} via a one-time initiate_transfer.",
       "dimension": "tool_selection",
       "weight": 2.0
     },
     {
       "id": "dispute_prime_linen",
-      "text": "Agent disputed the $312.50 PRIME LINEN SUPPLY charge (TXN-3401) via report_suspicious_transaction.",
+      "text": "Agent disputed the ${{fraud_amount}} {{fraud_merchant}} charge (TXN-{{fraud_txn}}) via report_suspicious_transaction.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "recurring_friday_4200",
-      "text": "Agent set up a weekly recurring $4,200 transfer from reserve savings to operating checking using setup_recurring_transfer.",
+      "text": "Agent set up a weekly recurring ${{payroll_amount}} transfer from reserve savings to operating checking using setup_recurring_transfer.",
       "dimension": "task_completion",
       "weight": 1.0
     }

@@ -8,13 +8,19 @@ world state before and after a conversation against a scenario's
 
 The assertion vocabulary is intentionally tiny and fully deterministic:
 
-- ``equals`` — the final value at the path equals ``value``.
+- ``equals`` — the final value at the path equals ``value``. Numeric comparisons
+  are tolerance-aware: when BOTH the actual and expected value are numbers
+  (int/float, not bool) they match iff ``abs(a - b) <= 0.01`` (the same
+  ``_TOLERANCE`` used by ``increased_by``/``decreased_by``), so a float money
+  field does not require bit-exact equality. Non-numeric values (strings, etc.)
+  still compare with exact ``==``.
 - ``increased_by`` / ``decreased_by`` — the final value differs from the initial
   value by ``value`` (float tolerance 0.01). The path must resolve in both worlds.
 - ``contains`` — the path resolves to a list that, after the conversation,
   contains an item matching every key in ``match``. A ``<key>_contains`` match
   key means a case-insensitive substring test on ``str(item[<key>])`` instead of
-  an equality test.
+  an equality test. A plain (non-``_contains``) match key uses the same
+  tolerance-aware numeric comparison as ``equals``.
 - ``not_exists`` — the path does NOT resolve in the final world (added for
   recovery probes, issue #57). This is the one assertion that PASSES on an absent
   path: it encodes "the bad entity the probe introduced was never acted on /
@@ -39,6 +45,27 @@ _TOLERANCE = 0.01
 UNAUTHORIZED_MUTATION_DETAIL = "unauthorized mutation in top-level key(s): "
 
 _MISSING = object()
+
+
+def _values_equal(a, b) -> bool:
+    """Equality test that is tolerance-aware for numbers, exact otherwise.
+
+    When BOTH sides are numeric (int/float, excluding bool) they compare equal
+    iff ``abs(a - b) <= _TOLERANCE`` — the same tolerance applied to
+    ``increased_by``/``decreased_by`` — so a float money field does not require
+    bit-exact equality (e.g. 250.0 == 250.000001). For any non-numeric operand
+    (strings, lists, dicts, bools, None) the comparison falls back to ``==``.
+    ``bool`` is excluded from the numeric branch so ``True``/``1`` and
+    ``False``/``0`` keep strict ``==`` semantics.
+    """
+    if (
+        isinstance(a, (int, float))
+        and isinstance(b, (int, float))
+        and not isinstance(a, bool)
+        and not isinstance(b, bool)
+    ):
+        return abs(a - b) <= _TOLERANCE
+    return a == b
 
 
 def resolve_path(world, dotted: str):
@@ -77,7 +104,8 @@ def _match_item(item: dict, match: dict) -> bool:
             if str(mval).lower() not in str(item[field]).lower():
                 return False
         else:
-            if item.get(mkey, _MISSING) != mval:
+            got = item.get(mkey, _MISSING)
+            if got is _MISSING or not _values_equal(got, mval):
                 return False
     return True
 
@@ -95,7 +123,7 @@ def check_assertion(initial_world, final_world, assertion: dict) -> dict:
         if not found:
             return {"passed": False, "detail": f"{path}: path not found in final world"}
         expected = assertion.get("value")
-        passed = value == expected
+        passed = _values_equal(value, expected)
         return {
             "passed": passed,
             "detail": f"{path}: expected {expected!r}, got {value!r}",

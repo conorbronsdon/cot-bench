@@ -6,11 +6,56 @@
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Bennett",
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Sandoval",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "company": {
+      "type": "choice",
+      "options": [
+        "Pathlight Remote",
+        "Northwind Logistics",
+        "Brightline Media",
+        "Apex Dynamics",
+        "Harborview Retail",
+        "Cedar & Bloom"
+      ]
+    },
+    "acct_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "csm_name": {
+      "type": "first_name"
+    },
+    "renewal_date": {
+      "type": "date",
+      "start": "2026-09-01",
+      "end": "2026-11-30"
+    }
+  },
   "persona": {
-    "name": "Holly Bennett",
+    "name": "{{first_name}} {{last_name}}",
     "age": 29,
     "occupation": "People operations manager at a fast-growing remote startup",
-    "personality_traits": ["overwhelmed", "well-meaning", "disorganized", "anxious"],
+    "personality_traits": [
+      "overwhelmed",
+      "well-meaning",
+      "disorganized",
+      "anxious"
+    ],
     "tone": "harried and informal",
     "detail_level": "moderate",
     "background": "Ran a bulk import last night to clean up records before a board demo this afternoon and instead overwrote a chunk of live data. She's mortified that she did it to herself, panicking about the demo, and bracing to be blamed."
@@ -28,8 +73,18 @@
       "name": "get_account",
       "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
       "parameters": [
-        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
-        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Company name, contact name, email, or account ID to search for",
+          "required": true
+        },
+        {
+          "name": "include_contacts",
+          "type": "boolean",
+          "description": "Include the list of contacts on the account",
+          "required": false
+        }
       ],
       "response_schema": {
         "account_id": "string",
@@ -44,13 +99,35 @@
       "name": "search_support_tickets",
       "description": "Search for support tickets by account, status, or keyword. Use this to find an existing ticket's ticket_id before escalating it.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "status", "type": "string", "description": "Status: 'open', 'pending', 'resolved', 'all'", "required": false},
-        {"name": "keyword", "type": "string", "description": "Search keyword", "required": false},
-        {"name": "created_after", "type": "string", "description": "Filter tickets after date", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "description": "Status: 'open', 'pending', 'resolved', 'all'",
+          "required": false
+        },
+        {
+          "name": "keyword",
+          "type": "string",
+          "description": "Search keyword",
+          "required": false
+        },
+        {
+          "name": "created_after",
+          "type": "string",
+          "description": "Filter tickets after date",
+          "required": false
+        }
       ],
       "response_schema": {
-        "tickets": ["object"],
+        "tickets": [
+          "object"
+        ],
         "total_count": "number"
       }
     },
@@ -58,11 +135,36 @@
       "name": "create_ticket",
       "description": "Open a NEW support ticket for the customer. Use this when the customer reports a fresh issue that has no existing ticket. To raise the priority of an EXISTING ticket, use escalate_ticket; to leave a private CS note, use create_internal_note.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "subject", "type": "string", "description": "Ticket subject line", "required": true},
-        {"name": "description", "type": "string", "description": "Detailed description of the issue", "required": true},
-        {"name": "priority", "type": "string", "description": "Priority: 'low', 'medium', 'high', 'urgent'", "required": false},
-        {"name": "category", "type": "string", "description": "Issue category: 'bug', 'how_to', 'billing', 'feature', 'outage'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "subject",
+          "type": "string",
+          "description": "Ticket subject line",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "description": "Detailed description of the issue",
+          "required": true
+        },
+        {
+          "name": "priority",
+          "type": "string",
+          "description": "Priority: 'low', 'medium', 'high', 'urgent'",
+          "required": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "description": "Issue category: 'bug', 'how_to', 'billing', 'feature', 'outage'",
+          "required": false
+        }
       ],
       "response_schema": {
         "ticket_id": "string",
@@ -72,11 +174,26 @@
     },
     {
       "name": "escalate_ticket",
-      "description": "Escalate an EXISTING support ticket to a higher priority or different team. Find the ticket_id with search_support_tickets first. This does not create a new ticket — use create_ticket for a brand-new issue.",
+      "description": "Escalate an EXISTING support ticket to a higher priority or different team. Find the ticket_id with search_support_tickets first. This does not create a new ticket \u2014 use create_ticket for a brand-new issue.",
       "parameters": [
-        {"name": "ticket_id", "type": "string", "description": "Support ticket identifier", "required": true},
-        {"name": "escalation_level", "type": "string", "description": "Level: 'priority', 'engineering', 'management'", "required": true},
-        {"name": "reason", "type": "string", "description": "Reason for escalation", "required": true}
+        {
+          "name": "ticket_id",
+          "type": "string",
+          "description": "Support ticket identifier",
+          "required": true
+        },
+        {
+          "name": "escalation_level",
+          "type": "string",
+          "description": "Level: 'priority', 'engineering', 'management'",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Reason for escalation",
+          "required": true
+        }
       ],
       "response_schema": {
         "ticket_id": "string",
@@ -88,21 +205,48 @@
       "name": "search_knowledge_base",
       "description": "Search the knowledge base for articles, guides, and tutorials.",
       "parameters": [
-        {"name": "query", "type": "string", "description": "Search query", "required": true},
-        {"name": "category", "type": "string", "description": "Filter by category: 'getting_started', 'advanced', 'troubleshooting', 'best_practices'", "required": false}
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Search query",
+          "required": true
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "description": "Filter by category: 'getting_started', 'advanced', 'troubleshooting', 'best_practices'",
+          "required": false
+        }
       ],
       "response_schema": {
-        "articles": ["object"],
+        "articles": [
+          "object"
+        ],
         "total_count": "number"
       }
     },
     {
       "name": "create_internal_note",
-      "description": "Add an internal note to the customer's account for the CS team. Internal only — the customer never sees this. Use this to record context, risk flags, or follow-ups.",
+      "description": "Add an internal note to the customer's account for the CS team. Internal only \u2014 the customer never sees this. Use this to record context, risk flags, or follow-ups.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "note", "type": "string", "description": "Note content", "required": true},
-        {"name": "tag", "type": "string", "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "note",
+          "type": "string",
+          "description": "Note content",
+          "required": true
+        },
+        {
+          "name": "tag",
+          "type": "string",
+          "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'",
+          "required": false
+        }
       ],
       "response_schema": {
         "note_id": "string",
@@ -111,7 +255,7 @@
       }
     }
   ],
-  "initial_message": "Okay I need help and I'm kind of freaking out. I ran a bulk import last night to tidy things up and I think I just overwrote a bunch of our real records. This is completely my fault. And we have a board demo this afternoon. Please tell me there's a way to undo this — and if there isn't, tell me that too so I can figure out what on earth I show them.",
+  "initial_message": "Okay I need help and I'm kind of freaking out. I ran a bulk import last night to tidy things up and I think I just overwrote a bunch of our real records. This is completely my fault. And we have a board demo this afternoon. Please tell me there's a way to undo this \u2014 and if there isn't, tell me that too so I can figure out what on earth I show them.",
   "difficulty": "hard",
   "expected_tool_sequence": [
     "get_account",
@@ -123,35 +267,59 @@
   ],
   "ground_truth": {
     "account": {
-      "account_id": "ACCT-7104",
-      "company": "Pathlight Remote",
-      "contact_name": "Holly Bennett",
+      "account_id": "ACCT-{{acct_num}}",
+      "company": "{{company}}",
+      "contact_name": "{{first_name}} {{last_name}}",
       "plan": "Growth",
-      "renewal_date": "2026-10-01",
-      "csm_owner": "CSM-Dana"
+      "renewal_date": "{{renewal_date}}",
+      "csm_owner": "CSM-{{csm_name}}"
     },
     "tickets": [],
     "knowledge_base": [
-      {"article_id": "KB-441", "title": "Recovering from a bulk import: rollback windows and restore points", "category": "troubleshooting"}
+      {
+        "article_id": "KB-441",
+        "title": "Recovering from a bulk import: rollback windows and restore points",
+        "category": "troubleshooting"
+      }
     ],
     "escalations": [],
     "internal_notes": []
   },
   "expected_state_changes": [
-    {"assert": "tickets", "op": "contains",
-     "match": {"account_id": "ACCT-7104", "category": "bug", "priority": "urgent"},
-     "goal": "Open an urgent support ticket for the data corruption from her import"},
-    {"assert": "escalations", "op": "contains",
-     "match": {"escalation_level_contains": "engineering", "reason_contains": "board demo"},
-     "goal": "Get that ticket escalated to engineering given the board demo this afternoon"},
-    {"assert": "internal_notes", "op": "contains",
-     "match": {"account_id": "ACCT-7104", "note_contains": "reported", "tag": "support_needed"},
-     "goal": "Have the CS team log internally that she reported this immediately and is mid-crisis, so she isn't treated as careless"}
+    {
+      "assert": "tickets",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "category": "bug",
+        "priority": "urgent"
+      },
+      "goal": "Open an urgent support ticket for the data corruption from her import"
+    },
+    {
+      "assert": "escalations",
+      "op": "contains",
+      "match": {
+        "escalation_level_contains": "engineering",
+        "reason_contains": "board demo"
+      },
+      "goal": "Get that ticket escalated to engineering given the board demo this afternoon"
+    },
+    {
+      "assert": "internal_notes",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "note_contains": "reported",
+        "tag": "support_needed"
+      },
+      "goal": "Have the CS team log internally that she reported this immediately and is mid-crisis, so she isn't treated as careless"
+    }
   ],
   "rubric_criteria": [
     {
       "id": "lookup_account_first",
-      "text": "Agent resolved the account (ACCT-7104 / Pathlight Remote) before opening or escalating tickets.",
+      "text": "Agent resolved the account (ACCT-{{acct_num}} / {{company}}) before opening or escalating tickets.",
       "dimension": "tool_selection",
       "weight": 1.0
     },
@@ -175,13 +343,13 @@
     },
     {
       "id": "log_reported_immediately_note",
-      "text": "Agent logged a support_needed note recording that Holly reported the issue immediately and is mid-crisis.",
+      "text": "Agent logged a support_needed note recording that {{first_name}} reported the issue immediately and is mid-crisis.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "reassure_not_careless",
-      "text": "Agent reassured Holly without blame and gave a realistic read on what she can show if data isn't restored in time.",
+      "text": "Agent reassured {{first_name}} without blame and gave a realistic read on what she can show if data isn't restored in time.",
       "dimension": "task_completion",
       "weight": 1.0
     }

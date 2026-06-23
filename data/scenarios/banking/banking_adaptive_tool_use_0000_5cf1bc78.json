@@ -1,8 +1,81 @@
 {
   "id": "banking_adaptive_tool_use_0000_5cf1bc78",
   "category": "adaptive_tool_use",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Nakamura",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "cust_num": {
+      "type": "digits",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "chk_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "sav_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "chk_mask": {
+      "type": "digits",
+      "length": 4
+    },
+    "sav_mask": {
+      "type": "digits",
+      "length": 4
+    },
+    "fraud_txn": {
+      "type": "digits",
+      "length": 4
+    },
+    "fraud_amount": {
+      "type": "amount",
+      "min": 19.99,
+      "max": 199.99,
+      "step": 10
+    },
+    "fraud_merchant": {
+      "type": "choice",
+      "options": [
+        "TechAssist",
+        "QuickFix Digital",
+        "PrimeCare Solutions",
+        "DataShield Pro"
+      ]
+    },
+    "recurring_amount": {
+      "type": "amount",
+      "min": 100,
+      "max": 400,
+      "step": 50
+    },
+    "alert_threshold": {
+      "type": "amount",
+      "min": 250,
+      "max": 750,
+      "step": 50
+    }
+  },
   "persona": {
-    "name": "Eleanor Whitfield",
+    "name": "{{first_name}} {{last_name}}",
     "age": 74,
     "occupation": "Retired schoolteacher",
     "personality_traits": [
@@ -17,9 +90,9 @@
   "user_goals": [
     "Check the balances of my checking and savings accounts",
     "Review my recent transactions from last month to identify any unusual charges",
-    "Report the suspicious TechAssist charge of $89.99 as potentially fraudulent",
-    "Set up a monthly transfer of $200 from checking to savings starting first Friday of next month",
-    "Create a low balance alert for my checking account when it drops below $500",
+    "Report the suspicious {{fraud_merchant}} charge of ${{fraud_amount}} as potentially fraudulent",
+    "Set up a monthly transfer of ${{recurring_amount}} from checking to savings starting first Friday of next month",
+    "Create a low balance alert for my checking account when it drops below ${{alert_threshold}}",
     "Generate a tax year statement for my checking account from January 1st to December 31st of last year"
   ],
   "tools": [
@@ -338,7 +411,7 @@
       }
     }
   ],
-  "initial_message": "Oh dear, hello there. I hope you can help me. I'm Eleanor Whitfield, and I'm quite confused about my banking situation. My husband always handled our finances, and now I'm trying to manage everything myself. Could you help me check my money? I have a checking account and a savings account - I think they might have different numbers but I'm not sure. Also, I received my statement in the mail and there was something from a company called TechAssist for $89.99 that I don't remember purchasing. I'm so worried that someone might have accessed my account. If we could sort that out, I'd also like to set up something to move money to my savings account automatically - I think I should be putting $200 aside every month. And maybe we could set it up so I get notified if my checking account gets too low? I need to generate a statement for the whole tax year too, for my accountant. I'm sorry for asking so much at once, I'm just quite overwhelmed.",
+  "initial_message": "Oh dear, hello there. I hope you can help me. I'm {{first_name}} {{last_name}}, and I'm quite confused about my banking situation. My husband always handled our finances, and now I'm trying to manage everything myself. Could you help me check my money? I have a checking account and a savings account - I think they might have different numbers but I'm not sure. Also, I received my statement in the mail and there was something from a company called {{fraud_merchant}} for ${{fraud_amount}} that I don't remember purchasing. I'm so worried that someone might have accessed my account. If we could sort that out, I'd also like to set up something to move money to my savings account automatically - I think I should be putting ${{recurring_amount}} aside every month. And maybe we could set it up so I get notified if my checking account gets too low? I need to generate a statement for the whole tax year too, for my accountant. I'm sorry for asking so much at once, I'm just quite overwhelmed.",
   "difficulty": "hard",
   "expected_tool_sequence": [
     "verify_customer_identity",
@@ -359,31 +432,31 @@
   },
   "ground_truth": {
     "customer": {
-      "customer_id": "CUST-33491",
-      "ssn_last4": "6842",
+      "customer_id": "CUST-{{cust_num}}",
+      "ssn_last4": "{{ssn_last4}}",
       "verified": false
     },
     "accounts": {
-      "RET-CHK-001": {
+      "RET-CHK-{{chk_num}}": {
         "type": "checking",
         "balance": 1847.32,
         "available": 1847.32,
-        "account_number": "****1234"
+        "account_number": "****{{chk_mask}}"
       },
-      "RET-SAV-002": {
+      "RET-SAV-{{sav_num}}": {
         "type": "savings",
         "balance": 12500.0,
         "available": 12500.0,
-        "account_number": "****5678"
+        "account_number": "****{{sav_mask}}"
       }
     },
     "transactions": {
-      "RET-CHK-001": [
+      "RET-CHK-{{chk_num}}": [
         {
-          "id": "TXN-8734",
+          "id": "TXN-{{fraud_txn}}",
           "date": "2025-06-15",
-          "amount": -89.99,
-          "merchant": "TechAssist",
+          "amount": "{{fraud_amount}}",
+          "merchant": "{{fraud_merchant}}",
           "status": "posted"
         },
         {
@@ -422,7 +495,7 @@
           "status": "posted"
         }
       ],
-      "RET-SAV-002": [
+      "RET-SAV-{{sav_num}}": [
         {
           "id": "TXN-8740",
           "date": "2025-06-01",
@@ -446,31 +519,31 @@
       "assert": "fraud_cases",
       "op": "contains",
       "match": {
-        "transaction_id": "TXN-8734",
-        "reason_contains": "TechAssist"
+        "transaction_id": "TXN-{{fraud_txn}}",
+        "reason_contains": "{{fraud_merchant}}"
       },
-      "goal": "Report the suspicious TechAssist charge of $89.99 as potentially fraudulent"
+      "goal": "Report the suspicious {{fraud_merchant}} charge of ${{fraud_amount}} as potentially fraudulent"
     },
     {
       "assert": "recurring_transfers",
       "op": "contains",
       "match": {
-        "from_account_id": "RET-CHK-001",
-        "to_account_id": "RET-SAV-002",
-        "amount": 200.0,
+        "from_account_id": "RET-CHK-{{chk_num}}",
+        "to_account_id": "RET-SAV-{{sav_num}}",
+        "amount": "{{recurring_amount}}",
         "frequency": "monthly"
       },
-      "goal": "Set up a monthly transfer of $200 from checking to savings starting first Friday of next month"
+      "goal": "Set up a monthly transfer of ${{recurring_amount}} from checking to savings starting first Friday of next month"
     },
     {
       "assert": "account_alerts",
       "op": "contains",
       "match": {
-        "account_id": "RET-CHK-001",
+        "account_id": "RET-CHK-{{chk_num}}",
         "alert_type": "low_balance",
-        "threshold": 500.0
+        "threshold": "{{alert_threshold}}"
       },
-      "goal": "Create a low balance alert for my checking account when it drops below $500"
+      "goal": "Create a low balance alert for my checking account when it drops below ${{alert_threshold}}"
     }
   ],
   "rubric_criteria": [
@@ -488,19 +561,19 @@
     },
     {
       "id": "fraud_report_techassist",
-      "text": "Agent reported the $89.99 TechAssist charge (TXN-8734) as suspicious via report_suspicious_transaction.",
+      "text": "Agent reported the ${{fraud_amount}} {{fraud_merchant}} charge (TXN-{{fraud_txn}}) as suspicious via report_suspicious_transaction.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "monthly_transfer_checking_to_savings",
-      "text": "Agent set up a monthly recurring transfer of $200 from checking RET-CHK-001 to savings RET-SAV-002 in the correct direction.",
+      "text": "Agent set up a monthly recurring transfer of ${{recurring_amount}} from checking RET-CHK-{{chk_num}} to savings RET-SAV-{{sav_num}} in the correct direction.",
       "dimension": "tool_selection",
       "weight": 1.0
     },
     {
       "id": "low_balance_alert_500",
-      "text": "Agent created a low_balance alert on checking RET-CHK-001 with a $500 threshold using setup_account_alerts.",
+      "text": "Agent created a low_balance alert on checking RET-CHK-{{chk_num}} with a ${{alert_threshold}} threshold using setup_account_alerts.",
       "dimension": "task_completion",
       "weight": 1.0
     },

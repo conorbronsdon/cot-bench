@@ -150,6 +150,11 @@ def _sim_namespace(payload: dict):
         recovery_probe_kind=meta.get("recovery_probe_kind"),
         recovered=meta.get("recovered"),
         probe_fired=bool(meta.get("probe_fired", False)),
+        # Tool-sim parse failures (S3). Older artifacts predate the field and
+        # default to 0 (a clean world). build_result_row reads this to decide
+        # state-gradability, so a resumed row reconstructs the same state_gradable
+        # decision and the same nulling as the live path.
+        tool_sim_parse_failures=int(meta.get("tool_sim_parse_failures", 0) or 0),
     )
 
 
@@ -200,10 +205,15 @@ def rows_from_artifacts(artifacts_root, run_id: str, model_names) -> list[dict]:
             }
 
         # Efficacy is recomputed from the rebuilt consensus + state, matching the
-        # live evaluate_scenario composition.
+        # live evaluate_scenario composition. S3: a non-gradable stateful world
+        # (a tool-sim parse failure dropped a mutation) nulls the state score fed
+        # to efficacy, exactly as the live path does, so a resumed row's efficacy
+        # matches the fresh run.
         from eval.scoring.rubrics import compute_efficacy
+        from scripts.run_eval import is_state_gradable
 
-        state_score = None if state_result is None else state_result["score"]
+        gradable = is_state_gradable(state_result, sim_ns)
+        state_score = state_result["score"] if (state_result is not None and gradable) else None
         efficacy = compute_efficacy(
             tc_result.consensus_score, ts_result.consensus_score, state_score
         )

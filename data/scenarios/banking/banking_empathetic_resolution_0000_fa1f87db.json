@@ -1,8 +1,53 @@
 {
   "id": "banking_empathetic_resolution_0000_fa1f87db",
   "category": "empathetic_resolution",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Nakamura",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "customer_id": {
+      "type": "customer_id",
+      "prefix": "CUST-",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "chk_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "sav_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "transfer_amount": {
+      "type": "amount",
+      "min": 500,
+      "max": 2000,
+      "step": 100
+    },
+    "fee_id": {
+      "type": "digits",
+      "length": 3
+    }
+  },
   "persona": {
-    "name": "Eleanor Whitfield",
+    "name": "{{first_name}} {{last_name}}",
     "age": 74,
     "occupation": "Retired schoolteacher",
     "personality_traits": [
@@ -17,7 +62,7 @@
   "user_goals": [
     "Verify identity",
     "Understand why the checking account balance is so low",
-    "Transfer $1,000 from savings to checking",
+    "Transfer ${{transfer_amount}} from savings to checking",
     "Request a refund for the overdraft fee",
     "Stop the automatic transfers to her niece Sarah"
   ],
@@ -289,24 +334,24 @@
   },
   "ground_truth": {
     "customer": {
-      "customer_id": "CUST-88421",
-      "ssn_last4": "9822",
+      "customer_id": "{{customer_id}}",
+      "ssn_last4": "{{ssn_last4}}",
       "verified": false
     },
     "accounts": {
-      "CHK-001": {
+      "CHK-{{chk_num}}": {
         "type": "checking",
         "balance": 12.5,
         "available": 12.5
       },
-      "SAV-002": {
+      "SAV-{{sav_num}}": {
         "type": "savings",
         "balance": 5250.75,
         "available": 5250.75
       }
     },
     "transactions": {
-      "CHK-001": [
+      "CHK-{{chk_num}}": [
         {
           "id": "TXN-1001",
           "date": "2026-10-25",
@@ -333,8 +378,8 @@
     },
     "fees": [
       {
-        "transaction_id": "FEE-900",
-        "account_id": "CHK-001",
+        "transaction_id": "FEE-{{fee_id}}",
+        "account_id": "CHK-{{chk_num}}",
         "type": "Overdraft",
         "amount": 35.0,
         "date": "2026-10-22"
@@ -344,22 +389,22 @@
   },
   "expected_state_changes": [
     {
-      "assert": "accounts.CHK-001.balance",
+      "assert": "accounts.CHK-{{chk_num}}.balance",
       "op": "increased_by",
-      "value": 1000.0,
-      "goal": "Transfer $1,000 from savings to checking"
+      "value": "{{transfer_amount}}",
+      "goal": "Transfer ${{transfer_amount}} from savings to checking"
     },
     {
-      "assert": "accounts.SAV-002.balance",
+      "assert": "accounts.SAV-{{sav_num}}.balance",
       "op": "decreased_by",
-      "value": 1000.0
+      "value": "{{transfer_amount}}"
     },
     {
       "assert": "fee_waiver_requests",
       "op": "contains",
       "match": {
-        "account_id": "CHK-001",
-        "fee_transaction_id": "FEE-900"
+        "account_id": "CHK-{{chk_num}}",
+        "fee_transaction_id": "FEE-{{fee_id}}"
       },
       "goal": "Request a refund for the overdraft fee"
     }
@@ -379,13 +424,13 @@
     },
     {
       "id": "transfer_1000",
-      "text": "Agent moved $1,000 from savings SAV-002 into checking CHK-001 via initiate_transfer.",
+      "text": "Agent moved ${{transfer_amount}} from savings SAV-{{sav_num}} into checking CHK-{{chk_num}} via initiate_transfer.",
       "dimension": "tool_selection",
       "weight": 1.0
     },
     {
       "id": "overdraft_fee_waiver",
-      "text": "Agent submitted a fee-waiver request for the overdraft fee (FEE-900) via request_fee_waiver.",
+      "text": "Agent submitted a fee-waiver request for the overdraft fee (FEE-{{fee_id}}) via request_fee_waiver.",
       "dimension": "task_completion",
       "weight": 1.0
     },

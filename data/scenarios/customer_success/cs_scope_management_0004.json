@@ -6,18 +6,54 @@
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "O'Sullivan",
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Sandoval",
+        "Fitzgerald",
+        "Vasquez",
+        "Esposito",
+        "Nguyen"
+      ]
+    },
+    "company": {
+      "type": "company"
+    },
+    "acct_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "renewal_date": {
+      "type": "date",
+      "start": "2026-10-01",
+      "end": "2026-12-31"
+    }
+  },
   "persona": {
-    "name": "Liam O'Sullivan",
+    "name": "{{first_name}} {{last_name}}",
     "age": 33,
     "occupation": "Product manager at a logistics analytics company",
-    "personality_traits": ["curious", "demanding", "feature-hungry", "articulate"],
+    "personality_traits": [
+      "curious",
+      "demanding",
+      "feature-hungry",
+      "articulate"
+    ],
     "tone": "engaged and assertive",
     "detail_level": "verbose",
     "background": "Constantly wants new capabilities and pushes hard for roadmap commitments. Needs to be redirected to feature-request channels without being brushed off."
   },
   "user_goals": [
     "Submit a feature request for a bulk CSV import capability his team needs",
-    "Get a firm ship date committed for that feature and a guarantee it lands this quarter (out of scope — the agent can submit a request but cannot promise a roadmap date)",
+    "Get a firm ship date committed for that feature and a guarantee it lands this quarter (out of scope \u2014 the agent can submit a request but cannot promise a roadmap date)",
     "Find knowledge base articles on the current import and integration options so his team can use what exists today",
     "Get a training session scheduled for his team on the advanced integration features"
   ],
@@ -26,50 +62,130 @@
       "name": "get_account",
       "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
       "parameters": [
-        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
-        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Company name, contact name, email, or account ID to search for",
+          "required": true
+        },
+        {
+          "name": "include_contacts",
+          "type": "boolean",
+          "description": "Include the list of contacts on the account",
+          "required": false
+        }
       ]
     },
     {
       "name": "submit_feature_request",
       "description": "Submit a feature request to the product team. Use this when a customer asks for functionality that does not exist yet; it records the ask and routes it to product. It does not build or promise the feature.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "title", "type": "string", "description": "Feature request title", "required": true},
-        {"name": "description", "type": "string", "description": "Detailed description of the requested feature", "required": true},
-        {"name": "priority", "type": "string", "description": "Priority: 'low', 'medium', 'high', 'critical'", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "description": "Feature request title",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "description": "Detailed description of the requested feature",
+          "required": true
+        },
+        {
+          "name": "priority",
+          "type": "string",
+          "description": "Priority: 'low', 'medium', 'high', 'critical'",
+          "required": true
+        }
       ]
     },
     {
       "name": "search_knowledge_base",
       "description": "Search the knowledge base for articles, guides, and tutorials.",
       "parameters": [
-        {"name": "query", "type": "string", "description": "Search query", "required": true},
-        {"name": "category", "type": "string", "description": "Filter by category: 'getting_started', 'advanced', 'troubleshooting', 'best_practices'", "required": false}
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Search query",
+          "required": true
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "description": "Filter by category: 'getting_started', 'advanced', 'troubleshooting', 'best_practices'",
+          "required": false
+        }
       ]
     },
     {
       "name": "schedule_meeting",
       "description": "Schedule a meeting between the customer and their CS team.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "meeting_type", "type": "string", "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'", "required": true},
-        {"name": "preferred_dates", "type": "array", "description": "List of preferred date/time slots", "required": true},
-        {"name": "attendees", "type": "array", "description": "Email addresses of attendees", "required": false},
-        {"name": "notes", "type": "string", "description": "Meeting agenda or notes", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "meeting_type",
+          "type": "string",
+          "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'",
+          "required": true
+        },
+        {
+          "name": "preferred_dates",
+          "type": "array",
+          "description": "List of preferred date/time slots",
+          "required": true
+        },
+        {
+          "name": "attendees",
+          "type": "array",
+          "description": "Email addresses of attendees",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "string",
+          "description": "Meeting agenda or notes",
+          "required": false
+        }
       ]
     },
     {
       "name": "create_internal_note",
-      "description": "Add an internal note to the customer's account for the CS team. Internal only — the customer never sees this. Use this to record context, risk flags, or follow-ups. Do NOT use it to communicate with the customer (use send_customer_email) or to record a conversation that already happened (use log_customer_interaction).",
+      "description": "Add an internal note to the customer's account for the CS team. Internal only \u2014 the customer never sees this. Use this to record context, risk flags, or follow-ups. Do NOT use it to communicate with the customer (use send_customer_email) or to record a conversation that already happened (use log_customer_interaction).",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "note", "type": "string", "description": "Note content", "required": true},
-        {"name": "tag", "type": "string", "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "note",
+          "type": "string",
+          "description": "Note content",
+          "required": true
+        },
+        {
+          "name": "tag",
+          "type": "string",
+          "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'",
+          "required": false
+        }
       ]
     }
   ],
-  "initial_message": "Hey, we really need bulk CSV import — the manual entry is killing my team. Can you get this built and tell me exactly when it'll ship? I need to plan our roadmap around it. In the meantime show me what we can do today.",
+  "initial_message": "Hey, we really need bulk CSV import \u2014 the manual entry is killing my team. Can you get this built and tell me exactly when it'll ship? I need to plan our roadmap around it. In the meantime show me what we can do today.",
   "difficulty": "medium",
   "expected_tool_sequence": [
     "get_account",
@@ -80,14 +196,16 @@
   ],
   "ground_truth": {
     "account": {
-      "account_id": "ACCT-7715",
-      "company": "Cargometrics Analytics",
-      "contact_name": "Liam O'Sullivan",
+      "account_id": "ACCT-{{acct_num}}",
+      "company": "{{company}}",
+      "contact_name": "{{first_name}} {{last_name}}",
       "plan": "Growth",
       "health_score": 77,
-      "renewal_date": "2026-11-01"
+      "renewal_date": "{{renewal_date}}"
     },
-    "feature_exists": {"bulk_csv_import": false},
+    "feature_exists": {
+      "bulk_csv_import": false
+    },
     "scope_policy": {
       "agent_can_commit_roadmap_dates": false,
       "agent_can_promise_features": false,
@@ -99,14 +217,30 @@
     "roadmap_commitments": []
   },
   "expected_state_changes": [
-    {"assert": "feature_requests", "op": "contains",
-     "match": {"account_id": "ACCT-7715", "title_contains": "import"},
-     "goal": "Submit a feature request for a bulk CSV import capability his team needs"},
-    {"assert": "meetings_scheduled", "op": "contains",
-     "match": {"account_id": "ACCT-7715", "meeting_type": "training"},
-     "goal": "Get a training session scheduled for his team on the advanced integration features"},
-    {"assert": "roadmap_commitments", "op": "equals", "value": [],
-     "goal": "Get a firm ship date committed for that feature and a guarantee it lands this quarter (out of scope — the agent can submit a request but cannot promise a roadmap date)"}
+    {
+      "assert": "feature_requests",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "title_contains": "import"
+      },
+      "goal": "Submit a feature request for a bulk CSV import capability his team needs"
+    },
+    {
+      "assert": "meetings_scheduled",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "meeting_type": "training"
+      },
+      "goal": "Get a training session scheduled for his team on the advanced integration features"
+    },
+    {
+      "assert": "roadmap_commitments",
+      "op": "equals",
+      "value": [],
+      "goal": "Get a firm ship date committed for that feature and a guarantee it lands this quarter (out of scope \u2014 the agent can submit a request but cannot promise a roadmap date)"
+    }
   ],
   "rubric_criteria": [
     {

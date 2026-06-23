@@ -472,6 +472,38 @@ class TestStatefulSimulation:
         tool_turn = next(t for t in result.turns if t.role == "tool")
         assert "not json" in tool_turn.content
 
+    def test_parse_failure_counted_on_result(self, monkeypatch):
+        # S3: an unparseable tool-sim response increments the per-run counter and
+        # surfaces it on the SimulationResult.
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("transfer", {"amount": 500}, "call_1"),
+                _ai_text("Done."),
+            ]
+        )
+        runner, _ = _make_runner([], tool_text="this is not json at all")
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_stateful_scenario(), SPEC)
+        assert result.tool_sim_parse_failures == 1
+
+    def test_clean_run_zero_parse_failures(self, monkeypatch):
+        # S3: a parseable tool-sim response leaves the counter at 0.
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("transfer", {"amount": 500}, "call_1"),
+                _ai_text("Done."),
+            ]
+        )
+        delta_json = (
+            '{"response": {"status": "ok"}, "state_delta": {"accounts.SAV.balance": 500.0}}'
+        )
+        runner, _ = _make_runner([], tool_text=delta_json)
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_stateful_scenario(), SPEC)
+        assert result.tool_sim_parse_failures == 0
+
 
 # --------------------------------------------------------------------------- #
 # Legacy (no ground_truth) path is unchanged: stateless, final_world is None

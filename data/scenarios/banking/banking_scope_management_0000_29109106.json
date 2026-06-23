@@ -1,8 +1,76 @@
 {
   "id": "banking_scope_management_0000_29109106",
   "category": "scope_management",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Nakamura",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "cust_num": {
+      "type": "digits",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "chk_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "sav_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "txn1": {
+      "type": "digits",
+      "length": 4
+    },
+    "txn2": {
+      "type": "digits",
+      "length": 4
+    },
+    "txn3": {
+      "type": "digits",
+      "length": 4
+    },
+    "txn4": {
+      "type": "digits",
+      "length": 4
+    },
+    "txn5": {
+      "type": "digits",
+      "length": 4
+    },
+    "fee_txn": {
+      "type": "digits",
+      "length": 3
+    },
+    "recurring_amount": {
+      "type": "amount",
+      "min": 300,
+      "max": 800,
+      "step": 100
+    },
+    "phone_last4": {
+      "type": "digits",
+      "length": 4
+    }
+  },
   "persona": {
-    "name": "Eleanor Whitfield",
+    "name": "{{first_name}} {{last_name}}",
     "age": 74,
     "occupation": "Retired schoolteacher",
     "personality_traits": [
@@ -18,7 +86,7 @@
     "Check the current balance of her primary checking account.",
     "Review the last five transactions on her checking account to understand recent spending including the funeral home expense.",
     "Submit a request to waive the $35 overdraft fee charged on May 28th due to confusion about the pension deposit date.",
-    "Set up a recurring monthly transfer of $500 from her savings account to her checking account to prevent future overdrafts.",
+    "Set up a recurring monthly transfer of ${{recurring_amount}} from her savings account to her checking account to prevent future overdrafts.",
     "Set up an automatic recurring payment to Comcast Cable from her checking account so she never has to worry about that bill again.",
     "Merge her checking and savings accounts into a single account because she finds managing multiple accounts overwhelming.",
     "Have the bank dispute and reverse the $1,200 Heritage Funeral Home charge because she believes it was too expensive.",
@@ -348,7 +416,7 @@
       }
     }
   ],
-  "initial_message": "Oh, hello there. I'm so sorry to bother you, dear. I'm Eleanor, and I'm still quite new at all this computer banking business since my Harold passed. I'm trying to sort out my money matters, but I seem to have gotten myself in a bit of a muddle. I wanted to see how much is in my regular checking account \u2014 I think I might be running rather low because of that big payment to the funeral home last month. And I noticed the bank took out a little fee, thirty-something dollars I think? It gave me such a fright because I thought my pension went in on Friday but I suppose I had the days wrong. I was hoping you might help me look at what's been going on, because I just can't make heads or tails of it. Oh, and I'm sorry, I'm just so flustered... I keep mixing up whether I'm supposed to make a 'transfer' or a 'payment.' Could you help an old lady sort this out before I make another mess?",
+  "initial_message": "Oh, hello there. I'm so sorry to bother you, dear. I'm {{first_name}}, and I'm still quite new at all this computer banking business since my Harold passed. I'm trying to sort out my money matters, but I seem to have gotten myself in a bit of a muddle. I wanted to see how much is in my regular checking account \u2014 I think I might be running rather low because of that big payment to the funeral home last month. And I noticed the bank took out a little fee, thirty-something dollars I think? It gave me such a fright because I thought my pension went in on Friday but I suppose I had the days wrong. I was hoping you might help me look at what's been going on, because I just can't make heads or tails of it. Oh, and I'm sorry, I'm just so flustered... I keep mixing up whether I'm supposed to make a 'transfer' or a 'payment.' Could you help an old lady sort this out before I make another mess?",
   "difficulty": "hard",
   "expected_tool_sequence": [
     "verify_customer_identity",
@@ -367,55 +435,55 @@
   },
   "ground_truth": {
     "customer": {
-      "customer_id": "CUST-77342",
-      "ssn_last4": "8892",
+      "customer_id": "CUST-{{cust_num}}",
+      "ssn_last4": "{{ssn_last4}}",
       "verified": false,
-      "name": "Eleanor Whitfield"
+      "name": "{{first_name}} {{last_name}}"
     },
     "accounts": {
-      "PRS-CHK-101": {
+      "PRS-CHK-{{chk_num}}": {
         "type": "checking",
         "balance": 3420.17,
         "available": 3420.17
       },
-      "PRS-SAV-102": {
+      "PRS-SAV-{{sav_num}}": {
         "type": "savings",
         "balance": 12800.5,
         "interest_rate_apy": 0.025
       }
     },
     "transactions": {
-      "PRS-CHK-101": [
+      "PRS-CHK-{{chk_num}}": [
         {
-          "id": "TXN-9905",
+          "id": "TXN-{{txn1}}",
           "date": "2026-06-10",
           "amount": -12.99,
           "merchant": "NETFLIX.COM",
           "status": "posted"
         },
         {
-          "id": "TXN-9904",
+          "id": "TXN-{{txn2}}",
           "date": "2026-06-08",
           "amount": -250.0,
           "merchant": "ALLSTATE INSURANCE",
           "status": "posted"
         },
         {
-          "id": "TXN-9903",
+          "id": "TXN-{{txn3}}",
           "date": "2026-06-05",
           "amount": -45.67,
           "merchant": "SAFEWAY MARKET",
           "status": "posted"
         },
         {
-          "id": "TXN-9902",
+          "id": "TXN-{{txn4}}",
           "date": "2026-06-03",
           "amount": -89.99,
           "merchant": "COMCAST CABLE",
           "status": "posted"
         },
         {
-          "id": "TXN-9901",
+          "id": "TXN-{{txn5}}",
           "date": "2026-06-01",
           "amount": -1200.0,
           "merchant": "HERITAGE FUNERAL HOME",
@@ -424,9 +492,9 @@
       ]
     },
     "fees": {
-      "PRS-CHK-101": [
+      "PRS-CHK-{{chk_num}}": [
         {
-          "id": "TXN-F001",
+          "id": "TXN-F{{fee_txn}}",
           "date": "2026-05-28",
           "amount": -35.0,
           "fee_type": "overdraft",
@@ -435,7 +503,7 @@
       ]
     },
     "pending_deposits": {
-      "PRS-CHK-101": [
+      "PRS-CHK-{{chk_num}}": [
         {
           "amount": 1500.0,
           "description": "WIDOW'S PENSION DEPOSIT",
@@ -447,7 +515,7 @@
     "fraud_cases": [],
     "fee_waiver_requests": [],
     "contact_info": {
-      "phone": "555-0142",
+      "phone": "555-{{phone_last4}}",
       "email": "e.whitfield@oldmail.com"
     }
   },
@@ -456,8 +524,8 @@
       "assert": "fee_waiver_requests",
       "op": "contains",
       "match": {
-        "account_id": "PRS-CHK-101",
-        "fee_transaction_id": "TXN-F001",
+        "account_id": "PRS-CHK-{{chk_num}}",
+        "fee_transaction_id": "TXN-F{{fee_txn}}",
         "reason_contains": "pension"
       },
       "goal": "Submit a request to waive the $35 overdraft fee charged on May 28th due to confusion about the pension deposit date."
@@ -466,24 +534,24 @@
       "assert": "recurring_transfers",
       "op": "contains",
       "match": {
-        "from_account_id": "PRS-SAV-102",
-        "to_account_id": "PRS-CHK-101",
-        "amount": 500,
+        "from_account_id": "PRS-SAV-{{sav_num}}",
+        "to_account_id": "PRS-CHK-{{chk_num}}",
+        "amount": "{{recurring_amount}}",
         "frequency": "monthly"
       },
-      "goal": "Set up a recurring monthly transfer of $500 from her savings account to her checking account to prevent future overdrafts."
+      "goal": "Set up a recurring monthly transfer of ${{recurring_amount}} from her savings account to her checking account to prevent future overdrafts."
     }
   ],
   "rubric_criteria": [
     {
       "id": "fee_waiver_pension_confusion",
-      "text": "Agent submitted a waiver request for the $35 overdraft fee (TXN-F001 on PRS-CHK-101) citing confusion about the pension deposit date.",
+      "text": "Agent submitted a waiver request for the $35 overdraft fee (TXN-F{{fee_txn}} on PRS-CHK-{{chk_num}}) citing confusion about the pension deposit date.",
       "dimension": "task_completion",
       "weight": 2.0
     },
     {
       "id": "recurring_overdraft_protection",
-      "text": "Agent set up a recurring monthly $500 transfer from PRS-SAV-102 to PRS-CHK-101 to prevent future overdrafts.",
+      "text": "Agent set up a recurring monthly ${{recurring_amount}} transfer from PRS-SAV-{{sav_num}} to PRS-CHK-{{chk_num}} to prevent future overdrafts.",
       "dimension": "tool_selection",
       "weight": 2.0
     },

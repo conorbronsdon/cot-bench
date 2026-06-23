@@ -6,11 +6,67 @@
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Bennett",
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Sandoval",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "company": {
+      "type": "choice",
+      "options": [
+        "Driftwave Remote Inc",
+        "Northwind Logistics",
+        "Brightline Media",
+        "Apex Dynamics",
+        "Harborview Retail",
+        "Cedar & Bloom"
+      ]
+    },
+    "acct_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "csm_first": {
+      "type": "first_name"
+    },
+    "csm_last": {
+      "type": "choice",
+      "options": [
+        "Reyes",
+        "Hollander",
+        "Andersson",
+        "Delacroix",
+        "Bukowski",
+        "Haddad"
+      ]
+    },
+    "renewal_date": {
+      "type": "date",
+      "start": "2026-09-15",
+      "end": "2026-11-30"
+    }
+  },
   "persona": {
-    "name": "Holly Bennett",
+    "name": "{{first_name}} {{last_name}}",
     "age": 29,
     "occupation": "People operations manager at a fast-growing remote startup",
-    "personality_traits": ["overwhelmed", "well-meaning", "disorganized", "anxious"],
+    "personality_traits": [
+      "overwhelmed",
+      "well-meaning",
+      "disorganized",
+      "anxious"
+    ],
     "tone": "harried and informal",
     "detail_level": "moderate",
     "background": "Inherited the account with no handoff. Onboarding for new hires keeps stalling and she's worried her boss will blame her for low adoption."
@@ -27,67 +83,208 @@
       "name": "get_account",
       "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
       "parameters": [
-        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
-        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Company name, contact name, email, or account ID to search for",
+          "required": true
+        },
+        {
+          "name": "include_contacts",
+          "type": "boolean",
+          "description": "Include the list of contacts on the account",
+          "required": false
+        }
       ],
-      "response_schema": {"account_id": "string", "company": "string", "contact_name": "string", "plan": "string", "renewal_date": "string", "csm_owner": "string"}
+      "response_schema": {
+        "account_id": "string",
+        "company": "string",
+        "contact_name": "string",
+        "plan": "string",
+        "renewal_date": "string",
+        "csm_owner": "string"
+      }
     },
     {
       "name": "get_onboarding_status",
       "description": "Check onboarding completion rates and stuck points for an account's users.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "period", "type": "string", "description": "Time period for new users", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "period",
+          "type": "string",
+          "description": "Time period for new users",
+          "required": false
+        }
       ],
-      "response_schema": {"total_invited": "number", "completed_onboarding": "number", "completion_rate": "number", "stuck_at_step": {"step_name": "number"}, "average_completion_days": "number"}
+      "response_schema": {
+        "total_invited": "number",
+        "completed_onboarding": "number",
+        "completion_rate": "number",
+        "stuck_at_step": {
+          "step_name": "number"
+        },
+        "average_completion_days": "number"
+      }
     },
     {
       "name": "get_usage_analytics",
       "description": "Get product usage metrics for an account or specific users.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "period", "type": "string", "description": "Time period: 'last_7d', 'last_30d', 'last_90d', 'custom'", "required": true},
-        {"name": "group_by", "type": "string", "description": "Group by: 'user', 'feature', 'team', 'day'", "required": false},
-        {"name": "user_ids", "type": "array", "description": "Filter to specific user IDs", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "period",
+          "type": "string",
+          "description": "Time period: 'last_7d', 'last_30d', 'last_90d', 'custom'",
+          "required": true
+        },
+        {
+          "name": "group_by",
+          "type": "string",
+          "description": "Group by: 'user', 'feature', 'team', 'day'",
+          "required": false
+        },
+        {
+          "name": "user_ids",
+          "type": "array",
+          "description": "Filter to specific user IDs",
+          "required": false
+        }
       ],
-      "response_schema": {"period": "string", "active_users": "number", "active_user_change_pct": "number", "feature_usage": ["object"], "trend": "string"}
+      "response_schema": {
+        "period": "string",
+        "active_users": "number",
+        "active_user_change_pct": "number",
+        "feature_usage": [
+          "object"
+        ],
+        "trend": "string"
+      }
     },
     {
       "name": "create_ticket",
       "description": "Open a NEW support ticket for the customer. Use this when the customer reports a fresh issue that has no existing ticket. To raise the priority of an EXISTING ticket, use escalate_ticket; to leave a private CS note, use create_internal_note.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "subject", "type": "string", "description": "Ticket subject line", "required": true},
-        {"name": "description", "type": "string", "description": "Detailed description of the issue", "required": true},
-        {"name": "priority", "type": "string", "description": "Priority: 'low', 'medium', 'high', 'urgent'", "required": false},
-        {"name": "category", "type": "string", "description": "Issue category: 'bug', 'how_to', 'billing', 'feature', 'outage'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "subject",
+          "type": "string",
+          "description": "Ticket subject line",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "description": "Detailed description of the issue",
+          "required": true
+        },
+        {
+          "name": "priority",
+          "type": "string",
+          "description": "Priority: 'low', 'medium', 'high', 'urgent'",
+          "required": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "description": "Issue category: 'bug', 'how_to', 'billing', 'feature', 'outage'",
+          "required": false
+        }
       ],
-      "response_schema": {"ticket_id": "string", "status": "string", "created_at": "string"}
+      "response_schema": {
+        "ticket_id": "string",
+        "status": "string",
+        "created_at": "string"
+      }
     },
     {
       "name": "create_internal_note",
-      "description": "Add an internal note to the customer's account for the CS team. Internal only — the customer never sees this. Use this to record context, risk flags, or follow-ups. Do NOT use it to communicate with the customer (use send_customer_email) or to record a conversation that already happened (use log_customer_interaction).",
+      "description": "Add an internal note to the customer's account for the CS team. Internal only \u2014 the customer never sees this. Use this to record context, risk flags, or follow-ups. Do NOT use it to communicate with the customer (use send_customer_email) or to record a conversation that already happened (use log_customer_interaction).",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "note", "type": "string", "description": "Note content", "required": true},
-        {"name": "tag", "type": "string", "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "note",
+          "type": "string",
+          "description": "Note content",
+          "required": true
+        },
+        {
+          "name": "tag",
+          "type": "string",
+          "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'",
+          "required": false
+        }
       ],
-      "response_schema": {"note_id": "string", "account_id": "string", "created_at": "string"}
+      "response_schema": {
+        "note_id": "string",
+        "account_id": "string",
+        "created_at": "string"
+      }
     },
     {
       "name": "schedule_meeting",
       "description": "Schedule a meeting between the customer and their CS team.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "meeting_type", "type": "string", "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'", "required": true},
-        {"name": "preferred_dates", "type": "array", "description": "List of preferred date/time slots", "required": true},
-        {"name": "attendees", "type": "array", "description": "Email addresses of attendees", "required": false},
-        {"name": "notes", "type": "string", "description": "Meeting agenda or notes", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "meeting_type",
+          "type": "string",
+          "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'",
+          "required": true
+        },
+        {
+          "name": "preferred_dates",
+          "type": "array",
+          "description": "List of preferred date/time slots",
+          "required": true
+        },
+        {
+          "name": "attendees",
+          "type": "array",
+          "description": "Email addresses of attendees",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "string",
+          "description": "Meeting agenda or notes",
+          "required": false
+        }
       ],
-      "response_schema": {"meeting_id": "string", "account_id": "string", "meeting_type": "string", "scheduled_for": "string"}
+      "response_schema": {
+        "meeting_id": "string",
+        "account_id": "string",
+        "meeting_type": "string",
+        "scheduled_for": "string"
+      }
     }
   ],
-  "initial_message": "Help — I logged in this morning and the onboarding tracker says NONE of my team has completed anything. We had like eight people most of the way through setup. Did we lose all of it?? My boss is going to kill me if we're starting over.",
+  "initial_message": "Help \u2014 I logged in this morning and the onboarding tracker says NONE of my team has completed anything. We had like eight people most of the way through setup. Did we lose all of it?? My boss is going to kill me if we're starting over.",
   "difficulty": "medium",
   "expected_tool_sequence": [
     "get_account",
@@ -98,34 +295,44 @@
   ],
   "ground_truth": {
     "account": {
-      "account_id": "ACCT-4407",
-      "company": "Driftwave Remote Inc",
-      "contact_name": "Holly Bennett",
+      "account_id": "ACCT-{{acct_num}}",
+      "company": "{{company}}",
+      "contact_name": "{{first_name}} {{last_name}}",
       "plan": "Growth",
-      "renewal_date": "2026-10-20",
-      "csm_owner": "Tom Reyes"
+      "renewal_date": "{{renewal_date}}",
+      "csm_owner": "{{csm_first}} {{csm_last}}"
     },
     "onboarding": {
-      "account_id": "ACCT-4407",
+      "account_id": "ACCT-{{acct_num}}",
       "total_invited": 8,
       "completed_onboarding": 0,
       "completion_rate": 0.0,
       "average_completion_days": null,
-      "stuck_at_step": {"create_account": 8},
+      "stuck_at_step": {
+        "create_account": 8
+      },
       "last_modified_by": "system_migration",
       "last_modified_at": "2026-06-10T02:00:00Z",
       "anomaly_note": "All step flags reset to false during platform migration MIG-2026-06. Reset was applied by 'system_migration', not by any user action. Per-step completion records still exist in the migration backup and have not actually been deleted."
     },
     "usage_analytics": {
-      "account_id": "ACCT-4407",
+      "account_id": "ACCT-{{acct_num}}",
       "period": "last_30d",
       "active_users": 7,
       "active_user_change_pct": 2,
       "trend": "stable",
       "computed_at": "2026-06-10T06:00:00Z",
       "feature_usage": [
-        {"feature": "dashboards", "events": 612, "change_pct": 5},
-        {"feature": "data_import", "events": 140, "change_pct": -3}
+        {
+          "feature": "dashboards",
+          "events": 612,
+          "change_pct": 5
+        },
+        {
+          "feature": "data_import",
+          "events": 140,
+          "change_pct": -3
+        }
       ]
     },
     "tickets": [],
@@ -133,13 +340,30 @@
     "meetings": []
   },
   "expected_state_changes": [
-    {"assert": "tickets", "op": "contains",
-     "match": {"account_id": "ACCT-4407", "category": "bug", "description_contains": "system_migration"},
-     "goal": "Get her team's real onboarding status restored or corrected"},
-    {"assert": "internal_notes", "op": "contains",
-     "match": {"account_id": "ACCT-4407", "note_contains": "MIG-2026-06"},
-     "goal": "Avoid making her team redo onboarding steps they already finished"},
-    {"assert": "meetings", "op": "equals", "value": []}
+    {
+      "assert": "tickets",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "category": "bug",
+        "description_contains": "system_migration"
+      },
+      "goal": "Get her team's real onboarding status restored or corrected"
+    },
+    {
+      "assert": "internal_notes",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "note_contains": "MIG-2026-06"
+      },
+      "goal": "Avoid making her team redo onboarding steps they already finished"
+    },
+    {
+      "assert": "meetings",
+      "op": "equals",
+      "value": []
+    }
   ],
   "rubric_criteria": [
     {

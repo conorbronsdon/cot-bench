@@ -2,15 +2,54 @@
   "id": "banking_empathetic_resolution_0001",
   "category": "empathetic_resolution",
   "schema_version": "0.2",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Okafor",
+        "Okonkwo",
+        "Castellanos",
+        "Nakamura",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Adeyemi"
+      ]
+    },
+    "customer_id": {
+      "type": "customer_id",
+      "prefix": "CUST-",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "chk_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "fee_txn": {
+      "type": "digits",
+      "length": 4
+    }
+  },
   "authorship": {
     "author_model": "human-handwritten",
     "human_reviewed_by": "Conor Bronsdon"
   },
   "persona": {
-    "name": "James Okafor",
+    "name": "{{first_name}} {{last_name}}",
     "age": 34,
     "occupation": "Freelance graphic designer",
-    "personality_traits": ["anxious", "polite", "easily overwhelmed"],
+    "personality_traits": [
+      "anxious",
+      "polite",
+      "easily overwhelmed"
+    ],
     "tone": "worried but courteous",
     "detail_level": "verbose",
     "background": "Lives paycheck to paycheck as a freelancer. Just discovered his rent payment bounced and is panicking about overdraft fees and his landlord's reaction."
@@ -28,54 +67,135 @@
       "name": "verify_customer_identity",
       "description": "Verify customer identity using account number, SSN last 4, or security questions",
       "parameters": [
-        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
-        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true},
-        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
       ]
     },
     {
       "name": "get_account_balance",
       "description": "Get current balance for a specific account",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true
+        }
       ]
     },
     {
       "name": "get_transaction_history",
       "description": "Retrieve transaction history for an account",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
-        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        }
       ]
     },
     {
       "name": "get_pending_deposits",
       "description": "Check pending deposits and their expected clearing dates",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        }
       ],
       "response_schema": {
-        "pending_deposits": [{"amount": "number", "source": "string", "expected_clear_date": "string"}]
+        "pending_deposits": [
+          {
+            "amount": "number",
+            "source": "string",
+            "expected_clear_date": "string"
+          }
+        ]
       }
     },
     {
       "name": "get_fee_history",
       "description": "Retrieve fees charged to an account",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "fee_type", "type": "string", "description": "Type: 'overdraft', 'maintenance', 'wire', 'all'", "required": false},
-        {"name": "period_months", "type": "integer", "description": "Look back period in months", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "fee_type",
+          "type": "string",
+          "description": "Type: 'overdraft', 'maintenance', 'wire', 'all'",
+          "required": false
+        },
+        {
+          "name": "period_months",
+          "type": "integer",
+          "description": "Look back period in months",
+          "required": false
+        }
       ]
     },
     {
       "name": "request_fee_waiver",
       "description": "Submit a request to waive a specific fee",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "fee_transaction_id", "type": "string", "description": "Transaction ID of the fee", "required": true},
-        {"name": "reason", "type": "string", "description": "Reason for waiver request", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "fee_transaction_id",
+          "type": "string",
+          "description": "Transaction ID of the fee",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Reason for waiver request",
+          "required": true
+        }
       ],
       "response_schema": {
         "status": "string",
@@ -87,21 +207,66 @@
       "name": "setup_account_alerts",
       "description": "Configure account alerts and notifications",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "alert_type", "type": "string", "description": "Type: 'low_balance', 'large_transaction', 'deposit', 'withdrawal'", "required": true},
-        {"name": "threshold", "type": "number", "description": "Threshold amount for the alert", "required": false},
-        {"name": "notification_method", "type": "string", "description": "Method: 'email', 'sms', 'push', 'all'", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "alert_type",
+          "type": "string",
+          "description": "Type: 'low_balance', 'large_transaction', 'deposit', 'withdrawal'",
+          "required": true
+        },
+        {
+          "name": "threshold",
+          "type": "number",
+          "description": "Threshold amount for the alert",
+          "required": false
+        },
+        {
+          "name": "notification_method",
+          "type": "string",
+          "description": "Method: 'email', 'sms', 'push', 'all'",
+          "required": true
+        }
       ]
     },
     {
       "name": "generate_account_statement",
       "description": "Generate an official account statement or confirmation letter",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true},
-        {"name": "date_range_start", "type": "string", "description": "Start date", "required": false},
-        {"name": "date_range_end", "type": "string", "description": "End date", "required": false},
-        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "statement_type",
+          "type": "string",
+          "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'",
+          "required": true
+        },
+        {
+          "name": "date_range_start",
+          "type": "string",
+          "description": "Start date",
+          "required": false
+        },
+        {
+          "name": "date_range_end",
+          "type": "string",
+          "description": "End date",
+          "required": false
+        },
+        {
+          "name": "delivery_method",
+          "type": "string",
+          "description": "Method: 'email', 'mail', 'download'",
+          "required": true
+        }
       ]
     }
   ],
@@ -118,44 +283,106 @@
     "generate_account_statement"
   ],
   "ground_truth": {
-    "customer": {"customer_id": "CUST-50912", "name": "James Okafor", "ssn_last4": "8830", "verified": false},
+    "customer": {
+      "customer_id": "{{customer_id}}",
+      "name": "{{first_name}} {{last_name}}",
+      "ssn_last4": "{{ssn_last4}}",
+      "verified": false
+    },
     "accounts": {
-      "PERS-CHK-100": {"type": "checking", "balance": -35.00, "available": -35.00, "overdraft_protection": false}
+      "PERS-CHK-{{chk_num}}": {
+        "type": "checking",
+        "balance": -35.0,
+        "available": -35.0,
+        "overdraft_protection": false
+      }
     },
     "transactions": {
-      "PERS-CHK-100": [
-        {"id": "TXN-9001", "date": "2026-06-08", "amount": -1850.00, "merchant": "RENT - HARBORVIEW PROPERTIES", "status": "declined_nsf"},
-        {"id": "TXN-9000", "date": "2026-06-08", "amount": -35.00, "merchant": "OVERDRAFT FEE", "status": "posted"},
-        {"id": "TXN-8999", "date": "2026-06-06", "amount": -62.40, "merchant": "CORNER GROCERY", "status": "posted"}
+      "PERS-CHK-{{chk_num}}": [
+        {
+          "id": "TXN-9001",
+          "date": "2026-06-08",
+          "amount": -1850.0,
+          "merchant": "RENT - HARBORVIEW PROPERTIES",
+          "status": "declined_nsf"
+        },
+        {
+          "id": "TXN-{{fee_txn}}",
+          "date": "2026-06-08",
+          "amount": -35.0,
+          "merchant": "OVERDRAFT FEE",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8999",
+          "date": "2026-06-06",
+          "amount": -62.4,
+          "merchant": "CORNER GROCERY",
+          "status": "posted"
+        }
       ]
     },
     "fees": {
-      "PERS-CHK-100": [
-        {"id": "TXN-9000", "type": "overdraft", "amount": 35.00, "date": "2026-06-08", "waived": false}
+      "PERS-CHK-{{chk_num}}": [
+        {
+          "id": "TXN-{{fee_txn}}",
+          "type": "overdraft",
+          "amount": 35.0,
+          "date": "2026-06-08",
+          "waived": false
+        }
       ]
     },
     "fee_waivers_used_this_year": 0,
     "fee_waiver_requests": [],
     "pending_deposits": {
-      "PERS-CHK-100": [
-        {"amount": 3200.00, "source": "FREELANCE - PIXELFORGE STUDIO", "expected_clear_date": "2026-06-10"}
+      "PERS-CHK-{{chk_num}}": [
+        {
+          "amount": 3200.0,
+          "source": "FREELANCE - PIXELFORGE STUDIO",
+          "expected_clear_date": "2026-06-10"
+        }
       ]
     },
-    "alerts": {"PERS-CHK-100": []},
+    "alerts": {
+      "PERS-CHK-{{chk_num}}": []
+    },
     "statements_generated": []
   },
   "expected_state_changes": [
-    {"assert": "customer.verified", "op": "equals", "value": true,
-     "goal": "Understand why his rent payment of $1,850 was declined"},
-    {"assert": "fee_waiver_requests", "op": "contains",
-     "match": {"account_id": "PERS-CHK-100", "fee_transaction_id": "TXN-9000", "reason_contains": "first"},
-     "goal": "Get the overdraft fee waived since it's his first one this year"},
-    {"assert": "alerts.PERS-CHK-100", "op": "contains",
-     "match": {"alert_type": "low_balance"},
-     "goal": "Set up low balance alerts so this doesn't happen again"},
-    {"assert": "statements_generated", "op": "contains",
-     "match": {"account_id": "PERS-CHK-100", "statement_type_contains": "confirmation"},
-     "goal": "Get a letter or confirmation he can show his landlord proving funds are now available"}
+    {
+      "assert": "customer.verified",
+      "op": "equals",
+      "value": true,
+      "goal": "Understand why his rent payment of $1,850 was declined"
+    },
+    {
+      "assert": "fee_waiver_requests",
+      "op": "contains",
+      "match": {
+        "account_id": "PERS-CHK-{{chk_num}}",
+        "fee_transaction_id": "TXN-{{fee_txn}}",
+        "reason_contains": "first"
+      },
+      "goal": "Get the overdraft fee waived since it's his first one this year"
+    },
+    {
+      "assert": "alerts.PERS-CHK-{{chk_num}}",
+      "op": "contains",
+      "match": {
+        "alert_type": "low_balance"
+      },
+      "goal": "Set up low balance alerts so this doesn't happen again"
+    },
+    {
+      "assert": "statements_generated",
+      "op": "contains",
+      "match": {
+        "account_id": "PERS-CHK-{{chk_num}}",
+        "statement_type_contains": "confirmation"
+      },
+      "goal": "Get a letter or confirmation he can show his landlord proving funds are now available"
+    }
   ],
   "rubric_criteria": [
     {
@@ -178,19 +405,19 @@
     },
     {
       "id": "first_time_fee_waiver",
-      "text": "Agent submitted a fee-waiver request for the overdraft fee (TXN-9000) citing it is his first this year.",
+      "text": "Agent submitted a fee-waiver request for the overdraft fee (TXN-{{fee_txn}}) citing it is his first this year.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "low_balance_alert",
-      "text": "Agent set up a low_balance alert on checking PERS-CHK-100 via setup_account_alerts.",
+      "text": "Agent set up a low_balance alert on checking PERS-CHK-{{chk_num}} via setup_account_alerts.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "landlord_confirmation_letter",
-      "text": "Agent generated a confirmation statement for PERS-CHK-100 he can show the landlord as proof of available funds.",
+      "text": "Agent generated a confirmation statement for PERS-CHK-{{chk_num}} he can show the landlord as proof of available funds.",
       "dimension": "task_completion",
       "weight": 1.0
     }

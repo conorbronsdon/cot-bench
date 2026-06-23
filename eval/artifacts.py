@@ -179,6 +179,12 @@ def build_artifact(
             "user_actions_fired": int(getattr(sim_result, "user_actions_fired", 0) or 0),
             "user_actions_suppressed": int(getattr(sim_result, "user_actions_suppressed", 0) or 0),
             "coordination_ok": getattr(sim_result, "coordination_ok", None),
+            # Tool-sim parse failures (S3): stateful tool-sim responses that could
+            # not be parsed, so no state_delta was applied and the final world is
+            # missing that mutation. >0 on a stateful scenario makes the state
+            # grade non-gradable (the row's state_score is nulled and excluded
+            # from state aggregates). 0 for a clean run / artifacts predating it.
+            "tool_sim_parse_failures": int(getattr(sim_result, "tool_sim_parse_failures", 0) or 0),
         },
     }
     if state is not None:
