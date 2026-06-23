@@ -1172,7 +1172,13 @@ class SimulationRunner:
             f"Arguments: {json.dumps(tool_call.arguments)}\n"
         )
         if tool_schema:
-            prompt += f"Tool Schema: {json.dumps(tool_schema)}\n"
+            # Strip the `writes` authorization allow-list before showing the
+            # schema to the sim: it only generates a state_delta (which is clamped
+            # against `writes` regardless), so the write-authorization is not its
+            # concern — mirrors UserTool.as_tool_schema dropping `scope`. Copy, so
+            # the source dict the clamp reads downstream is unchanged.
+            sim_schema = {k: v for k, v in tool_schema.items() if k != "writes"}
+            prompt += f"Tool Schema: {json.dumps(sim_schema)}\n"
         prompt += (
             f"\nCURRENT STATE (JSON):\n{json.dumps(world)}\n\n"
             "Respond with ONLY a JSON object of the form:\n"
