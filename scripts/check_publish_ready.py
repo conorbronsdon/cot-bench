@@ -47,6 +47,14 @@ a scheduled publish when:
      prior board exposed this exact surface and the publish is blocked. A novel
      surface, or a missing/empty ledger (no prior publishes), passes.
 
+  9. The run's ungradable rate (issue #88) exceeds MAX_UNGRADABLE_RATE. An
+     ungradable episode is one the HARNESS left unscoreable — a simulator/judge
+     exception, no valid judge, or an incomplete graded world — not an in-task
+     tool error the agent could recover from. Above the ceiling the board would
+     silently drop or mis-score a meaningful slice of episodes, so a degraded run
+     is blocked rather than shipped (Inspect AI's fail_on_error proportion
+     model). Absent (legacy manifest) => skipped.
+
 Conditions 3-5 only trip via an explicit ``workflow_dispatch`` with non-default
 inputs; the scheduled path always uses the defaults, so it passes them silently.
 Conditions 6-7 only apply once the corpus actually contains templated scenarios.
@@ -67,7 +75,12 @@ import os
 import sys
 from pathlib import Path
 
-from eval.config import JUDGES, MIN_SCENARIOS_FOR_PUBLISH, RELIABILITY_RUNS
+from eval.config import (
+    JUDGES,
+    MAX_UNGRADABLE_RATE,
+    MIN_SCENARIOS_FOR_PUBLISH,
+    RELIABILITY_RUNS,
+)
 from eval.simulation.profiles import DEFAULT_SIM_PROFILE
 from eval.templating import DEFAULT_INSTANTIATION_SEED
 from scripts.record_published_surface import (
@@ -244,6 +257,28 @@ def check_publish_ready(
             "full-corpus leaderboard; re-run with --scenario-limit 0 (all scenarios) "
             "before publishing."
         )
+
+    # --- #88: ungradable-rate gate ------------------------------------------
+    # A run whose harness left too many episodes unscoreable (simulator errors,
+    # no valid judge, incomplete graded worlds) is degraded infrastructure, not a
+    # measurement — publishing it would silently drop or mis-score a meaningful
+    # slice of episodes. Block when the run's ungradable_rate exceeds the
+    # configured ceiling (Inspect AI's fail_on_error proportion model). Absent =>
+    # legacy manifest predating gradability accounting, skip.
+    gradability = manifest.get("gradability")
+    if gradability is not None:
+        rate = gradability.get("ungradable_rate")
+        if rate is not None and rate > MAX_UNGRADABLE_RATE:
+            n_ung = gradability.get("n_ungradable")
+            n_tot = gradability.get("n_episodes")
+            blockers.append(
+                f"ungradable rate was {rate:.1%} ({n_ung}/{n_tot} episodes), above the "
+                f"{MAX_UNGRADABLE_RATE:.0%} ceiling. These episodes were left unscoreable "
+                "by the harness (simulator error, no valid judge, or an incomplete graded "
+                "world), not by the agent — publishing would silently drop or mis-score "
+                "them. Investigate the harness faults (often a flaky simulator/judge "
+                "provider — check the per-row 'outcome' column) and re-run."
+            )
 
     if not blockers:
         completed = manifest.get("models_completed") or []

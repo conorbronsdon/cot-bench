@@ -304,3 +304,15 @@ SCENARIOS_PER_CATEGORY = 20
 # refuses to publish any run whose per-domain scenario count falls below this,
 # unless --allow-partial is passed for a deliberate preview.
 MIN_SCENARIOS_FOR_PUBLISH = 30
+
+# Maximum fraction of UNGRADABLE episodes (issue #88) a run may carry and still
+# be published. An ungradable episode is one the harness — not the agent — left
+# unscoreable: a simulator/harness exception, no valid judge, or an incomplete
+# graded world (see scripts/run_eval.episode_outcome). A run above this rate is
+# degraded infrastructure, not a measurement: its leaderboard would silently drop
+# or mis-score a meaningful slice of episodes. Modeled on Inspect AI's
+# fail_on_error proportion (UK AISI) — a small tolerance for transient faults,
+# but a hard stop before degradation becomes the story. The publish gate
+# (scripts/check_publish_ready.py) blocks a run whose ungradable_rate exceeds
+# this, unless --allow-partial is passed for a deliberate preview.
+MAX_UNGRADABLE_RATE = 0.05

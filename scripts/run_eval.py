@@ -19,6 +19,7 @@ from eval.artifacts import write_run_artifact
 from eval.config import (
     DEFAULT_SIMULATION,
     JUDGES,
+    MAX_UNGRADABLE_RATE,
     MODELS_UNDER_TEST,
     NULL_AGENT_MODEL,
     RELIABILITY_RUNS,
@@ -52,6 +53,7 @@ from eval.scoring.failure_modes import classify_failure, judge_reasoning_text
 from eval.scoring.judge import score_with_all_judges, score_with_all_judges_combined
 from eval.scoring.rubrics import (
     JUDGE_SYSTEM_PROMPT,
+    PASS_THRESHOLD,
     build_combined_prompt,
     build_task_completion_prompt,
     build_tool_selection_prompt,
@@ -290,6 +292,58 @@ def is_state_gradable(state_result, sim_result) -> bool:
     return int(getattr(sim_result, "tool_sim_parse_failures", 0) or 0) == 0
 
 
+# Episode outcome is a first-class three-valued result (issue #88), not pass/fail
+# with degraded runs silently averaged in as 0.0. ``UNGRADABLE`` rows are excluded
+# from efficacy/pass aggregates and counted toward the run's ungradable rate,
+# which the publish gate caps (Inspect AI's fail_on_error proportion model).
+OUTCOME_PASS = "pass"
+OUTCOME_FAIL = "fail"
+OUTCOME_UNGRADABLE = "ungradable"
+
+
+def episode_outcome(
+    efficacy,
+    *,
+    sim_result,
+    tc_result,
+    ts_result,
+    state_result,
+    state_gradable,
+) -> str:
+    """Classify one episode as pass / fail / ungradable (issue #88).
+
+    ``ungradable`` means the harness — not the agent — left the run unscoreable,
+    so folding it in as a 0.0 (or grading an incomplete world) would understate
+    the model and poison the board. Three harness-fault classes trigger it, in
+    priority order:
+
+    1. **Simulator / harness error.** The run raised mid-conversation
+       (``sim_result.error`` set, ``ended_by == "error"``). There is no
+       trustworthy transcript to grade.
+    2. **No valid judge.** A judge dimension had zero valid judges (every judge
+       parse-failed or api-failed), so its consensus score is a placeholder, not
+       a grade — efficacy built on it is meaningless.
+    3. **Incomplete graded world.** A stateful scenario whose world is not
+       gradable (a tool-sim parse failure dropped a mutation — see
+       ``is_state_gradable``): grading the partial world is misleading.
+
+    Distinct from an in-task tool error returned TO the agent (τ-bench
+    ``observation = f"Error: {e}"``), which is scorable — the agent may recover —
+    and never makes an episode ungradable.
+
+    Otherwise the episode is graded normally: ``pass`` iff efficacy reaches the
+    repo-wide ``PASS_THRESHOLD``, else ``fail``. Pure so the live and resume
+    paths classify identically.
+    """
+    if getattr(sim_result, "error", None) or getattr(sim_result, "ended_by", "") == "error":
+        return OUTCOME_UNGRADABLE
+    if tc_result.n_judges_valid == 0 or ts_result.n_judges_valid == 0:
+        return OUTCOME_UNGRADABLE
+    if state_result is not None and not state_gradable:
+        return OUTCOME_UNGRADABLE
+    return OUTCOME_PASS if efficacy >= PASS_THRESHOLD else OUTCOME_FAIL
+
+
 def build_result_row(
     scenario,
     agent_spec,
@@ -372,6 +426,18 @@ def build_result_row(
         # decision, surfaced so the exclusion is auditable per row.
         "state_gradable": state_gradable,
         "tool_sim_parse_failures": int(getattr(sim_result, "tool_sim_parse_failures", 0) or 0),
+        # First-class episode outcome (issue #88): pass / fail / ungradable. An
+        # ungradable row was left unscoreable by a harness fault (simulator error,
+        # no valid judge, or an incomplete graded world) — never a silent 0. The
+        # run's ungradable rate (computed in main from this column) gates publish.
+        "outcome": episode_outcome(
+            efficacy,
+            sim_result=sim_result,
+            tc_result=tc_result,
+            ts_result=ts_result,
+            state_result=state_result,
+            state_gradable=state_gradable,
+        ),
         "cost_usd": round(cost_usd, 6),
         "latency_ms": round(sim_result.total_latency_ms, 1),
         "total_turns": sim_result.total_turns,
@@ -1546,6 +1612,28 @@ def main():
         # (scripts/check_publish_ready.py) blocks a publish when this is set and
         # > 0, because a prefix-subset board is not comparable to the full corpus.
         "scenario_limit": args.scenario_limit,
+        # Run gradability (issue #88). The ungradable rate is the fraction of
+        # episodes the HARNESS (not the agent) left unscoreable — a simulator
+        # error, no valid judge, or an incomplete graded world. A degraded run is
+        # visibly poisoned, not silently shipped: the publish gate
+        # (scripts/check_publish_ready.py) blocks when this exceeds
+        # MAX_UNGRADABLE_RATE (Inspect AI's fail_on_error proportion model).
+        # Computed over EVERY episode this run produced (all models, all
+        # reliability repeats, holdout included) so it measures harness health.
+        "gradability": {
+            "n_episodes": len(all_results),
+            "n_ungradable": sum(1 for r in all_results if r.get("outcome") == OUTCOME_UNGRADABLE),
+            "ungradable_rate": (
+                round(
+                    sum(1 for r in all_results if r.get("outcome") == OUTCOME_UNGRADABLE)
+                    / len(all_results),
+                    4,
+                )
+                if all_results
+                else 0.0
+            ),
+            "max_rate": MAX_UNGRADABLE_RATE,
+        },
         "reliability_runs": args.reliability_runs,
         # Judge panel used for this run (H2). The publish gate
         # (scripts/check_publish_ready.py) blocks a scheduled commit when the
