@@ -100,6 +100,57 @@ def scenario_set_hash(scenarios_by_domain: dict) -> tuple[str, list[dict]]:
     return corpus.hexdigest(), entries
 
 
+def _canonical_template_bytes(template_data: dict) -> bytes:
+    """Canonical bytes for a RAW template dict (issue #60).
+
+    Identical serialization to :func:`canonical_scenario_bytes` — the difference
+    is only what is hashed: the on-disk template JSON *including* its
+    ``template_slots`` declaration, before any instantiation. Pinning the template
+    corpus this way means "which templates a run used" is tamper-evident
+    independently of the per-run instantiation seed.
+    """
+    return json.dumps(template_data, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def template_corpus_hash(templates_by_domain: dict) -> tuple[str, list[dict]]:
+    """Deterministic sha256 over the RAW template corpus (issue #60).
+
+    ``templates_by_domain`` maps a domain (or its string value) to a list of raw
+    scenario dicts as loaded from disk — templates carry ``template_slots``;
+    non-template scenarios are included verbatim, so this hash covers the WHOLE
+    authored corpus (the thing in git), not just the templated subset. The fold is
+    identical to :func:`scenario_set_hash` (per-scenario digest, sorted by id,
+    bound id-to-digest), so the same audit story applies.
+
+    This is the hash a run pre-registers as ``template_corpus`` — invariant to the
+    instantiation seed. The companion instantiated-corpus hash (which DOES depend
+    on the seed) is :func:`scenario_set_hash` over the instantiated Scenario
+    objects.
+    """
+    entries: list[dict] = []
+    for domain, templates in templates_by_domain.items():
+        domain_value = getattr(domain, "value", domain)
+        for data in templates:
+            digest = hashlib.sha256(_canonical_template_bytes(data)).hexdigest()
+            entries.append(
+                {
+                    "domain": domain_value,
+                    "scenario_id": data.get("id", ""),
+                    "sha256": digest,
+                    "templated": bool(data.get("template_slots")),
+                }
+            )
+    entries.sort(key=lambda e: e["scenario_id"])
+
+    corpus = hashlib.sha256()
+    for entry in entries:
+        corpus.update(entry["scenario_id"].encode("utf-8"))
+        corpus.update(b"\x00")
+        corpus.update(entry["sha256"].encode("utf-8"))
+        corpus.update(b"\n")
+    return corpus.hexdigest(), entries
+
+
 def holdout_set_hash(holdout_by_domain: dict) -> tuple[str, int]:
     """Compute the holdout corpus hash and count WITHOUT revealing its content.
 
@@ -208,6 +259,8 @@ def build_pre_registration(
     user_simulator_model: str | None = None,
     tool_simulator_model: str | None = None,
     user_sim_profile: str = DEFAULT_SIM_PROFILE,
+    templates_by_domain: dict | None = None,
+    instantiation_seed: int | None = None,
     artifacts_dir=None,
     trace_dir=None,
 ) -> dict:
@@ -236,8 +289,51 @@ def build_pre_registration(
       user/tool simulators are unseeded at temp > 0, so runs are not bit-for-bit
       reproducible.
     - ``judge_prompt_mode`` — "combined" (default) or "separate".
+    - ``templating`` — present only when ``templates_by_domain`` is supplied (issue
+      #60). Records the raw-template corpus hash (seed-invariant), the
+      ``instantiation_seed``, and the instantiated-corpus hash (== the
+      ``scenario_set`` hash, since the scenarios passed in are already
+      instantiated). ``None`` for runs with no templated scenarios.
     """
     corpus_hash, scenario_index = scenario_set_hash(scenarios_by_domain)
+
+    # Templating (issue #60). ``scenarios_by_domain`` already holds INSTANTIATED
+    # scenarios, so ``corpus_hash`` above IS the instantiated-corpus hash (the
+    # surface the run actually used). When templates were loaded we ALSO record
+    # the raw-template corpus hash (seed-invariant) and the instantiation seed, so
+    # a run with templated scenarios pre-registers all three — template content,
+    # the seed, and the exact instantiated surface — making the surface
+    # tamper-evident AND recomputable from (templates, seed). Omitted entirely
+    # when no templates were loaded, so non-templated runs are unchanged.
+    templating_block = None
+    if templates_by_domain is not None:
+        tmpl_hash, tmpl_index = template_corpus_hash(templates_by_domain)
+        n_templated = sum(1 for e in tmpl_index if e["templated"])
+    else:
+        n_templated = 0
+    # Only emit the block when at least one scenario is actually a template, so a
+    # run over the current (non-templated) corpus pre-registers EXACTLY as today —
+    # no spurious templating block, no behavior change. The seed is meaningless
+    # when nothing is templated.
+    if templates_by_domain is not None and n_templated > 0:
+        templating_block = {
+            "instantiation_seed": instantiation_seed,
+            "n_templated_scenarios": n_templated,
+            "template_corpus": {
+                "sha256": tmpl_hash,
+                "n_scenarios": len(tmpl_index),
+                "template_index": tmpl_index,
+            },
+            "instantiated_corpus_sha256": corpus_hash,
+            "note": (
+                "Anti-memorization templating (issue #60). 'template_corpus.sha256' "
+                "pins the raw authored templates (seed-invariant). "
+                "'instantiated_corpus_sha256' (== scenario_set.sha256) pins the "
+                "concrete surface this run used, which is a deterministic function "
+                "of the templates and 'instantiation_seed'. Re-running with the same "
+                "seed reproduces the same surface byte-for-byte."
+            ),
+        }
 
     scenario_ids_by_domain: dict[str, list[str]] = {}
     for domain, scenarios in scenarios_by_domain.items():
@@ -292,6 +388,7 @@ def build_pre_registration(
             "scenario_index": scenario_index,
         },
         "holdout_set": holdout_set,
+        "templating": templating_block,
         "judge_panel": {
             "judges": judge_panel,
             "resolved_model_note": (

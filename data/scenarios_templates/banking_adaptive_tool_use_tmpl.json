@@ -1,0 +1,563 @@
+{
+  "id": "banking_adaptive_tool_use_0000_59bb2918_tmpl",
+  "category": "adaptive_tool_use",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Nakamura",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "customer_id": {
+      "type": "customer_id",
+      "prefix": "CUST-",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "chk_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "sav_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "transfer_amount": {
+      "type": "amount",
+      "min": 200,
+      "max": 900,
+      "step": 50
+    },
+    "recurring_amount": {
+      "type": "amount",
+      "min": 25,
+      "max": 150,
+      "step": 25
+    },
+    "recurring_start": {
+      "type": "date",
+      "start": "2026-06-14",
+      "end": "2026-07-12"
+    },
+    "fraud_amount": {
+      "type": "amount",
+      "min": 19.99,
+      "max": 199.99,
+      "step": 10
+    },
+    "fraud_merchant": {
+      "type": "choice",
+      "options": [
+        "PRESTIGE MEMBERSHIPS",
+        "SUMMIT REWARDS CLUB",
+        "ELITE BENEFITS GROUP",
+        "VANTAGE PERKS LLC"
+      ]
+    },
+    "fraud_txn_id": {
+      "type": "digits",
+      "length": 3
+    },
+    "stmt_start": {
+      "type": "date",
+      "start": "2026-02-01",
+      "end": "2026-03-01"
+    },
+    "stmt_end": {
+      "type": "date",
+      "start": "2026-05-15",
+      "end": "2026-05-31"
+    }
+  },
+  "persona": {
+    "name": "{{first_name}} {{last_name}}",
+    "age": 74,
+    "occupation": "Retired schoolteacher",
+    "personality_traits": [
+      "confused",
+      "trusting",
+      "easily flustered"
+    ],
+    "tone": "gentle and uncertain, often apologizing",
+    "detail_level": "verbose",
+    "background": "Widowed and recently started managing finances on her own. Struggles with online banking and frequently mixes up her account types and what a 'transfer' versus a 'payment' means."
+  },
+  "user_goals": [
+    "Verify my identity so I can access my accounts and move money",
+    "Check how much is in my checking account because I am worried about bills bouncing",
+    "Check if any deposits to my checking account are still pending",
+    "Transfer ${{transfer_amount}} immediately from my savings account {{sav_num}} to my checking account {{chk_num}}",
+    "Set up a weekly recurring transfer of ${{recurring_amount}} from my savings account {{sav_num}} to my checking account {{chk_num}} starting {{recurring_start}}",
+    "Report the suspicious ${{fraud_amount}} charge from {{fraud_merchant}} on my checking account {{chk_num}} as fraud",
+    "Generate a balance confirmation letter for my savings account {{sav_num}} covering {{stmt_start}} through {{stmt_end}} to submit to the housing authority"
+  ],
+  "tools": [
+    {
+      "name": "verify_customer_identity",
+      "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
+      "parameters": [
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
+      ],
+      "response_schema": {
+        "verified": "boolean",
+        "customer_id": "string",
+        "verification_level": "string",
+        "message": "string"
+      }
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
+      ],
+      "response_schema": {
+        "current_balance": "number",
+        "available_balance": "number",
+        "pending_transactions": "number",
+        "as_of": "string"
+      }
+    },
+    {
+      "name": "get_transaction_history",
+      "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        },
+        {
+          "name": "end_date",
+          "type": "string",
+          "description": "End date (YYYY-MM-DD)",
+          "required": false
+        }
+      ],
+      "response_schema": {
+        "transactions": [
+          {
+            "id": "string",
+            "date": "string",
+            "amount": "number",
+            "merchant": "string",
+            "status": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_pending_deposits",
+      "description": "Check pending deposits and their expected clearing dates for an account. Requires verified identity. Useful for telling a customer when incoming funds will be available.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        }
+      ],
+      "response_schema": {
+        "pending_deposits": [
+          {
+            "amount": "number",
+            "source": "string",
+            "expected_clear_date": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "initiate_transfer",
+      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead — do not confuse the two.",
+      "parameters": [
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount in USD",
+          "required": true
+        },
+        {
+          "name": "memo",
+          "type": "string",
+          "description": "Transfer memo/description",
+          "required": false
+        }
+      ],
+      "response_schema": {
+        "transfer_id": "string",
+        "status": "string",
+        "from_balance_after": "number",
+        "to_balance_after": "number"
+      }
+    },
+    {
+      "name": "setup_recurring_transfer",
+      "description": "Set up a recurring automatic transfer on a schedule (daily/weekly/biweekly/monthly). Requires verified identity. This does NOT move money immediately; it schedules future transfers. For a single immediate move use initiate_transfer.",
+      "parameters": [
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount per transfer in USD",
+          "required": true
+        },
+        {
+          "name": "frequency",
+          "type": "string",
+          "description": "Frequency: 'daily', 'weekly', 'biweekly', 'monthly'",
+          "required": true,
+          "enum": [
+            "daily",
+            "weekly",
+            "biweekly",
+            "monthly"
+          ]
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "First transfer date (YYYY-MM-DD)",
+          "required": true
+        }
+      ],
+      "response_schema": {
+        "schedule_id": "string",
+        "status": "string",
+        "next_transfer_date": "string"
+      }
+    },
+    {
+      "name": "generate_account_statement",
+      "description": "Generate an official account statement or confirmation letter the customer can download or have delivered. Requires verified identity. Use statement_type 'balance_confirmation' for proof-of-funds letters.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "statement_type",
+          "type": "string",
+          "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'",
+          "required": true,
+          "enum": [
+            "full_statement",
+            "balance_confirmation",
+            "transaction_confirmation"
+          ]
+        },
+        {
+          "name": "date_range_start",
+          "type": "string",
+          "description": "Start date",
+          "required": false
+        },
+        {
+          "name": "date_range_end",
+          "type": "string",
+          "description": "End date",
+          "required": false
+        },
+        {
+          "name": "delivery_method",
+          "type": "string",
+          "description": "Method: 'email', 'mail', 'download'",
+          "required": true,
+          "enum": [
+            "email",
+            "mail",
+            "download"
+          ]
+        }
+      ],
+      "response_schema": {
+        "document_id": "string",
+        "status": "string",
+        "delivery_status": "string"
+      }
+    },
+    {
+      "name": "report_suspicious_transaction",
+      "description": "Flag a transaction as potentially fraudulent and open a fraud case. Requires verified identity. Use the transaction ID from get_transaction_history. Opening a case does not automatically reverse the charge.",
+      "parameters": [
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account with the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "transaction_id",
+          "type": "string",
+          "description": "ID of the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Why the customer believes it's suspicious",
+          "required": true
+        }
+      ],
+      "response_schema": {
+        "case_id": "string",
+        "status": "string",
+        "next_steps": "string"
+      }
+    }
+  ],
+  "initial_message": "Hello? Oh, I'm sorry to bother you. This is {{first_name}} {{last_name}}. I'm trying to handle all the banking by myself since my Harold passed away, and I'm afraid I'm quite lost. I think I need to move some money from our—the savings, I suppose? Harold always called it the 'rainy day' account—over to my checking because I have bills coming due and I just don't know if there's enough in there. I also saw a charge for something called '{{fraud_merchant}}' and I surely didn't join anything like that. Oh, and the housing authority needs an official letter showing what's in that savings account. I'm sorry, I'm all over the place. Could you help me sort this out?",
+  "difficulty": "hard",
+  "expected_tool_sequence": [
+    "verify_customer_identity",
+    "get_account_balance",
+    "get_transaction_history",
+    "get_pending_deposits",
+    "initiate_transfer",
+    "report_suspicious_transaction",
+    "setup_recurring_transfer",
+    "generate_account_statement"
+  ],
+  "schema_version": "0.2",
+  "authorship": {
+    "author_model": "moonshotai/kimi-k2.6",
+    "author_run": "2026-06-10-kimi-batch",
+    "human_reviewed_by": null,
+    "review_date": null
+  },
+  "ground_truth": {
+    "customer": {
+      "customer_id": "{{customer_id}}",
+      "ssn_last4": "{{ssn_last4}}",
+      "verified": false
+    },
+    "accounts": {
+      "PERS-CHK-{{chk_num}}": {
+        "type": "checking",
+        "balance": 450.0,
+        "available": 450.0
+      },
+      "PERS-SAV-{{sav_num}}": {
+        "type": "savings",
+        "balance": 12500.0,
+        "interest_rate_apy": 0.035
+      }
+    },
+    "transactions": {
+      "PERS-CHK-{{chk_num}}": [
+        {
+          "id": "TXN-{{fraud_txn_id}}",
+          "date": "2026-06-08",
+          "amount": "{{fraud_amount}}",
+          "merchant": "{{fraud_merchant}}",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-002",
+          "date": "2026-06-07",
+          "amount": -124.56,
+          "merchant": "PRODUCE MARKET",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-003",
+          "date": "2026-06-05",
+          "amount": -60.0,
+          "merchant": "PHARMACY",
+          "status": "posted"
+        }
+      ]
+    },
+    "pending_deposits": {
+      "PERS-CHK-{{chk_num}}": [
+        {
+          "id": "DEP-001",
+          "amount": 300.0,
+          "source": "MOBILE DEPOSIT - CHECK #1024",
+          "expected_clearing_date": "2026-06-11"
+        }
+      ]
+    },
+    "recurring_transfers": [],
+    "fraud_cases": [],
+    "generated_statements": []
+  },
+  "expected_state_changes": [
+    {
+      "assert": "accounts.PERS-CHK-{{chk_num}}.balance",
+      "op": "increased_by",
+      "value": "{{transfer_amount}}",
+      "goal": "Transfer ${{transfer_amount}} immediately from my savings account {{sav_num}} to my checking account {{chk_num}}"
+    },
+    {
+      "assert": "accounts.PERS-SAV-{{sav_num}}.balance",
+      "op": "decreased_by",
+      "value": "{{transfer_amount}}"
+    },
+    {
+      "assert": "recurring_transfers",
+      "op": "contains",
+      "match": {
+        "from_account_id": "PERS-SAV-{{sav_num}}",
+        "to_account_id": "PERS-CHK-{{chk_num}}",
+        "amount": "{{recurring_amount}}",
+        "frequency": "weekly",
+        "start_date": "{{recurring_start}}"
+      },
+      "goal": "Set up a weekly recurring transfer of ${{recurring_amount}} from my savings account {{sav_num}} to my checking account {{chk_num}} starting {{recurring_start}}"
+    },
+    {
+      "assert": "fraud_cases",
+      "op": "contains",
+      "match": {
+        "account_id": "PERS-CHK-{{chk_num}}",
+        "transaction_id": "TXN-{{fraud_txn_id}}",
+        "reason_contains": "fraud"
+      },
+      "goal": "Report the suspicious ${{fraud_amount}} charge from {{fraud_merchant}} on my checking account {{chk_num}} as fraud"
+    },
+    {
+      "assert": "generated_statements",
+      "op": "contains",
+      "match": {
+        "account_id": "PERS-SAV-{{sav_num}}",
+        "statement_type": "balance_confirmation",
+        "date_range_start": "{{stmt_start}}",
+        "date_range_end": "{{stmt_end}}",
+        "delivery_method": "email"
+      },
+      "goal": "Generate a balance confirmation letter for my savings account {{sav_num}} covering {{stmt_start}} through {{stmt_end}} to submit to the housing authority"
+    }
+  ],
+  "rubric_criteria": [
+    {
+      "id": "verify_before_account_access",
+      "text": "Agent called verify_customer_identity and obtained a successful verification before reading any balance, transaction, or making any change.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "one_time_transfer",
+      "text": "Agent used initiate_transfer (not setup_recurring_transfer) to move ${{transfer_amount}} from savings {{sav_num}} to checking {{chk_num}}.",
+      "dimension": "tool_selection",
+      "weight": 2.0
+    },
+    {
+      "id": "recurring_transfer_distinct_from_onetime",
+      "text": "Agent used setup_recurring_transfer for the weekly ${{recurring_amount}} schedule with frequency=weekly and start_date {{recurring_start}}, kept separate from the one-time ${{transfer_amount}} move.",
+      "dimension": "tool_selection",
+      "weight": 1.0
+    },
+    {
+      "id": "fraud_report_correct_txn",
+      "text": "Agent reported the ${{fraud_amount}} {{fraud_merchant}} charge (TXN-{{fraud_txn_id}}) as fraud via report_suspicious_transaction on checking {{chk_num}}.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "balance_letter_savings_dates",
+      "text": "Agent generated a balance_confirmation statement for savings {{sav_num}} covering {{stmt_start}} to {{stmt_end}}.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    },
+    {
+      "id": "addressed_pending_deposit",
+      "text": "Agent checked pending deposits on checking and told {{first_name}} about the incoming $300 mobile deposit and its clearing date.",
+      "dimension": "task_completion",
+      "weight": 1.0
+    }
+  ],
+  "criteria_authorship": {
+    "criteria_author_model": "anthropic/claude-opus-4.8",
+    "criteria_author_run": "2026-06-11-templates-demo"
+  }
+}

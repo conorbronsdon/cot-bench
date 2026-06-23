@@ -20,6 +20,14 @@ from pydantic import BaseModel, ValidationError
 
 from eval.config import MODELS_UNDER_TEST
 from eval.simulation.probes import PROBE_KINDS, PROBE_TURN_MAX, PROBE_TURN_MIN
+from eval.templating import (
+    DEFAULT_INSTANTIATION_SEED,
+    SLOT_TYPES,
+    TEMPLATE_SLOTS_KEY,
+    find_placeholders,
+    instantiate,
+    resolve_slots,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -417,6 +425,73 @@ def _validate_recovery_probe(scenario: ScenarioSchema) -> list[str]:
     return errors
 
 
+def _validate_template(data: dict) -> list[str]:
+    """Validate a ``template_slots`` declaration + slot/placeholder coherence (#60).
+
+    Checks, all on the RAW template (before instantiation):
+
+    - every slot declaration is an object with a known ``type`` (or a pinned
+      ``value``);
+    - ``choice`` slots carry a non-empty ``options`` list (the one type whose
+      generation can otherwise raise at instantiation);
+    - every ``{{slot}}`` referenced ANYWHERE in the scenario is declared, and
+      every declared slot is referenced somewhere — so a template can neither
+      reference an undeclared slot (instantiation would leave a literal ``{{…}}``)
+      nor declare a dead slot.
+
+    The placeholder scan deliberately ignores the ``template_slots`` block itself
+    (its keys ARE the slot names, not references) by scanning the rest of the dict.
+    """
+    errors: list[str] = []
+    slot_specs = data.get(TEMPLATE_SLOTS_KEY)
+    if not isinstance(slot_specs, dict) or not slot_specs:
+        errors.append(f"'{TEMPLATE_SLOTS_KEY}' must be a non-empty object when present")
+        return errors
+
+    declared = set(slot_specs)
+    for name, spec in slot_specs.items():
+        loc = f"{TEMPLATE_SLOTS_KEY}['{name}']"
+        if not isinstance(spec, dict):
+            errors.append(f"{loc}: declaration must be an object")
+            continue
+        if "value" in spec and "type" not in spec:
+            continue  # pinned literal, no generator
+        slot_type = spec.get("type")
+        if slot_type not in SLOT_TYPES:
+            errors.append(f"{loc}: unknown slot type {slot_type!r} (known: {list(SLOT_TYPES)})")
+        elif slot_type == "choice" and not spec.get("options"):
+            errors.append(f"{loc}: slot type 'choice' requires a non-empty 'options' list")
+
+    # Coherence: referenced (everywhere except the declaration block) vs declared.
+    referenced = find_placeholders({k: v for k, v in data.items() if k != TEMPLATE_SLOTS_KEY})
+    for missing in sorted(referenced - declared):
+        errors.append(
+            f"placeholder '{{{{{missing}}}}}' referenced but not declared in {TEMPLATE_SLOTS_KEY}"
+        )
+    for dead in sorted(declared - referenced):
+        errors.append(f"slot '{dead}' declared in {TEMPLATE_SLOTS_KEY} but never referenced")
+
+    # Stable-identifier guard: slots rotate surface VALUES only. The scenario id,
+    # criteria ids, and authorship records are stable keys — file/board identity,
+    # judge verdict round-trip keys, and the contamination audit trail — so a
+    # placeholder in any of them would silently rotate the key per seed.
+    if find_placeholders(data.get("id")):
+        errors.append("placeholders are not allowed in 'id' (stable scenario identifier)")
+    criteria = data.get("rubric_criteria")
+    if isinstance(criteria, list):
+        for i, crit in enumerate(criteria):
+            if isinstance(crit, dict) and find_placeholders(crit.get("id")):
+                errors.append(
+                    f"rubric_criteria[{i}]: placeholders are not allowed in criterion "
+                    "ids (stable scoring keys)"
+                )
+    for block in ("authorship", "criteria_authorship"):
+        if find_placeholders(data.get(block)):
+            errors.append(f"placeholders are not allowed in '{block}' (audit trail)")
+
+    return errors
+
+
 def validate_scenario_dict(data: dict) -> list[str]:
     """Validate an in-memory scenario dict. Returns list of error messages.
 
@@ -426,8 +501,29 @@ def validate_scenario_dict(data: dict) -> list[str]:
     EXACTLY the same rules whether it lives in a file or in memory. The error
     strings are stable and human-readable; the repair loop feeds them verbatim
     back to the author model.
+
+    Parameterized templates (issue #60): when ``data`` carries a
+    ``template_slots`` block, the declaration and slot/placeholder coherence are
+    validated first, then the template is INSTANTIATED with the default seed and
+    the rest of the schema/content checks run against the instantiated scenario —
+    so a template is held to exactly the same bar as a concrete scenario (its
+    assertions resolve, its criteria reference real entities, etc.). A scenario
+    with no ``template_slots`` is validated unchanged.
     """
     errors: list[str] = []
+
+    if data.get(TEMPLATE_SLOTS_KEY) is not None:
+        errors.extend(_validate_template(data))
+        # Don't try to instantiate an ill-formed template — slot resolution could
+        # raise and the placeholder errors above are the actionable ones.
+        if errors:
+            return errors
+        try:
+            resolve_slots(data.get("id", ""), data[TEMPLATE_SLOTS_KEY], DEFAULT_INSTANTIATION_SEED)
+        except ValueError as e:
+            return [f"template instantiation: {e}"]
+        # Validate the INSTANTIATED scenario against the full schema/content rules.
+        data = instantiate(data, DEFAULT_INSTANTIATION_SEED)
 
     # expected_state_changes assertions are kept as raw dicts (the JSON key
     # `assert` is a Python keyword, so a Pydantic field model would need an

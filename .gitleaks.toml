@@ -1,0 +1,30 @@
+# gitleaks configuration for COT Bench.
+#
+# Backstop against committing real provider API keys (OpenAI / Anthropic /
+# OpenRouter / Google / etc.). GitHub-native secret scanning needs Advanced
+# Security, which this repo does not have — so we run gitleaks in CI (see
+# .github/workflows/ci.yml) and, optionally, as a local pre-commit hook
+# (.pre-commit-config.yaml). Added after the 2026-06 incident review.
+#
+# Extends gitleaks' built-in ruleset (which already covers the major providers)
+# and only adds an allowlist for this repo's known-safe placeholders.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "COT Bench known-safe, non-secret matches"
+
+# Documentation/example placeholders are not real keys. .env.example ships the
+# `sk-...`, `sk-ant-...`, `sk-or-...` template values on purpose.
+paths = [
+  '''\.env\.example$''',
+]
+
+# Belt-and-braces: the literal placeholder strings, in case they appear in docs.
+regexes = [
+  '''sk-\.\.\.''',
+  '''sk-ant-\.\.\.''',
+  '''sk-or-\.\.\.''',
+  '''sk-proj-\.\.\.''',
+]
