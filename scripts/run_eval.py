@@ -275,6 +275,21 @@ def _round_or_none(value, ndigits):
     return round(value, ndigits)
 
 
+def is_state_gradable(state_result, sim_result) -> bool:
+    """Whether a run's deterministic state grade can be trusted (S3).
+
+    A stateful scenario (``state_result`` is not None) is NOT gradable when the
+    run had ≥1 tool-sim parse failure: a parse failure applied no state_delta, so
+    the final world is missing a mutation and grading it would be misleading. A
+    stateless scenario (``state_result`` is None — no ground_truth) is always
+    "gradable" in the trivial sense that there is nothing to null. Pure so the
+    live (run_eval) and resume (rows_from_artifacts) paths decide identically.
+    """
+    if state_result is None:
+        return True
+    return int(getattr(sim_result, "tool_sim_parse_failures", 0) or 0) == 0
+
+
 def build_result_row(
     scenario,
     agent_spec,
@@ -297,10 +312,29 @@ def build_result_row(
     ground_truth. The ``state_score`` / ``state_checks_passed`` /
     ``state_checks_total`` columns are floats/ints when present and ``None``
     otherwise (NaN once in a DataFrame), so aggregation must NaN-guard them.
+
+    S3: when a stateful scenario's world is non-gradable (a tool-sim parse
+    failure dropped a mutation — see ``is_state_gradable``), the state columns
+    are nulled and ``state_gradable`` is False so the row is excluded from state
+    aggregates rather than carrying a grade on a world known to be incomplete.
+    The decision is recomputed here from ``state_result`` + ``sim_result`` so the
+    resume path (which replays artifacts through this same builder) matches the
+    live path exactly.
     """
-    state_score = None if state_result is None else round(state_result["score"], 4)
-    state_checks_passed = None if state_result is None else state_result["n_passed"]
-    state_checks_total = None if state_result is None else state_result["n_total"]
+    state_gradable = is_state_gradable(state_result, sim_result)
+    # A non-gradable stateful world is treated like "no state result" for every
+    # state-derived column AND for failure classification, so nothing downstream
+    # grades the incomplete world.
+    effective_state_result = state_result if state_gradable else None
+    state_score = (
+        None if effective_state_result is None else round(effective_state_result["score"], 4)
+    )
+    state_checks_passed = (
+        None if effective_state_result is None else effective_state_result["n_passed"]
+    )
+    state_checks_total = (
+        None if effective_state_result is None else effective_state_result["n_total"]
+    )
     # Failure-mode taxonomy (issue #55): classify failed evaluations from signals
     # already on this row — deterministic state-grader / premature-end (#32)
     # evidence first, judge-reasoning keywords as assist, never a new LLM call.
@@ -309,7 +343,7 @@ def build_result_row(
     # reasoning lives in the consensus objects, not in the parquet.
     failure = classify_failure(
         efficacy,
-        state_result=state_result,
+        state_result=effective_state_result,
         premature_end=bool(getattr(sim_result, "premature_end", False)),
         judge_reasoning=judge_reasoning_text(tc_result, ts_result),
     )
@@ -329,6 +363,15 @@ def build_result_row(
         "state_score": state_score,
         "state_checks_passed": state_checks_passed,
         "state_checks_total": state_checks_total,
+        # State-gradability audit (S3). True for a clean stateful run and for
+        # stateless (no ground_truth) scenarios — both have a trustworthy (or
+        # absent) state grade; False ONLY for a stateful scenario whose world was
+        # left incomplete by ≥1 tool-sim parse failure, in which case the three
+        # state columns above are nulled so the row is excluded from state
+        # aggregates. ``tool_sim_parse_failures`` is the raw count behind the
+        # decision, surfaced so the exclusion is auditable per row.
+        "state_gradable": state_gradable,
+        "tool_sim_parse_failures": int(getattr(sim_result, "tool_sim_parse_failures", 0) or 0),
         "cost_usd": round(cost_usd, 6),
         "latency_ms": round(sim_result.total_latency_ms, 1),
         "total_turns": sim_result.total_turns,
@@ -571,7 +614,32 @@ def evaluate_scenario(
         sim_result.final_world,
         scenario.expected_state_changes,
     )
-    state_score = None if state_result is None else state_result["score"]
+
+    # State-gradability gate (S3). A tool-sim parse failure feeds raw text back to
+    # the agent with NO state_delta applied, so the final world is missing whatever
+    # mutation that call should have made. Grading a stateful scenario against a
+    # world known to be incomplete would produce a misleading state score, so when
+    # ≥1 tool-sim parse failure occurred on a STATEFUL scenario (state_result is
+    # not None) the state grade is non-gradable: the row's state score / checks are
+    # nulled and the row is excluded from state aggregates rather than carrying a
+    # grade on a missing mutation, and efficacy degrades to judge-only (same as a
+    # legacy no-ground_truth scenario). The gradability decision lives in
+    # ``state_gradable`` (computed once here) so the live and resume paths agree;
+    # build_result_row applies the same nulling from the same inputs. Stateless
+    # scenarios (state_result None) are unaffected.
+    state_gradable = is_state_gradable(state_result, sim_result)
+    if not state_gradable:
+        logger.warning(
+            "Scenario %s / %s: %d tool-sim parse failure(s) on a stateful scenario "
+            "— marking state grade non-gradable and excluding it from state aggregates.",
+            scenario.id,
+            agent_spec.name,
+            int(getattr(sim_result, "tool_sim_parse_failures", 0) or 0),
+        )
+
+    # State score feeding efficacy is nulled when the world is non-gradable, so
+    # efficacy degrades to judge-only exactly like a legacy no-ground_truth run.
+    state_score = state_result["score"] if (state_result is not None and state_gradable) else None
 
     # Compute efficacy (hybrid: judge dimensions + deterministic state, degrading
     # gracefully to 0.5/0.5 when there is no state score).
@@ -1472,6 +1540,12 @@ def main():
         # below (count is publishable; the holdout's per-domain breakdown stays
         # coarse to avoid hinting at its composition).
         "scenario_counts": {d.value: len(scenarios) for d, scenarios in public_by_domain.items()},
+        # Scenario cap for this run (S1). 0 means "all scenarios"; any positive
+        # value slices a fixed lexicographic prefix of each domain, producing a
+        # non-representative subset. The publish gate
+        # (scripts/check_publish_ready.py) blocks a publish when this is set and
+        # > 0, because a prefix-subset board is not comparable to the full corpus.
+        "scenario_limit": args.scenario_limit,
         "reliability_runs": args.reliability_runs,
         # Judge panel used for this run (H2). The publish gate
         # (scripts/check_publish_ready.py) blocks a scheduled commit when the

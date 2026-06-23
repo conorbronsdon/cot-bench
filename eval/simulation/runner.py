@@ -194,6 +194,16 @@ class SimulationResult:
     # recovery_rate denominator is auditable: a declared-but-never-fired probe
     # row carries probe_fired=False and recovered=None.
     probe_fired: bool = False
+    # Count of tool-sim responses that could not be parsed into a
+    # {response, state_delta} object (S3). Such a call feeds raw text back to the
+    # agent but applies NO state_delta, so the final world is missing whatever
+    # mutation that call should have made. We count them per run and surface the
+    # count on the row + artifact (mirroring user_actions_suppressed / probe_fired
+    # auditing) so a graded world known to be incomplete is never silently scored:
+    # on a STATEFUL scenario (one with ground_truth) a non-zero count makes the
+    # state grade non-gradable (see build_result_row's state_gradable). 0 for a
+    # clean run and for every stateless (no ground_truth) scenario.
+    tool_sim_parse_failures: int = 0
 
 
 @dataclass
@@ -639,6 +649,11 @@ class SimulationRunner:
         # agent_called trigger. All inert for the single-control majority.
         dc = scenario.dual_control
         self._agent_mutated_keys: set = set()
+        # Tool-sim parse-failure counter for THIS run (S3). Reset per run, exactly
+        # like _agent_mutated_keys above; incremented in _simulate_tool_stateful
+        # each time a stateful tool-sim response can't be parsed (so no state_delta
+        # is applied), and read at SimulationResult construction below.
+        self._tool_sim_parse_failures = 0
         user_mutated_keys: set = set()
         user_actions_fired = 0
         user_actions_suppressed = 0
@@ -745,6 +760,7 @@ class SimulationRunner:
                             self._recovery_verdict(scenario, world) if probe_fired else None
                         ),
                         probe_fired=probe_fired,
+                        tool_sim_parse_failures=self._tool_sim_parse_failures,
                     )
                 agent_latency = (time.perf_counter() - start) * 1000
                 total_latency_ms += agent_latency
@@ -1038,6 +1054,10 @@ class SimulationRunner:
             recovery_probe_kind=(scenario.recovery_probe.kind if scenario.recovery_probe else None),
             recovered=(self._recovery_verdict(scenario, world) if probe_fired else None),
             probe_fired=probe_fired,
+            # Tool-sim parse-failure count (S3): how many stateful tool-sim
+            # responses this run could not be parsed (so no state_delta applied).
+            # >0 on a stateful scenario makes the state grade non-gradable.
+            tool_sim_parse_failures=self._tool_sim_parse_failures,
         )
 
     def _extract_tool_calls(self, response, content: str, turn: int) -> tuple[list[ToolCall], bool]:
@@ -1200,6 +1220,12 @@ class SimulationRunner:
 
         parsed = _parse_sim_response(raw)
         if parsed is None:
+            # No state_delta is applied, so the world is now missing whatever
+            # mutation this call should have made. Count it (S3) so a stateful
+            # scenario with a dropped mutation can be flagged non-gradable rather
+            # than silently scored against an incomplete world. Guard getattr in
+            # case a tool-sim is invoked outside run_scenario (e.g. a unit test).
+            self._tool_sim_parse_failures = getattr(self, "_tool_sim_parse_failures", 0) + 1
             logger.warning(
                 "Tool-sim output for %s unparseable; feeding raw text back, no state_delta",
                 tool_call.tool_name,
