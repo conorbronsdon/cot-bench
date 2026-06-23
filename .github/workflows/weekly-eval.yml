@@ -4,7 +4,10 @@ on:
   # Schedule disabled after the 2026-06 spend incident: an uncapped scheduled
   # run drained every provider key by running to the job timeout (runs #16/#17).
   # Manual dispatch only until the new --max-cost guard + reduced timeout are
-  # validated with a real, watched run. Re-enable by uncommenting once verified.
+  # validated with a real, watched run. Re-enable by uncommenting once verified
+  # AND raising MAX_COST_DEFAULT (below) to a full-run size — $25 is a smoke cap
+  # and will truncate a scheduled run to a partial leaderboard. See the
+  # MAX_COST_DEFAULT note below for the sizing.
   # schedule:
   #   # Every Monday at 6:00 UTC
   #   - cron: '0 6 * * 1'
@@ -50,6 +53,18 @@ on:
 # full 6h timeout without ever publishing). run_eval's --max-cost stops
 # submitting new evaluations once actual accumulated spend (agent + simulators
 # + judges) crosses the cap, finishing in-flight work and writing all artifacts.
+#
+# IMPORTANT — $25 is a SMOKE-RUN figure, not a full-run cap. A complete public
+# panel run costs ~$319 (docs/launch-playbook.md: agents ~$90, sims ~$27,
+# judges ~$202). At $25 a full run budget-aborts after ~8% and publishes a
+# PARTIAL leaderboard. That is intentional while the schedule is off and runs
+# are small/watched. Re-enabling the weekly schedule therefore takes TWO
+# changes, not one: uncomment the cron below AND raise MAX_COST_DEFAULT to a
+# real full-run size (~$350, sized from the launch playbook). Bump the cron
+# without bumping this and the weekly run silently ships incomplete data —
+# a different failure swapped in for the spend failure this PR fixed.
+# The real hard ceiling lives provider-side: set per-account spend limits in
+# each provider console as a backstop independent of this soft, in-code cap.
 env:
   MAX_COST_DEFAULT: '25'
 
