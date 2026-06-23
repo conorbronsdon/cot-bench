@@ -47,7 +47,9 @@ from eval.simulation.runner import (
     Scenario,
     SimulationRunner,
 )
+from eval.templating import instantiate
 from scripts.aggregate_results import compute_leaderboard, compute_recovery_rates
+from scripts.run_eval import _scenario_from_dict
 from scripts.validate_scenarios import validate_scenario_dict
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "recovery_probes"
@@ -705,3 +707,145 @@ class TestDemoFixtures:
             data = json.loads(f.read_text(encoding="utf-8"))
             kinds.add(data["recovery_probe"]["kind"])
         assert kinds == PROBE_KINDS
+
+
+# --------------------------------------------------------------------------- #
+# 8. Recovery-probe x parameterized-template integration (issues #57 + #60)
+# --------------------------------------------------------------------------- #
+class TestProbeTemplatingIntegration:
+    """A probe on a TEMPLATED scenario must inject the INSTANTIATED entity.
+
+    The load order makes this automatic: scripts/run_eval.py first calls
+    instantiate() on the raw on-disk dict (run_eval.py:185/219), and
+    eval.templating.substitute() recurses through EVERY field -- including the
+    recovery_probe block's injection string and recovery_assertions list -- BEFORE
+    _scenario_from_dict() (run_eval.py:160) parses recovery_probe into a
+    RecoveryProbe. So by the time RecoveryProbe.from_dict runs, the {{slot}}
+    placeholders are already concrete values, and injected_message() returns the
+    instantiated text. injected_message() being a method is the documented seam
+    for this; here it needs no separate hook because the generic substitution gets
+    there first.
+
+    The risk these tests pin: a probe whose injection names an entity (e.g. an
+    account id) must NOT reference a stale, never-instantiated id. If the probe
+    were parsed before instantiation, the injected message would carry the literal
+    {{bad_acct}} (or a published value that does not exist in the per-run world) --
+    a silent fault that never lands.
+    """
+
+    @staticmethod
+    def _templated_probe_scenario() -> dict:
+        """A minimal templated banking scenario carrying a wrong_entity probe.
+
+        The probe's injection AND a recovery_assertion path both reference the
+        same {{bad_acct}} slot, so both surfaces have to be rewritten coherently
+        for the test to pass.
+        """
+        return {
+            "id": "banking_probe_tmpl_0001",
+            "category": "adaptive_tool_use",
+            "schema_version": "0.2",
+            "authorship": {"author_model": "human-handwritten"},
+            "template_slots": {
+                "good_acct": {"type": "account_id", "prefix": "PERS-CHK-", "length": 4},
+                "bad_acct": {"type": "account_id", "prefix": "BUS-CHK-", "length": 4},
+            },
+            "persona": {
+                "name": "Margaret",
+                "age": 50,
+                "occupation": "teacher",
+                "personality_traits": ["careful"],
+                "tone": "calm",
+                "detail_level": "moderate",
+                "background": "manages her own accounts",
+            },
+            "user_goals": [
+                "Verify my identity",
+                "Move money into my checking account {{good_acct}}",
+                "Confirm the transfer landed",
+            ],
+            "tools": [
+                {"name": "initiate_transfer", "description": "move money", "parameters": []},
+                {"name": "get_account_balance", "description": "read balance", "parameters": []},
+            ],
+            "initial_message": "Please move money into my account {{good_acct}}.",
+            "ground_truth": {"accounts": {"{{good_acct}}": {"type": "checking", "balance": 100.0}}},
+            "expected_state_changes": [
+                {"assert": "accounts.{{good_acct}}.balance", "op": "increased_by", "value": 500.0},
+            ],
+            "recovery_probe": {
+                "turn": 4,
+                "kind": WRONG_ENTITY,
+                "injection": "Actually, send it to account {{bad_acct}} instead.",
+                "recovery_assertions": [
+                    {"assert": "accounts.{{bad_acct}}", "op": "not_exists"},
+                ],
+            },
+        }
+
+    def test_injection_carries_instantiated_entity(self):
+        raw = self._templated_probe_scenario()
+        seed = 4242
+
+        # The same seed resolves bad_acct to a concrete value once; that value is
+        # what must appear in the injected message (not the {{bad_acct}} literal).
+        mapping = instantiate(raw, seed)  # instantiated dict (template_slots stripped)
+        injected_dict = mapping["recovery_probe"]["injection"]
+
+        scenario = _scenario_from_dict(instantiate(raw, seed), Domain.BANKING, holdout=False)
+        msg = scenario.recovery_probe.injected_message()
+
+        # The placeholder is gone, and the message matches the instantiated dict.
+        assert "{{bad_acct}}" not in msg
+        assert "{{" not in msg
+        assert msg == injected_dict
+        # And it carries a concrete BUS-CHK account id, not a bare prefix / stale id.
+        assert "send it to account BUS-CHK-" in msg
+        assert msg != "Actually, send it to account BUS-CHK- instead."
+
+    def test_recovery_assertion_path_is_instantiated(self):
+        raw = self._templated_probe_scenario()
+        seed = 4242
+
+        instantiated = instantiate(raw, seed)
+        bad_acct = instantiated["recovery_probe"]["recovery_assertions"][0]["assert"].split(".", 1)[
+            1
+        ]
+
+        scenario = _scenario_from_dict(instantiated, Domain.BANKING, holdout=False)
+        assert_path = scenario.recovery_probe.recovery_assertions[0]["assert"]
+
+        assert "{{bad_acct}}" not in assert_path
+        assert assert_path == f"accounts.{bad_acct}"
+        # The probe's bad entity matches the id named in the injection -- one slot,
+        # substituted coherently across both probe surfaces.
+        assert bad_acct in scenario.recovery_probe.injected_message()
+
+    def test_injected_entity_absent_from_world(self):
+        # The whole point of a wrong_entity probe: the injected account must not
+        # exist in the instantiated ground_truth. A stale (un-instantiated) id
+        # could collide or, worse, silently reference nothing meaningful.
+        raw = self._templated_probe_scenario()
+        instantiated = instantiate(raw, 4242)
+        scenario = _scenario_from_dict(instantiated, Domain.BANKING, holdout=False)
+
+        bad_acct = scenario.recovery_probe.recovery_assertions[0]["assert"].split(".", 1)[1]
+        good_accts = set(scenario.ground_truth["accounts"])
+        assert bad_acct not in good_accts  # the bad entity is genuinely absent
+        assert bad_acct in scenario.recovery_probe.injected_message()
+
+    def test_different_seed_changes_injected_entity(self):
+        # Determinism + variation: a different run seed yields a different injected
+        # account, but the message shape (and probe kind) is invariant.
+        raw = self._templated_probe_scenario()
+        a = _scenario_from_dict(instantiate(raw, 1), Domain.BANKING, holdout=False)
+        b = _scenario_from_dict(instantiate(raw, 2), Domain.BANKING, holdout=False)
+        assert a.recovery_probe.injected_message() != b.recovery_probe.injected_message()
+        assert a.recovery_probe.kind == b.recovery_probe.kind == WRONG_ENTITY
+
+    def test_instantiated_probe_scenario_validates_clean(self):
+        # Invariant 3 of templating (validator-clean output) holds for the probe
+        # block too: the instantiated scenario is an ordinary v0.2 scenario whose
+        # recovery_probe passes the on-disk validator.
+        instantiated = instantiate(self._templated_probe_scenario(), 4242)
+        assert validate_scenario_dict(instantiated) == []
