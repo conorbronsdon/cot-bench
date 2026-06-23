@@ -1,16 +1,58 @@
 {
   "id": "banking_adaptive_tool_use_0007",
   "category": "adaptive_tool_use",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Goldberg",
+        "Fitzgerald",
+        "Hollander",
+        "Andersson",
+        "Delacroix",
+        "Esposito"
+      ]
+    },
+    "cust_num": {
+      "type": "digits",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "chk_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "sav_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "disbursement_amount": {
+      "type": "amount",
+      "min": 400,
+      "max": 1200,
+      "step": 50
+    }
+  },
   "schema_version": "0.2",
   "authorship": {
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
   "persona": {
-    "name": "Hannah Goldberg",
+    "name": "{{first_name}} {{last_name}}",
     "age": 38,
     "occupation": "Nonprofit development director",
-    "personality_traits": ["thorough", "empathetic", "detail-oriented"],
+    "personality_traits": [
+      "thorough",
+      "empathetic",
+      "detail-oriented"
+    ],
     "tone": "warm and measured",
     "detail_level": "moderate",
     "background": "Manages a nonprofit's accounts and personal finances. Careful with documentation and asks for written confirmations she can file."
@@ -19,8 +61,8 @@
     "Confirm the current balance of the nonprofit's operating checking account",
     "Pull the last six transactions on the operating account so she can reconcile this month's incoming donations",
     "Get an official transaction-confirmation document emailed to her covering those donations for the board's records",
-    "Re-establish the monthly $750 grant disbursement transfer from operating checking to the program savings account that she realizes stopped running, starting on the 1st of next month",
-    "Send an immediate $750 catch-up transfer from operating checking to program savings to cover the month the disbursement failed to run",
+    "Re-establish the monthly ${{disbursement_amount}} grant disbursement transfer from operating checking to the program savings account that she realizes stopped running, starting on the 1st of next month",
+    "Send an immediate ${{disbursement_amount}} catch-up transfer from operating checking to program savings to cover the month the disbursement failed to run",
     "Ask what APY the program savings account is currently earning so she can report it to the board"
   ],
   "tools": [
@@ -28,9 +70,29 @@
       "name": "verify_customer_identity",
       "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
       "parameters": [
-        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
-        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
-        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
       ],
       "response_schema": {
         "verified": "boolean",
@@ -43,8 +105,23 @@
       "name": "get_account_balance",
       "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
       ],
       "response_schema": {
         "current_balance": "number",
@@ -57,23 +134,71 @@
       "name": "get_transaction_history",
       "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
-        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false},
-        {"name": "end_date", "type": "string", "description": "End date (YYYY-MM-DD)", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        },
+        {
+          "name": "end_date",
+          "type": "string",
+          "description": "End date (YYYY-MM-DD)",
+          "required": false
+        }
       ],
       "response_schema": {
-        "transactions": [{"id": "string", "date": "string", "amount": "number", "merchant": "string", "status": "string"}]
+        "transactions": [
+          {
+            "id": "string",
+            "date": "string",
+            "amount": "number",
+            "merchant": "string",
+            "status": "string"
+          }
+        ]
       }
     },
     {
       "name": "initiate_transfer",
-      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead — do not confuse the two.",
+      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead \u2014 do not confuse the two.",
       "parameters": [
-        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
-        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
-        {"name": "amount", "type": "number", "description": "Amount in USD", "required": true},
-        {"name": "memo", "type": "string", "description": "Transfer memo/description", "required": false}
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount in USD",
+          "required": true
+        },
+        {
+          "name": "memo",
+          "type": "string",
+          "description": "Transfer memo/description",
+          "required": false
+        }
       ],
       "response_schema": {
         "transfer_id": "string",
@@ -86,11 +211,42 @@
       "name": "setup_recurring_transfer",
       "description": "Set up a recurring automatic transfer on a schedule (daily/weekly/biweekly/monthly). Requires verified identity. This does NOT move money immediately; it schedules future transfers. For a single immediate move use initiate_transfer.",
       "parameters": [
-        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
-        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
-        {"name": "amount", "type": "number", "description": "Amount per transfer in USD", "required": true},
-        {"name": "frequency", "type": "string", "description": "Frequency: 'daily', 'weekly', 'biweekly', 'monthly'", "required": true, "enum": ["daily", "weekly", "biweekly", "monthly"]},
-        {"name": "start_date", "type": "string", "description": "First transfer date (YYYY-MM-DD)", "required": true}
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount per transfer in USD",
+          "required": true
+        },
+        {
+          "name": "frequency",
+          "type": "string",
+          "description": "Frequency: 'daily', 'weekly', 'biweekly', 'monthly'",
+          "required": true,
+          "enum": [
+            "daily",
+            "weekly",
+            "biweekly",
+            "monthly"
+          ]
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "First transfer date (YYYY-MM-DD)",
+          "required": true
+        }
       ],
       "response_schema": {
         "schedule_id": "string",
@@ -102,11 +258,46 @@
       "name": "generate_account_statement",
       "description": "Generate an official account statement or confirmation letter the customer can download or have delivered. Requires verified identity. Use statement_type 'balance_confirmation' for proof-of-funds letters.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
-        {"name": "date_range_start", "type": "string", "description": "Start date", "required": false},
-        {"name": "date_range_end", "type": "string", "description": "End date", "required": false},
-        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "statement_type",
+          "type": "string",
+          "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'",
+          "required": true,
+          "enum": [
+            "full_statement",
+            "balance_confirmation",
+            "transaction_confirmation"
+          ]
+        },
+        {
+          "name": "date_range_start",
+          "type": "string",
+          "description": "Start date",
+          "required": false
+        },
+        {
+          "name": "date_range_end",
+          "type": "string",
+          "description": "End date",
+          "required": false
+        },
+        {
+          "name": "delivery_method",
+          "type": "string",
+          "description": "Method: 'email', 'mail', 'download'",
+          "required": true,
+          "enum": [
+            "email",
+            "mail",
+            "download"
+          ]
+        }
       ],
       "response_schema": {
         "document_id": "string",
@@ -118,8 +309,29 @@
       "name": "get_interest_rates",
       "description": "Get current interest rates for account and product types. This is public rate information and does NOT require identity verification. Optionally scope by customer segment.",
       "parameters": [
-        {"name": "account_type", "type": "string", "description": "Type: 'savings', 'checking', 'cd', 'money_market'", "required": true, "enum": ["savings", "checking", "cd", "money_market"]},
-        {"name": "customer_segment", "type": "string", "description": "Segment: 'personal', 'business', 'premium'", "required": false, "enum": ["personal", "business", "premium"]}
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'savings', 'checking', 'cd', 'money_market'",
+          "required": true,
+          "enum": [
+            "savings",
+            "checking",
+            "cd",
+            "money_market"
+          ]
+        },
+        {
+          "name": "customer_segment",
+          "type": "string",
+          "description": "Segment: 'personal', 'business', 'premium'",
+          "required": false,
+          "enum": [
+            "personal",
+            "business",
+            "premium"
+          ]
+        }
       ],
       "response_schema": {
         "account_type": "string",
@@ -140,36 +352,117 @@
     "get_interest_rates"
   ],
   "ground_truth": {
-    "customer": {"customer_id": "CUST-41760", "name": "Hannah Goldberg", "ssn_last4": "6042", "verified": false, "segment": "business"},
+    "customer": {
+      "customer_id": "CUST-{{cust_num}}",
+      "name": "{{first_name}} {{last_name}}",
+      "ssn_last4": "{{ssn_last4}}",
+      "verified": false,
+      "segment": "business"
+    },
     "accounts": {
-      "NPO-CHK-601": {"type": "checking", "balance": 31500.00, "available": 31500.00, "label": "operating checking"},
-      "NPO-SAV-602": {"type": "savings", "balance": 18750.00, "available": 18750.00, "label": "program savings", "interest_rate_apy": 0.041}
+      "NPO-CHK-{{chk_num}}": {
+        "type": "checking",
+        "balance": 31500.0,
+        "available": 31500.0,
+        "label": "operating checking"
+      },
+      "NPO-SAV-{{sav_num}}": {
+        "type": "savings",
+        "balance": 18750.0,
+        "available": 18750.0,
+        "label": "program savings",
+        "interest_rate_apy": 0.041
+      }
     },
     "transactions": {
-      "NPO-CHK-601": [
-        {"id": "TXN-8806", "date": "2026-06-09", "amount": 500.00, "merchant": "DONATION - ONLINE GIVING", "status": "posted"},
-        {"id": "TXN-8805", "date": "2026-06-08", "amount": 2500.00, "merchant": "DONATION - GOLDSTEIN FAMILY FUND", "status": "posted"},
-        {"id": "TXN-8804", "date": "2026-06-07", "amount": -1200.00, "merchant": "OFFICE RENT", "status": "posted"},
-        {"id": "TXN-8803", "date": "2026-06-05", "amount": 1000.00, "merchant": "DONATION - MONTHLY SUSTAINER BATCH", "status": "posted"},
-        {"id": "TXN-8802", "date": "2026-06-02", "amount": 0.00, "merchant": "RECURRING TRANSFER FAILED - INSUFFICIENT SCHEDULE", "status": "failed"},
-        {"id": "TXN-8801", "date": "2026-06-01", "amount": -340.00, "merchant": "PROGRAM SUPPLIES", "status": "posted"}
+      "NPO-CHK-{{chk_num}}": [
+        {
+          "id": "TXN-8806",
+          "date": "2026-06-09",
+          "amount": 500.0,
+          "merchant": "DONATION - ONLINE GIVING",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8805",
+          "date": "2026-06-08",
+          "amount": 2500.0,
+          "merchant": "DONATION - GOLDSTEIN FAMILY FUND",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8804",
+          "date": "2026-06-07",
+          "amount": -1200.0,
+          "merchant": "OFFICE RENT",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8803",
+          "date": "2026-06-05",
+          "amount": 1000.0,
+          "merchant": "DONATION - MONTHLY SUSTAINER BATCH",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-8802",
+          "date": "2026-06-02",
+          "amount": 0.0,
+          "merchant": "RECURRING TRANSFER FAILED - INSUFFICIENT SCHEDULE",
+          "status": "failed"
+        },
+        {
+          "id": "TXN-8801",
+          "date": "2026-06-01",
+          "amount": -340.0,
+          "merchant": "PROGRAM SUPPLIES",
+          "status": "posted"
+        }
       ]
     },
     "recurring_transfers": [],
     "documents": [],
-    "interest_rates": {"savings": {"business": 0.041, "personal": 0.032}}
+    "interest_rates": {
+      "savings": {
+        "business": 0.041,
+        "personal": 0.032
+      }
+    }
   },
   "expected_state_changes": [
-    {"assert": "documents", "op": "contains",
-     "match": {"account_id": "NPO-CHK-601", "statement_type": "transaction_confirmation", "delivery_method": "email"},
-     "goal": "Get an official transaction-confirmation document emailed to her covering those donations for the board's records"},
-    {"assert": "recurring_transfers", "op": "contains",
-     "match": {"from": "NPO-CHK-601", "to": "NPO-SAV-602", "amount": 750, "frequency": "monthly"},
-     "goal": "Re-establish the monthly $750 grant disbursement transfer from operating checking to the program savings account that she realizes stopped running, starting on the 1st of next month"},
-    {"assert": "accounts.NPO-SAV-602.balance", "op": "increased_by", "value": 750.00,
-     "goal": "Send an immediate $750 catch-up transfer from operating checking to program savings to cover the month the disbursement failed to run"},
-    {"assert": "accounts.NPO-CHK-601.balance", "op": "decreased_by", "value": 750.00,
-     "goal": "Send an immediate $750 catch-up transfer from operating checking to program savings to cover the month the disbursement failed to run"}
+    {
+      "assert": "documents",
+      "op": "contains",
+      "match": {
+        "account_id": "NPO-CHK-{{chk_num}}",
+        "statement_type": "transaction_confirmation",
+        "delivery_method": "email"
+      },
+      "goal": "Get an official transaction-confirmation document emailed to her covering those donations for the board's records"
+    },
+    {
+      "assert": "recurring_transfers",
+      "op": "contains",
+      "match": {
+        "from": "NPO-CHK-{{chk_num}}",
+        "to": "NPO-SAV-{{sav_num}}",
+        "amount": "{{disbursement_amount}}",
+        "frequency": "monthly"
+      },
+      "goal": "Re-establish the monthly ${{disbursement_amount}} grant disbursement transfer from operating checking to the program savings account that she realizes stopped running, starting on the 1st of next month"
+    },
+    {
+      "assert": "accounts.NPO-SAV-{{sav_num}}.balance",
+      "op": "increased_by",
+      "value": "{{disbursement_amount}}",
+      "goal": "Send an immediate ${{disbursement_amount}} catch-up transfer from operating checking to program savings to cover the month the disbursement failed to run"
+    },
+    {
+      "assert": "accounts.NPO-CHK-{{chk_num}}.balance",
+      "op": "decreased_by",
+      "value": "{{disbursement_amount}}",
+      "goal": "Send an immediate ${{disbursement_amount}} catch-up transfer from operating checking to program savings to cover the month the disbursement failed to run"
+    }
   ],
   "rubric_criteria": [
     {
@@ -180,19 +473,19 @@
     },
     {
       "id": "transaction_confirmation_emailed",
-      "text": "Agent generated a transaction_confirmation document for NPO-CHK-601 delivered by email for the board records.",
+      "text": "Agent generated a transaction_confirmation document for NPO-CHK-{{chk_num}} delivered by email for the board records.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "reestablish_monthly_750",
-      "text": "Agent re-established the monthly recurring $750 transfer from operating checking NPO-CHK-601 to program savings NPO-SAV-602.",
+      "text": "Agent re-established the monthly recurring ${{disbursement_amount}} transfer from operating checking NPO-CHK-{{chk_num}} to program savings NPO-SAV-{{sav_num}}.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "catchup_one_time_750",
-      "text": "Agent sent a separate one-time $750 catch-up transfer via initiate_transfer, distinct from the recurring schedule.",
+      "text": "Agent sent a separate one-time ${{disbursement_amount}} catch-up transfer via initiate_transfer, distinct from the recurring schedule.",
       "dimension": "tool_selection",
       "weight": 2.0
     },

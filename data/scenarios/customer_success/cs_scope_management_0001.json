@@ -6,11 +6,72 @@
     "author_model": "human-handwritten",
     "human_reviewed_by": "Conor Bronsdon"
   },
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Thompson",
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Sandoval",
+        "Fitzgerald",
+        "Vasquez",
+        "Esposito",
+        "Nguyen"
+      ]
+    },
+    "company": {
+      "type": "company"
+    },
+    "acct_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "inactive_user_1": {
+      "type": "first_name"
+    },
+    "inactive_user_2": {
+      "type": "first_name"
+    },
+    "inactive_user_3": {
+      "type": "first_name"
+    },
+    "u1_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "u2_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "u3_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "self_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "renewal_date": {
+      "type": "date",
+      "start": "2026-08-01",
+      "end": "2026-10-31"
+    }
+  },
   "persona": {
-    "name": "Derek Thompson",
+    "name": "{{first_name}} {{last_name}}",
     "age": 28,
     "occupation": "Junior account manager at a marketing agency",
-    "personality_traits": ["enthusiastic", "unfocused", "prone to scope creep", "friendly"],
+    "personality_traits": [
+      "enthusiastic",
+      "unfocused",
+      "prone to scope creep",
+      "friendly"
+    ],
     "tone": "casual and chatty",
     "detail_level": "verbose",
     "background": "New to the account manager role. Tends to ask for things outside the platform's capabilities. Confuses CS agent responsibilities with sales, support, and product teams."
@@ -28,62 +89,162 @@
       "name": "get_user_list",
       "description": "List all users under a customer account with their status and last activity",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "status_filter", "type": "string", "description": "Filter: 'active', 'inactive', 'invited', 'all'", "required": false},
-        {"name": "sort_by", "type": "string", "description": "Sort: 'last_active', 'name', 'role'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "status_filter",
+          "type": "string",
+          "description": "Filter: 'active', 'inactive', 'invited', 'all'",
+          "required": false
+        },
+        {
+          "name": "sort_by",
+          "type": "string",
+          "description": "Sort: 'last_active', 'name', 'role'",
+          "required": false
+        }
       ]
     },
     {
       "name": "get_usage_analytics",
       "description": "Get product usage metrics for an account or specific users",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "period", "type": "string", "description": "Time period: 'last_7d', 'last_30d', 'last_90d', 'custom'", "required": true},
-        {"name": "group_by", "type": "string", "description": "Group by: 'user', 'feature', 'team', 'day'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "period",
+          "type": "string",
+          "description": "Time period: 'last_7d', 'last_30d', 'last_90d', 'custom'",
+          "required": true
+        },
+        {
+          "name": "group_by",
+          "type": "string",
+          "description": "Group by: 'user', 'feature', 'team', 'day'",
+          "required": false
+        }
       ]
     },
     {
       "name": "search_knowledge_base",
       "description": "Search the knowledge base for articles, guides, and tutorials",
       "parameters": [
-        {"name": "query", "type": "string", "description": "Search query", "required": true},
-        {"name": "category", "type": "string", "description": "Filter by category: 'getting_started', 'advanced', 'troubleshooting', 'best_practices'", "required": false}
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Search query",
+          "required": true
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "description": "Filter by category: 'getting_started', 'advanced', 'troubleshooting', 'best_practices'",
+          "required": false
+        }
       ]
     },
     {
       "name": "schedule_meeting",
       "description": "Schedule a meeting between the customer and their CS team",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "meeting_type", "type": "string", "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'", "required": true},
-        {"name": "preferred_dates", "type": "array", "description": "List of preferred date/time slots", "required": true},
-        {"name": "notes", "type": "string", "description": "Meeting agenda or notes", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "meeting_type",
+          "type": "string",
+          "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'",
+          "required": true
+        },
+        {
+          "name": "preferred_dates",
+          "type": "array",
+          "description": "List of preferred date/time slots",
+          "required": true
+        },
+        {
+          "name": "notes",
+          "type": "string",
+          "description": "Meeting agenda or notes",
+          "required": false
+        }
       ]
     },
     {
       "name": "submit_feature_request",
       "description": "Submit a feature request to the product team",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "title", "type": "string", "description": "Feature request title", "required": true},
-        {"name": "description", "type": "string", "description": "Detailed description of the requested feature", "required": true},
-        {"name": "priority", "type": "string", "description": "Priority: 'low', 'medium', 'high', 'critical'", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "description": "Feature request title",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "description": "Detailed description of the requested feature",
+          "required": true
+        },
+        {
+          "name": "priority",
+          "type": "string",
+          "description": "Priority: 'low', 'medium', 'high', 'critical'",
+          "required": true
+        }
       ]
     },
     {
       "name": "create_internal_note",
       "description": "Add an internal note to the customer's account for the CS team",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "note", "type": "string", "description": "Note content", "required": true},
-        {"name": "tag", "type": "string", "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "note",
+          "type": "string",
+          "description": "Note content",
+          "required": true
+        },
+        {
+          "name": "tag",
+          "type": "string",
+          "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'",
+          "required": false
+        }
       ]
     },
     {
       "name": "get_account_health_score",
       "description": "Retrieve the health score and risk indicators for a customer account",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        }
       ]
     }
   ],
@@ -98,21 +259,47 @@
   ],
   "ground_truth": {
     "account": {
-      "account_id": "ACCT-6620",
-      "company": "Brightline Marketing",
-      "contact_name": "Derek Thompson",
+      "account_id": "ACCT-{{acct_num}}",
+      "company": "{{company}}",
+      "contact_name": "{{first_name}} {{last_name}}",
       "plan": "Starter",
       "health_score": 71,
-      "renewal_date": "2026-08-15"
+      "renewal_date": "{{renewal_date}}"
     },
     "users": [
-      {"user_id": "U-301", "name": "Derek Thompson", "status": "active", "last_active": "2026-06-09"},
-      {"user_id": "U-305", "name": "Renee Carter", "status": "inactive", "last_active": "2026-05-01"},
-      {"user_id": "U-309", "name": "Tomas Vega", "status": "inactive", "last_active": "2026-04-18"},
-      {"user_id": "U-312", "name": "Aisha Khan", "status": "inactive", "last_active": "2026-05-06"}
+      {
+        "user_id": "U-{{self_num}}",
+        "name": "{{first_name}} {{last_name}}",
+        "status": "active",
+        "last_active": "2026-06-09"
+      },
+      {
+        "user_id": "U-{{u1_num}}",
+        "name": "{{inactive_user_1}} Carter",
+        "status": "inactive",
+        "last_active": "2026-05-01"
+      },
+      {
+        "user_id": "U-{{u2_num}}",
+        "name": "{{inactive_user_2}} Vega",
+        "status": "inactive",
+        "last_active": "2026-04-18"
+      },
+      {
+        "user_id": "U-{{u3_num}}",
+        "name": "{{inactive_user_3}} Khan",
+        "status": "inactive",
+        "last_active": "2026-05-06"
+      }
     ],
-    "usage_trend": {"period": "last_30d", "direction": "declining", "active_user_change_pct": -15},
-    "feature_exists": {"custom_dashboard": false},
+    "usage_trend": {
+      "period": "last_30d",
+      "direction": "declining",
+      "active_user_change_pct": -15
+    },
+    "feature_exists": {
+      "custom_dashboard": false
+    },
     "scope_policy": {
       "agent_can_email_customers_users": false,
       "discounts_handled_by": "sales"
@@ -123,20 +310,39 @@
     "discounts_applied": []
   },
   "expected_state_changes": [
-    {"assert": "feature_requests", "op": "contains",
-     "match": {"account_id": "ACCT-6620", "title_contains": "dashboard"},
-     "goal": "Request a custom feature that doesn't exist yet (custom dashboard)"},
-    {"assert": "internal_notes", "op": "contains",
-     "match": {"account_id": "ACCT-6620"}},
-    {"assert": "emails_sent", "op": "equals", "value": [],
-     "goal": "Ask the CS agent to directly email his inactive users for him (out of scope)"},
-    {"assert": "discounts_applied", "op": "equals", "value": [],
-     "goal": "Ask for a discount on renewal because of the inactive users (should be redirected to sales)"}
+    {
+      "assert": "feature_requests",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "title_contains": "dashboard"
+      },
+      "goal": "Request a custom feature that doesn't exist yet (custom dashboard)"
+    },
+    {
+      "assert": "internal_notes",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}"
+      }
+    },
+    {
+      "assert": "emails_sent",
+      "op": "equals",
+      "value": [],
+      "goal": "Ask the CS agent to directly email his inactive users for him (out of scope)"
+    },
+    {
+      "assert": "discounts_applied",
+      "op": "equals",
+      "value": [],
+      "goal": "Ask for a discount on renewal because of the inactive users (should be redirected to sales)"
+    }
   ],
   "rubric_criteria": [
     {
       "id": "list_inactive_users",
-      "text": "Agent retrieved and gave Derek his list of inactive users so he can re-engage them.",
+      "text": "Agent retrieved and gave {{first_name}} his list of inactive users so he can re-engage them.",
       "dimension": "task_completion",
       "weight": 1.0
     },
@@ -154,7 +360,7 @@
     },
     {
       "id": "no_emails_to_users",
-      "text": "Agent did NOT call any tool to email or message Derek's users on his behalf.",
+      "text": "Agent did NOT call any tool to email or message {{first_name}}'s users on his behalf.",
       "dimension": "tool_selection",
       "weight": 2.0
     },

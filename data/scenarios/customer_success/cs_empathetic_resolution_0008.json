@@ -6,14 +6,91 @@
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Tanaka",
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Sandoval",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "company": {
+      "type": "choice",
+      "options": [
+        "Keystone Fintech",
+        "Northwind Logistics",
+        "Apex Dynamics",
+        "Sterling Components",
+        "Vantage Analytics",
+        "Meridian Foods"
+      ]
+    },
+    "acct_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "csm_name": {
+      "type": "first_name"
+    },
+    "self_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "u2_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "u3_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "u4_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "u5_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "inactive_user_2": {
+      "type": "first_name"
+    },
+    "inactive_user_3": {
+      "type": "first_name"
+    },
+    "inactive_user_4": {
+      "type": "first_name"
+    },
+    "active_user_5": {
+      "type": "first_name"
+    },
+    "renewal_date": {
+      "type": "date",
+      "start": "2026-07-01",
+      "end": "2026-09-15"
+    }
+  },
   "persona": {
-    "name": "Yuki Tanaka",
+    "name": "{{first_name}} {{last_name}}",
     "age": 38,
     "occupation": "Director of Revenue Operations at an enterprise fintech",
-    "personality_traits": ["analytical", "process-driven", "skeptical", "thorough"],
+    "personality_traits": [
+      "analytical",
+      "process-driven",
+      "skeptical",
+      "thorough"
+    ],
     "tone": "measured and precise",
     "detail_level": "verbose",
-    "background": "Fought hard internally to adopt this tool and genuinely believes in it, but her team simply won't use it and the renewal conversation is weeks out. She's demoralized — she sees the value, can't get others to, and feels like she's defending a decision no one else backs."
+    "background": "Fought hard internally to adopt this tool and genuinely believes in it, but her team simply won't use it and the renewal conversation is weeks out. She's demoralized \u2014 she sees the value, can't get others to, and feels like she's defending a decision no one else backs."
   },
   "user_goals": [
     "Get the hard adoption numbers showing how little her team is actually using the tool",
@@ -28,8 +105,18 @@
       "name": "get_account",
       "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
       "parameters": [
-        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
-        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Company name, contact name, email, or account ID to search for",
+          "required": true
+        },
+        {
+          "name": "include_contacts",
+          "type": "boolean",
+          "description": "Include the list of contacts on the account",
+          "required": false
+        }
       ],
       "response_schema": {
         "account_id": "string",
@@ -44,16 +131,38 @@
       "name": "get_usage_analytics",
       "description": "Get product usage metrics for an account or specific users.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "period", "type": "string", "description": "Time period: 'last_7d', 'last_30d', 'last_90d', 'custom'", "required": true},
-        {"name": "group_by", "type": "string", "description": "Group by: 'user', 'feature', 'team', 'day'", "required": false},
-        {"name": "user_ids", "type": "array", "description": "Filter to specific user IDs", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "period",
+          "type": "string",
+          "description": "Time period: 'last_7d', 'last_30d', 'last_90d', 'custom'",
+          "required": true
+        },
+        {
+          "name": "group_by",
+          "type": "string",
+          "description": "Group by: 'user', 'feature', 'team', 'day'",
+          "required": false
+        },
+        {
+          "name": "user_ids",
+          "type": "array",
+          "description": "Filter to specific user IDs",
+          "required": false
+        }
       ],
       "response_schema": {
         "period": "string",
         "active_users": "number",
         "active_user_change_pct": "number",
-        "feature_usage": ["object"],
+        "feature_usage": [
+          "object"
+        ],
         "trend": "string"
       }
     },
@@ -61,12 +170,29 @@
       "name": "get_user_list",
       "description": "List all users under a customer account with their status and last activity.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "status_filter", "type": "string", "description": "Filter: 'active', 'inactive', 'invited', 'all'", "required": false},
-        {"name": "sort_by", "type": "string", "description": "Sort: 'last_active', 'name', 'role'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "status_filter",
+          "type": "string",
+          "description": "Filter: 'active', 'inactive', 'invited', 'all'",
+          "required": false
+        },
+        {
+          "name": "sort_by",
+          "type": "string",
+          "description": "Sort: 'last_active', 'name', 'role'",
+          "required": false
+        }
       ],
       "response_schema": {
-        "users": ["object"],
+        "users": [
+          "object"
+        ],
         "total_count": "number"
       }
     },
@@ -74,11 +200,36 @@
       "name": "schedule_meeting",
       "description": "Schedule a meeting between the customer and their CS team.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "meeting_type", "type": "string", "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'", "required": true},
-        {"name": "preferred_dates", "type": "array", "description": "List of preferred date/time slots", "required": true},
-        {"name": "attendees", "type": "array", "description": "Email addresses of attendees", "required": false},
-        {"name": "notes", "type": "string", "description": "Meeting agenda or notes", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "meeting_type",
+          "type": "string",
+          "description": "Type: 'training', 'qbr', 'support', 'onboarding', 'executive_review'",
+          "required": true
+        },
+        {
+          "name": "preferred_dates",
+          "type": "array",
+          "description": "List of preferred date/time slots",
+          "required": true
+        },
+        {
+          "name": "attendees",
+          "type": "array",
+          "description": "Email addresses of attendees",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "string",
+          "description": "Meeting agenda or notes",
+          "required": false
+        }
       ],
       "response_schema": {
         "meeting_id": "string",
@@ -91,10 +242,30 @@
       "name": "submit_feature_request",
       "description": "Submit a feature request to the product team. Use this when a customer asks for functionality that does not exist yet; it records the ask and routes it to product. It does not build or promise the feature.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "title", "type": "string", "description": "Feature request title", "required": true},
-        {"name": "description", "type": "string", "description": "Detailed description of the requested feature", "required": true},
-        {"name": "priority", "type": "string", "description": "Priority: 'low', 'medium', 'high', 'critical'", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "description": "Feature request title",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "description": "Detailed description of the requested feature",
+          "required": true
+        },
+        {
+          "name": "priority",
+          "type": "string",
+          "description": "Priority: 'low', 'medium', 'high', 'critical'",
+          "required": true
+        }
       ],
       "response_schema": {
         "request_id": "string",
@@ -104,11 +275,26 @@
     },
     {
       "name": "create_internal_note",
-      "description": "Add an internal note to the customer's account for the CS team. Internal only — the customer never sees this. Use this to record context, risk flags, or follow-ups.",
+      "description": "Add an internal note to the customer's account for the CS team. Internal only \u2014 the customer never sees this. Use this to record context, risk flags, or follow-ups.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "note", "type": "string", "description": "Note content", "required": true},
-        {"name": "tag", "type": "string", "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "note",
+          "type": "string",
+          "description": "Note content",
+          "required": true
+        },
+        {
+          "name": "tag",
+          "type": "string",
+          "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'",
+          "required": false
+        }
       ],
       "response_schema": {
         "note_id": "string",
@@ -117,7 +303,7 @@
       }
     }
   ],
-  "initial_message": "I'll be candid with you. I went to bat for this tool internally, and I still believe in it — but my team just won't touch it, and renewal is coming up. I'm tired of being the only one defending a decision nobody else stands behind. I need the real adoption picture, and I need something concrete I can take back to my team, or I don't know how I keep making this case.",
+  "initial_message": "I'll be candid with you. I went to bat for this tool internally, and I still believe in it \u2014 but my team just won't touch it, and renewal is coming up. I'm tired of being the only one defending a decision nobody else stands behind. I need the real adoption picture, and I need something concrete I can take back to my team, or I don't know how I keep making this case.",
   "difficulty": "medium",
   "expected_tool_sequence": [
     "get_account",
@@ -129,40 +315,97 @@
   ],
   "ground_truth": {
     "account": {
-      "account_id": "ACCT-7788",
-      "company": "Keystone Fintech",
-      "contact_name": "Yuki Tanaka",
+      "account_id": "ACCT-{{acct_num}}",
+      "company": "{{company}}",
+      "contact_name": "{{first_name}} {{last_name}}",
       "plan": "Enterprise",
-      "renewal_date": "2026-07-15",
-      "csm_owner": "CSM-Raj"
+      "renewal_date": "{{renewal_date}}",
+      "csm_owner": "CSM-{{csm_name}}"
     },
-    "usage_trend": {"period": "last_90d", "direction": "flat_low", "active_user_change_pct": -8, "active_users": 6},
+    "usage_trend": {
+      "period": "last_90d",
+      "direction": "flat_low",
+      "active_user_change_pct": -8,
+      "active_users": 6
+    },
     "users": [
-      {"user_id": "U-501", "name": "Yuki Tanaka", "status": "active", "last_active": "2026-06-10"},
-      {"user_id": "U-509", "name": "Bryan Holt", "status": "inactive", "last_active": "2026-04-02"},
-      {"user_id": "U-515", "name": "Carla Mendez", "status": "inactive", "last_active": "2026-03-28"},
-      {"user_id": "U-522", "name": "Devon Ray", "status": "inactive", "last_active": "2026-04-09"},
-      {"user_id": "U-530", "name": "Aiko Sato", "status": "active", "last_active": "2026-06-07"}
+      {
+        "user_id": "U-{{self_num}}",
+        "name": "{{first_name}} {{last_name}}",
+        "status": "active",
+        "last_active": "2026-06-10"
+      },
+      {
+        "user_id": "U-{{u2_num}}",
+        "name": "{{inactive_user_2}} Holt",
+        "status": "inactive",
+        "last_active": "2026-04-02"
+      },
+      {
+        "user_id": "U-{{u3_num}}",
+        "name": "{{inactive_user_3}} Mendez",
+        "status": "inactive",
+        "last_active": "2026-03-28"
+      },
+      {
+        "user_id": "U-{{u4_num}}",
+        "name": "{{inactive_user_4}} Ray",
+        "status": "inactive",
+        "last_active": "2026-04-09"
+      },
+      {
+        "user_id": "U-{{u5_num}}",
+        "name": "{{active_user_5}} Sato",
+        "status": "active",
+        "last_active": "2026-06-07"
+      }
     ],
     "feature_usage": [
-      {"feature": "dashboards", "adoption_pct": 22},
-      {"feature": "bulk_actions", "adoption_pct": 4},
-      {"feature": "exports", "adoption_pct": 31}
+      {
+        "feature": "dashboards",
+        "adoption_pct": 22
+      },
+      {
+        "feature": "bulk_actions",
+        "adoption_pct": 4
+      },
+      {
+        "feature": "exports",
+        "adoption_pct": 31
+      }
     ],
     "meetings": [],
     "feature_requests": [],
     "internal_notes": []
   },
   "expected_state_changes": [
-    {"assert": "meetings", "op": "contains",
-     "match": {"account_id": "ACCT-7788", "meeting_type": "training"},
-     "goal": "Get a CS-led training session booked to try to win her team back before renewal"},
-    {"assert": "feature_requests", "op": "contains",
-     "match": {"account_id": "ACCT-7788"},
-     "goal": "Have one specific blocker her team keeps complaining about submitted as a feature request so she has something concrete to bring back to them"},
-    {"assert": "internal_notes", "op": "contains",
-     "match": {"account_id": "ACCT-7788", "note_contains": "champion", "tag": "churn_risk"},
-     "goal": "Have the CS team log that she's a committed champion losing steam and the renewal is at risk"}
+    {
+      "assert": "meetings",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "meeting_type": "training"
+      },
+      "goal": "Get a CS-led training session booked to try to win her team back before renewal"
+    },
+    {
+      "assert": "feature_requests",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}"
+      },
+      "goal": "Have one specific blocker her team keeps complaining about submitted as a feature request so she has something concrete to bring back to them"
+    },
+    {
+      "assert": "internal_notes",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "note_contains": "champion",
+        "tag": "churn_risk"
+      },
+      "goal": "Have the CS team log that she's a committed champion losing steam and the renewal is at risk"
+    }
   ],
   "rubric_criteria": [
     {

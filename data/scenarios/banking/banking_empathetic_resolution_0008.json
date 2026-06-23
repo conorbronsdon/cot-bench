@@ -2,15 +2,54 @@
   "id": "banking_empathetic_resolution_0008",
   "category": "empathetic_resolution",
   "schema_version": "0.2",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Nakamura",
+        "Sandoval",
+        "Petrova",
+        "Fitzgerald",
+        "Vasquez"
+      ]
+    },
+    "customer_id": {
+      "type": "customer_id",
+      "prefix": "CUST-",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "sav_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "fraud_txn": {
+      "type": "digits",
+      "length": 4
+    }
+  },
   "authorship": {
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
   "persona": {
-    "name": "Eleanor Whitfield",
+    "name": "{{first_name}} {{last_name}}",
     "age": 74,
     "occupation": "Retired schoolteacher",
-    "personality_traits": ["confused", "trusting", "easily flustered"],
+    "personality_traits": [
+      "confused",
+      "trusting",
+      "easily flustered"
+    ],
     "tone": "gentle and uncertain, often apologizing",
     "detail_level": "verbose",
     "background": "Widowed and managing money on her own. A caller claiming to be her grandson in trouble talked her into wiring money this morning. She now suspects it was a scam, feels deeply ashamed and frightened, and is afraid more money could be taken."
@@ -29,60 +68,176 @@
       "name": "verify_customer_identity",
       "description": "Verify customer identity using account number, SSN last 4, or security questions",
       "parameters": [
-        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
-        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
-        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
       ]
     },
     {
       "name": "get_account_balance",
       "description": "Get current balance for a specific account",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
       ]
     },
     {
       "name": "get_transaction_history",
       "description": "Retrieve transaction history for an account",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
-        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        }
       ]
     },
     {
       "name": "report_suspicious_transaction",
-      "description": "Flag a transaction as potentially fraudulent and open a fraud case. Requires verified identity. Opening a case does not automatically reverse the charge — a completed wire may not be recoverable.",
+      "description": "Flag a transaction as potentially fraudulent and open a fraud case. Requires verified identity. Opening a case does not automatically reverse the charge \u2014 a completed wire may not be recoverable.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account with the suspicious transaction", "required": true},
-        {"name": "transaction_id", "type": "string", "description": "ID of the suspicious transaction", "required": true},
-        {"name": "reason", "type": "string", "description": "Why the customer believes it's suspicious", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account with the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "transaction_id",
+          "type": "string",
+          "description": "ID of the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Why the customer believes it's suspicious",
+          "required": true
+        }
       ]
     },
     {
       "name": "freeze_account",
       "description": "Place a temporary, REVERSIBLE security freeze on an account to block new transactions, typically in response to suspected fraud. Requires verified identity. This is NOT the same as close_account.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account to freeze", "required": true},
-        {"name": "reason", "type": "string", "description": "Reason for the freeze", "required": true, "enum": ["suspected_fraud", "lost_card", "customer_request", "compliance_hold"]},
-        {"name": "duration_hours", "type": "integer", "description": "How long to hold the freeze, in hours", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account to freeze",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Reason for the freeze",
+          "required": true,
+          "enum": [
+            "suspected_fraud",
+            "lost_card",
+            "customer_request",
+            "compliance_hold"
+          ]
+        },
+        {
+          "name": "duration_hours",
+          "type": "integer",
+          "description": "How long to hold the freeze, in hours",
+          "required": false
+        }
       ]
     },
     {
       "name": "get_fraud_case_status",
       "description": "Check the status of an existing fraud investigation by case ID. Requires verified identity. Returns the current investigation stage and any resolution.",
       "parameters": [
-        {"name": "case_id", "type": "string", "description": "Fraud case identifier", "required": true}
+        {
+          "name": "case_id",
+          "type": "string",
+          "description": "Fraud case identifier",
+          "required": true
+        }
       ]
     },
     {
       "name": "generate_account_statement",
       "description": "Generate an official account statement or confirmation letter",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "statement_type", "type": "string", "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'", "required": true, "enum": ["full_statement", "balance_confirmation", "transaction_confirmation"]},
-        {"name": "delivery_method", "type": "string", "description": "Method: 'email', 'mail', 'download'", "required": true, "enum": ["email", "mail", "download"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "statement_type",
+          "type": "string",
+          "description": "Type: 'full_statement', 'balance_confirmation', 'transaction_confirmation'",
+          "required": true,
+          "enum": [
+            "full_statement",
+            "balance_confirmation",
+            "transaction_confirmation"
+          ]
+        },
+        {
+          "name": "delivery_method",
+          "type": "string",
+          "description": "Method: 'email', 'mail', 'download'",
+          "required": true,
+          "enum": [
+            "email",
+            "mail",
+            "download"
+          ]
+        }
       ]
     }
   ],
@@ -97,42 +252,90 @@
     "generate_account_statement"
   ],
   "ground_truth": {
-    "customer": {"customer_id": "CUST-13340", "name": "Eleanor Whitfield", "ssn_last4": "3308", "verified": false},
+    "customer": {
+      "customer_id": "{{customer_id}}",
+      "name": "{{first_name}} {{last_name}}",
+      "ssn_last4": "{{ssn_last4}}",
+      "verified": false
+    },
     "accounts": {
-      "PERS-SAV-800": {"type": "savings", "balance": 6450.00, "available": 6450.00, "frozen": false}
+      "PERS-SAV-{{sav_num}}": {
+        "type": "savings",
+        "balance": 6450.0,
+        "available": 6450.0,
+        "frozen": false
+      }
     },
     "transactions": {
-      "PERS-SAV-800": [
-        {"id": "TXN-4407", "date": "2026-06-10", "amount": -3500.00, "merchant": "OUTGOING WIRE - J. MERCER (PERSONAL)", "status": "completed"},
-        {"id": "TXN-4406", "date": "2026-06-02", "amount": -120.00, "merchant": "PHARMACY", "status": "posted"},
-        {"id": "TXN-4405", "date": "2026-06-01", "amount": 1900.00, "merchant": "PENSION DEPOSIT", "status": "posted"}
+      "PERS-SAV-{{sav_num}}": [
+        {
+          "id": "TXN-{{fraud_txn}}",
+          "date": "2026-06-10",
+          "amount": -3500.0,
+          "merchant": "OUTGOING WIRE - J. MERCER (PERSONAL)",
+          "status": "completed"
+        },
+        {
+          "id": "TXN-4406",
+          "date": "2026-06-02",
+          "amount": -120.0,
+          "merchant": "PHARMACY",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-4405",
+          "date": "2026-06-01",
+          "amount": 1900.0,
+          "merchant": "PENSION DEPOSIT",
+          "status": "posted"
+        }
       ]
     },
     "fraud_cases": [],
     "statements_generated": []
   },
   "expected_state_changes": [
-    {"assert": "customer.verified", "op": "equals", "value": true,
-     "goal": "Confirm how much is left in her savings after the wire went out"},
-    {"assert": "fraud_cases", "op": "contains",
-     "match": {"transaction_id": "TXN-4407", "reason_contains": "grandson"},
-     "goal": "Report the wire transfer as fraudulent so it is formally on record"},
-    {"assert": "accounts.PERS-SAV-800.frozen", "op": "equals", "value": true,
-     "goal": "Freeze her account so the scammer cannot take any more of her money"},
-    {"assert": "statements_generated", "op": "contains",
-     "match": {"account_id": "PERS-SAV-800", "statement_type_contains": "confirmation"},
-     "goal": "Get a written record of the fraud report and the steps taken that she can keep"}
+    {
+      "assert": "customer.verified",
+      "op": "equals",
+      "value": true,
+      "goal": "Confirm how much is left in her savings after the wire went out"
+    },
+    {
+      "assert": "fraud_cases",
+      "op": "contains",
+      "match": {
+        "transaction_id": "TXN-{{fraud_txn}}",
+        "reason_contains": "grandson"
+      },
+      "goal": "Report the wire transfer as fraudulent so it is formally on record"
+    },
+    {
+      "assert": "accounts.PERS-SAV-{{sav_num}}.frozen",
+      "op": "equals",
+      "value": true,
+      "goal": "Freeze her account so the scammer cannot take any more of her money"
+    },
+    {
+      "assert": "statements_generated",
+      "op": "contains",
+      "match": {
+        "account_id": "PERS-SAV-{{sav_num}}",
+        "statement_type_contains": "confirmation"
+      },
+      "goal": "Get a written record of the fraud report and the steps taken that she can keep"
+    }
   ],
   "rubric_criteria": [
     {
       "id": "reported_wire_as_fraud",
-      "text": "Agent reported the wire transfer (TXN-4407) as fraudulent citing the grandson impersonation scam.",
+      "text": "Agent reported the wire transfer (TXN-{{fraud_txn}}) as fraudulent citing the grandson impersonation scam.",
       "dimension": "tool_selection",
       "weight": 2.0
     },
     {
       "id": "froze_savings_account",
-      "text": "Agent froze the savings account (PERS-SAV-800) so the scammer cannot take any more money.",
+      "text": "Agent froze the savings account (PERS-SAV-{{sav_num}}) so the scammer cannot take any more money.",
       "dimension": "tool_selection",
       "weight": 2.0
     },
@@ -144,7 +347,7 @@
     },
     {
       "id": "written_fraud_record",
-      "text": "Agent generated a written confirmation on PERS-SAV-800 documenting the fraud report and steps taken that she can keep.",
+      "text": "Agent generated a written confirmation on PERS-SAV-{{sav_num}} documenting the fraud report and steps taken that she can keep.",
       "dimension": "task_completion",
       "weight": 1.0
     },

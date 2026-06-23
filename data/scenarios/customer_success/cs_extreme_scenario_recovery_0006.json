@@ -6,11 +6,67 @@
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Whitfield",
+        "Okonkwo",
+        "Castellanos",
+        "Sandoval",
+        "Fitzgerald",
+        "Vasquez",
+        "Hollander"
+      ]
+    },
+    "company": {
+      "type": "choice",
+      "options": [
+        "Whitfield & Bauer Accounting",
+        "Sterling Components",
+        "Quill & Co.",
+        "Cedar & Bloom",
+        "Meridian Foods",
+        "Pinnacle Freight"
+      ]
+    },
+    "acct_num": {
+      "type": "digits",
+      "length": 4
+    },
+    "csm_first": {
+      "type": "first_name"
+    },
+    "csm_last": {
+      "type": "choice",
+      "options": [
+        "Lin",
+        "Hollander",
+        "Andersson",
+        "Delacroix",
+        "Bukowski",
+        "Haddad"
+      ]
+    },
+    "renewal_date": {
+      "type": "date",
+      "start": "2026-11-01",
+      "end": "2027-01-31"
+    }
+  },
   "persona": {
-    "name": "Eleanor Whitfield",
+    "name": "{{first_name}} {{last_name}}",
     "age": 63,
     "occupation": "Office manager at a small accounting firm",
-    "personality_traits": ["polite", "non-technical", "easily confused", "patient"],
+    "personality_traits": [
+      "polite",
+      "non-technical",
+      "easily confused",
+      "patient"
+    ],
     "tone": "warm and apologetic",
     "detail_level": "verbose",
     "background": "Was asked to administer the team's account but doesn't understand most of the product. Frequently mixes up features and needs step-by-step guidance without jargon."
@@ -27,63 +83,175 @@
       "name": "get_account",
       "description": "Look up a customer account by company name, contact name, email, or account ID and return its core CRM record. Call this FIRST to resolve the canonical account_id before any tool that reads detail on or mutates the account.",
       "parameters": [
-        {"name": "query", "type": "string", "description": "Company name, contact name, email, or account ID to search for", "required": true},
-        {"name": "include_contacts", "type": "boolean", "description": "Include the list of contacts on the account", "required": false}
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Company name, contact name, email, or account ID to search for",
+          "required": true
+        },
+        {
+          "name": "include_contacts",
+          "type": "boolean",
+          "description": "Include the list of contacts on the account",
+          "required": false
+        }
       ],
-      "response_schema": {"account_id": "string", "company": "string", "contact_name": "string", "plan": "string", "renewal_date": "string", "csm_owner": "string"}
+      "response_schema": {
+        "account_id": "string",
+        "company": "string",
+        "contact_name": "string",
+        "plan": "string",
+        "renewal_date": "string",
+        "csm_owner": "string"
+      }
     },
     {
       "name": "search_knowledge_base",
       "description": "Search the knowledge base for articles, guides, and tutorials.",
       "parameters": [
-        {"name": "query", "type": "string", "description": "Search query", "required": true},
-        {"name": "category", "type": "string", "description": "Filter by category: 'getting_started', 'advanced', 'troubleshooting', 'best_practices'", "required": false}
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Search query",
+          "required": true
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "description": "Filter by category: 'getting_started', 'advanced', 'troubleshooting', 'best_practices'",
+          "required": false
+        }
       ],
-      "response_schema": {"articles": ["object"], "total_count": "number"}
+      "response_schema": {
+        "articles": [
+          "object"
+        ],
+        "total_count": "number"
+      }
     },
     {
       "name": "get_subscription_details",
-      "description": "Get current subscription plan details and available upgrades. Read-only — to actually change a plan use change_subscription_tier.",
+      "description": "Get current subscription plan details and available upgrades. Read-only \u2014 to actually change a plan use change_subscription_tier.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "include_upgrade_options", "type": "boolean", "description": "Include details of higher tiers", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "include_upgrade_options",
+          "type": "boolean",
+          "description": "Include details of higher tiers",
+          "required": false
+        }
       ],
-      "response_schema": {"current": "object", "upgrade": "object"}
+      "response_schema": {
+        "current": "object",
+        "upgrade": "object"
+      }
     },
     {
       "name": "create_internal_note",
-      "description": "Add an internal note to the customer's account for the CS team. Internal only — the customer never sees this. Use this to record context, risk flags, or follow-ups. Do NOT use it to communicate with the customer (use send_customer_email) or to record a conversation that already happened (use log_customer_interaction).",
+      "description": "Add an internal note to the customer's account for the CS team. Internal only \u2014 the customer never sees this. Use this to record context, risk flags, or follow-ups. Do NOT use it to communicate with the customer (use send_customer_email) or to record a conversation that already happened (use log_customer_interaction).",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "note", "type": "string", "description": "Note content", "required": true},
-        {"name": "tag", "type": "string", "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "note",
+          "type": "string",
+          "description": "Note content",
+          "required": true
+        },
+        {
+          "name": "tag",
+          "type": "string",
+          "description": "Tag: 'churn_risk', 'upsell_opportunity', 'support_needed', 'general'",
+          "required": false
+        }
       ],
-      "response_schema": {"note_id": "string", "account_id": "string", "created_at": "string"}
+      "response_schema": {
+        "note_id": "string",
+        "account_id": "string",
+        "created_at": "string"
+      }
     },
     {
       "name": "create_ticket",
       "description": "Open a NEW support ticket for the customer. Use this when the customer reports a fresh issue that has no existing ticket. To raise the priority of an EXISTING ticket, use escalate_ticket; to leave a private CS note, use create_internal_note.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
-        {"name": "subject", "type": "string", "description": "Ticket subject line", "required": true},
-        {"name": "description", "type": "string", "description": "Detailed description of the issue", "required": true},
-        {"name": "priority", "type": "string", "description": "Priority: 'low', 'medium', 'high', 'urgent'", "required": false},
-        {"name": "category", "type": "string", "description": "Issue category: 'bug', 'how_to', 'billing', 'feature', 'outage'", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Customer account identifier",
+          "required": true
+        },
+        {
+          "name": "subject",
+          "type": "string",
+          "description": "Ticket subject line",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "description": "Detailed description of the issue",
+          "required": true
+        },
+        {
+          "name": "priority",
+          "type": "string",
+          "description": "Priority: 'low', 'medium', 'high', 'urgent'",
+          "required": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "description": "Issue category: 'bug', 'how_to', 'billing', 'feature', 'outage'",
+          "required": false
+        }
       ],
-      "response_schema": {"ticket_id": "string", "status": "string", "created_at": "string"}
+      "response_schema": {
+        "ticket_id": "string",
+        "status": "string",
+        "created_at": "string"
+      }
     },
     {
       "name": "create_knowledge_base_article",
       "description": "Create or suggest a knowledge base article for common issues. This publishes help-center content; it is not a way to message a specific customer. To find existing help content, use search_knowledge_base.",
       "parameters": [
-        {"name": "title", "type": "string", "description": "Article title", "required": true},
-        {"name": "content", "type": "string", "description": "Article content in markdown", "required": true},
-        {"name": "category", "type": "string", "description": "Category: 'getting_started', 'troubleshooting', 'best_practices', 'faq'", "required": true}
+        {
+          "name": "title",
+          "type": "string",
+          "description": "Article title",
+          "required": true
+        },
+        {
+          "name": "content",
+          "type": "string",
+          "description": "Article content in markdown",
+          "required": true
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "description": "Category: 'getting_started', 'troubleshooting', 'best_practices', 'faq'",
+          "required": true
+        }
       ],
-      "response_schema": {"article_id": "string", "url": "string", "status": "string"}
+      "response_schema": {
+        "article_id": "string",
+        "url": "string",
+        "status": "string"
+      }
     }
   ],
-  "initial_message": "Hello, so sorry to bother you. I'm trying to follow your guide to connect our accounting data, but it keeps telling me to click a button called 'Add Source' under a Settings menu, and I just don't have that anywhere on my screen. There's a big blue 'Connect Data' tile instead. I'm sure I'm doing something silly — can you walk me through it?",
+  "initial_message": "Hello, so sorry to bother you. I'm trying to follow your guide to connect our accounting data, but it keeps telling me to click a button called 'Add Source' under a Settings menu, and I just don't have that anywhere on my screen. There's a big blue 'Connect Data' tile instead. I'm sure I'm doing something silly \u2014 can you walk me through it?",
   "difficulty": "medium",
   "expected_tool_sequence": [
     "get_account",
@@ -93,12 +261,12 @@
   ],
   "ground_truth": {
     "account": {
-      "account_id": "ACCT-3010",
-      "company": "Whitfield & Bauer Accounting",
-      "contact_name": "Eleanor Whitfield",
+      "account_id": "ACCT-{{acct_num}}",
+      "company": "{{company}}",
+      "contact_name": "{{first_name}} {{last_name}}",
       "plan": "Starter",
-      "renewal_date": "2026-12-01",
-      "csm_owner": "Sasha Lin"
+      "renewal_date": "{{renewal_date}}",
+      "csm_owner": "{{csm_first}} {{csm_last}}"
     },
     "current_ui": {
       "connect_data_flow": "From the dashboard, click the blue 'Connect Data' tile, then choose your provider. There is no longer a Settings > Add Source path; that menu was removed in the 2026-05 UI release.",
@@ -124,20 +292,45 @@
       }
     ],
     "subscription": {
-      "current": {"tier": "Starter", "seats": 10, "features": ["dashboards", "data_import", "email_support"]}
+      "current": {
+        "tier": "Starter",
+        "seats": 10,
+        "features": [
+          "dashboards",
+          "data_import",
+          "email_support"
+        ]
+      }
     },
     "tickets": [],
     "internal_notes": [],
     "kb_articles_created": []
   },
   "expected_state_changes": [
-    {"assert": "tickets", "op": "contains",
-     "match": {"account_id": "ACCT-3010", "category": "bug", "description_contains": "KB-1102"},
-     "goal": "Flag the confusing guide so the next person doesn't get stuck the same way"},
-    {"assert": "internal_notes", "op": "contains",
-     "match": {"account_id": "ACCT-3010", "note_contains": "deprecated"},
-     "goal": "Understand why the steps in the guide don't match what she sees on screen"},
-    {"assert": "kb_articles_created", "op": "equals", "value": []}
+    {
+      "assert": "tickets",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "category": "bug",
+        "description_contains": "KB-1102"
+      },
+      "goal": "Flag the confusing guide so the next person doesn't get stuck the same way"
+    },
+    {
+      "assert": "internal_notes",
+      "op": "contains",
+      "match": {
+        "account_id": "ACCT-{{acct_num}}",
+        "note_contains": "deprecated"
+      },
+      "goal": "Understand why the steps in the guide don't match what she sees on screen"
+    },
+    {
+      "assert": "kb_articles_created",
+      "op": "equals",
+      "value": []
+    }
   ],
   "rubric_criteria": [
     {

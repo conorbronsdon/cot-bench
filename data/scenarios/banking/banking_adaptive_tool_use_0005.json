@@ -1,16 +1,88 @@
 {
   "id": "banking_adaptive_tool_use_0005",
   "category": "adaptive_tool_use",
+  "template_slots": {
+    "first_name": {
+      "type": "first_name"
+    },
+    "last_name": {
+      "type": "choice",
+      "options": [
+        "Okonkwo",
+        "Adeyemi",
+        "Mwangi",
+        "Castellanos",
+        "Bukowski",
+        "Esposito"
+      ]
+    },
+    "cust_num": {
+      "type": "digits",
+      "length": 5
+    },
+    "ssn_last4": {
+      "type": "digits",
+      "length": 4
+    },
+    "chk_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "sav_num": {
+      "type": "digits",
+      "length": 3
+    },
+    "transfer_amount": {
+      "type": "amount",
+      "min": 8000,
+      "max": 22000,
+      "step": 500
+    },
+    "fraud_txn": {
+      "type": "digits",
+      "length": 4
+    },
+    "fraud_amount": {
+      "type": "amount",
+      "min": 1500,
+      "max": 5000,
+      "step": 100
+    },
+    "fraud_payee": {
+      "type": "choice",
+      "options": [
+        "NORTHGATE HOLDINGS",
+        "BRIDGEWAY CAPITAL",
+        "CRESTLINE PARTNERS",
+        "ARGENT VENTURES"
+      ]
+    },
+    "loan_amount": {
+      "type": "amount",
+      "min": 20000,
+      "max": 60000,
+      "step": 5000
+    },
+    "loan_term": {
+      "type": "integer",
+      "min": 60,
+      "max": 180
+    }
+  },
   "schema_version": "0.2",
   "authorship": {
     "author_model": "claude-opus-4-8",
     "author_run": "2026-06-10-roster-reattribution"
   },
   "persona": {
-    "name": "Gregory Okonkwo",
+    "name": "{{first_name}} {{last_name}}",
     "age": 47,
     "occupation": "Hospital administrator",
-    "personality_traits": ["composed", "methodical", "polite"],
+    "personality_traits": [
+      "composed",
+      "methodical",
+      "polite"
+    ],
     "tone": "calm and articulate",
     "detail_level": "moderate",
     "background": "Comfortable with formal processes and provides exactly the information requested. Reasonable and cooperative even when there's a problem to resolve."
@@ -18,20 +90,40 @@
   "user_goals": [
     "Check the current balance and available funds in his primary checking account",
     "Find out the current mortgage interest rate for someone in his customer segment, since he is thinking about a home-equity loan",
-    "Move $15,000 from his savings into checking so the funds are ready if he moves forward on the home-equity plan",
+    "Move ${{transfer_amount}} from his savings into checking so the funds are ready if he moves forward on the home-equity plan",
     "Review the last five checking transactions, where he will notice a wire he did not authorize",
-    "Report a $3,400 outgoing wire to 'NORTHGATE HOLDINGS' that he never set up",
+    "Report a ${{fraud_amount}} outgoing wire to '{{fraud_payee}}' that he never set up",
     "Place a temporary security freeze on the checking account so nothing else can leave it while the wire is investigated",
-    "Submit a home-equity loan application for $40,000 over 120 months on his stated income"
+    "Submit a home-equity loan application for ${{loan_amount}} over {{loan_term}} months on his stated income"
   ],
   "tools": [
     {
       "name": "verify_customer_identity",
       "description": "Verify customer identity using account number, SSN last 4, or security questions. Most account-accessing and state-changing tools require a successful identity verification first; call this before reading balances, transactions, or making any changes.",
       "parameters": [
-        {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
-        {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true, "enum": ["ssn_last4", "security_question", "phone_otp"]},
-        {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer ID or account number",
+          "required": true
+        },
+        {
+          "name": "verification_method",
+          "type": "string",
+          "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'",
+          "required": true,
+          "enum": [
+            "ssn_last4",
+            "security_question",
+            "phone_otp"
+          ]
+        },
+        {
+          "name": "verification_value",
+          "type": "string",
+          "description": "The verification answer/code",
+          "required": true
+        }
       ],
       "response_schema": {
         "verified": "boolean",
@@ -44,8 +136,23 @@
       "name": "get_account_balance",
       "description": "Get current balance for a specific account. Requires verified identity. Resolve the customer-facing description (e.g. 'my checking account') to the correct account ID before calling.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true, "enum": ["checking", "savings", "credit"]}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'checking', 'savings', 'credit'",
+          "required": true,
+          "enum": [
+            "checking",
+            "savings",
+            "credit"
+          ]
+        }
       ],
       "response_schema": {
         "current_balance": "number",
@@ -58,23 +165,71 @@
       "name": "get_transaction_history",
       "description": "Retrieve transaction history for an account. Requires verified identity. Use limit and date range to scope results; results are returned newest-first.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
-        {"name": "limit", "type": "integer", "description": "Number of transactions to return", "required": false},
-        {"name": "start_date", "type": "string", "description": "Start date (YYYY-MM-DD)", "required": false},
-        {"name": "end_date", "type": "string", "description": "End date (YYYY-MM-DD)", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account identifier",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "description": "Number of transactions to return",
+          "required": false
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "description": "Start date (YYYY-MM-DD)",
+          "required": false
+        },
+        {
+          "name": "end_date",
+          "type": "string",
+          "description": "End date (YYYY-MM-DD)",
+          "required": false
+        }
       ],
       "response_schema": {
-        "transactions": [{"id": "string", "date": "string", "amount": "number", "merchant": "string", "status": "string"}]
+        "transactions": [
+          {
+            "id": "string",
+            "date": "string",
+            "amount": "number",
+            "merchant": "string",
+            "status": "string"
+          }
+        ]
       }
     },
     {
       "name": "initiate_transfer",
-      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead — do not confuse the two.",
+      "description": "Execute a one-time, immediate transfer of funds between two of the customer's own accounts. Requires verified identity. NOTE: this is a single transfer that happens once. For a repeating automatic schedule use setup_recurring_transfer instead \u2014 do not confuse the two.",
       "parameters": [
-        {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
-        {"name": "to_account_id", "type": "string", "description": "Destination account", "required": true},
-        {"name": "amount", "type": "number", "description": "Amount in USD", "required": true},
-        {"name": "memo", "type": "string", "description": "Transfer memo/description", "required": false}
+        {
+          "name": "from_account_id",
+          "type": "string",
+          "description": "Source account",
+          "required": true
+        },
+        {
+          "name": "to_account_id",
+          "type": "string",
+          "description": "Destination account",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Amount in USD",
+          "required": true
+        },
+        {
+          "name": "memo",
+          "type": "string",
+          "description": "Transfer memo/description",
+          "required": false
+        }
       ],
       "response_schema": {
         "transfer_id": "string",
@@ -87,8 +242,29 @@
       "name": "get_interest_rates",
       "description": "Get current interest rates for account and product types. This is public rate information and does NOT require identity verification. Optionally scope by customer segment.",
       "parameters": [
-        {"name": "account_type", "type": "string", "description": "Type: 'savings', 'checking', 'cd', 'money_market'", "required": true, "enum": ["savings", "checking", "cd", "money_market"]},
-        {"name": "customer_segment", "type": "string", "description": "Segment: 'personal', 'business', 'premium'", "required": false, "enum": ["personal", "business", "premium"]}
+        {
+          "name": "account_type",
+          "type": "string",
+          "description": "Type: 'savings', 'checking', 'cd', 'money_market'",
+          "required": true,
+          "enum": [
+            "savings",
+            "checking",
+            "cd",
+            "money_market"
+          ]
+        },
+        {
+          "name": "customer_segment",
+          "type": "string",
+          "description": "Segment: 'personal', 'business', 'premium'",
+          "required": false,
+          "enum": [
+            "personal",
+            "business",
+            "premium"
+          ]
+        }
       ],
       "response_schema": {
         "account_type": "string",
@@ -100,12 +276,56 @@
       "name": "submit_loan_application",
       "description": "Submit a formal loan application for underwriting. Requires verified identity. This SUBMITS an application for review and credit decision; it does not approve or disburse a loan. Income is required for underwriting. Use get_interest_rates for indicative product rates before applying.",
       "parameters": [
-        {"name": "customer_id", "type": "string", "description": "Customer identifier", "required": true},
-        {"name": "loan_type", "type": "string", "description": "Type of loan", "required": true, "enum": ["personal", "auto", "mortgage", "home_equity", "business"]},
-        {"name": "amount", "type": "number", "description": "Requested loan amount in USD", "required": true},
-        {"name": "term_months", "type": "integer", "description": "Requested term in months", "required": true},
-        {"name": "annual_income", "type": "number", "description": "Applicant's stated annual income in USD", "required": true},
-        {"name": "employment_status", "type": "string", "description": "Employment status", "required": false, "enum": ["employed", "self_employed", "retired", "unemployed", "student"]}
+        {
+          "name": "customer_id",
+          "type": "string",
+          "description": "Customer identifier",
+          "required": true
+        },
+        {
+          "name": "loan_type",
+          "type": "string",
+          "description": "Type of loan",
+          "required": true,
+          "enum": [
+            "personal",
+            "auto",
+            "mortgage",
+            "home_equity",
+            "business"
+          ]
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Requested loan amount in USD",
+          "required": true
+        },
+        {
+          "name": "term_months",
+          "type": "integer",
+          "description": "Requested term in months",
+          "required": true
+        },
+        {
+          "name": "annual_income",
+          "type": "number",
+          "description": "Applicant's stated annual income in USD",
+          "required": true
+        },
+        {
+          "name": "employment_status",
+          "type": "string",
+          "description": "Employment status",
+          "required": false,
+          "enum": [
+            "employed",
+            "self_employed",
+            "retired",
+            "unemployed",
+            "student"
+          ]
+        }
       ],
       "response_schema": {
         "application_id": "string",
@@ -117,9 +337,24 @@
       "name": "report_suspicious_transaction",
       "description": "Flag a transaction as potentially fraudulent and open a fraud case. Requires verified identity. Use the transaction ID from get_transaction_history. Opening a case does not automatically reverse the charge.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account with the suspicious transaction", "required": true},
-        {"name": "transaction_id", "type": "string", "description": "ID of the suspicious transaction", "required": true},
-        {"name": "reason", "type": "string", "description": "Why the customer believes it's suspicious", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account with the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "transaction_id",
+          "type": "string",
+          "description": "ID of the suspicious transaction",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Why the customer believes it's suspicious",
+          "required": true
+        }
       ],
       "response_schema": {
         "case_id": "string",
@@ -131,9 +366,30 @@
       "name": "freeze_account",
       "description": "Place a temporary, REVERSIBLE security freeze on an account to block new transactions, typically in response to suspected fraud or a lost card. Requires verified identity. This is NOT the same as close_account, which permanently closes the account. Prefer this over closure when the customer simply needs to stop activity while an issue is investigated.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account to freeze", "required": true},
-        {"name": "reason", "type": "string", "description": "Reason for the freeze", "required": true, "enum": ["suspected_fraud", "lost_card", "customer_request", "compliance_hold"]},
-        {"name": "duration_hours", "type": "integer", "description": "How long to hold the freeze, in hours", "required": false}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account to freeze",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Reason for the freeze",
+          "required": true,
+          "enum": [
+            "suspected_fraud",
+            "lost_card",
+            "customer_request",
+            "compliance_hold"
+          ]
+        },
+        {
+          "name": "duration_hours",
+          "type": "integer",
+          "description": "How long to hold the freeze, in hours",
+          "required": false
+        }
       ],
       "response_schema": {
         "account_id": "string",
@@ -143,12 +399,32 @@
     },
     {
       "name": "close_account",
-      "description": "Permanently close an account and disburse any remaining balance. Requires verified identity AND explicit customer confirmation. This is IRREVERSIBLE and high-impact — do not call it for temporary holds (use freeze_account) or as a substitute for fraud reporting. The account must have a zero or positive balance to close.",
+      "description": "Permanently close an account and disburse any remaining balance. Requires verified identity AND explicit customer confirmation. This is IRREVERSIBLE and high-impact \u2014 do not call it for temporary holds (use freeze_account) or as a substitute for fraud reporting. The account must have a zero or positive balance to close.",
       "parameters": [
-        {"name": "account_id", "type": "string", "description": "Account to permanently close", "required": true},
-        {"name": "reason", "type": "string", "description": "Reason for closure", "required": true},
-        {"name": "disbursement_account_id", "type": "string", "description": "Account to send any remaining balance to", "required": false},
-        {"name": "confirmation", "type": "boolean", "description": "Explicit customer confirmation that they want to permanently close", "required": true}
+        {
+          "name": "account_id",
+          "type": "string",
+          "description": "Account to permanently close",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Reason for closure",
+          "required": true
+        },
+        {
+          "name": "disbursement_account_id",
+          "type": "string",
+          "description": "Account to send any remaining balance to",
+          "required": false
+        },
+        {
+          "name": "confirmation",
+          "type": "boolean",
+          "description": "Explicit customer confirmation that they want to permanently close",
+          "required": true
+        }
       ],
       "response_schema": {
         "account_id": "string",
@@ -170,39 +446,127 @@
     "submit_loan_application"
   ],
   "ground_truth": {
-    "customer": {"customer_id": "CUST-62418", "name": "Gregory Okonkwo", "ssn_last4": "7726", "verified": false, "segment": "premium", "annual_income": 142000},
+    "customer": {
+      "customer_id": "CUST-{{cust_num}}",
+      "name": "{{first_name}} {{last_name}}",
+      "ssn_last4": "{{ssn_last4}}",
+      "verified": false,
+      "segment": "premium",
+      "annual_income": 142000
+    },
     "accounts": {
-      "PER-CHK-401": {"type": "checking", "balance": 12850.00, "available": 12850.00, "label": "primary checking", "frozen": false},
-      "PER-SAV-402": {"type": "savings", "balance": 61000.00, "available": 61000.00, "label": "savings"}
+      "PER-CHK-{{chk_num}}": {
+        "type": "checking",
+        "balance": 12850.0,
+        "available": 12850.0,
+        "label": "primary checking",
+        "frozen": false
+      },
+      "PER-SAV-{{sav_num}}": {
+        "type": "savings",
+        "balance": 61000.0,
+        "available": 61000.0,
+        "label": "savings"
+      }
     },
     "transactions": {
-      "PER-CHK-401": [
-        {"id": "TXN-6605", "date": "2026-06-09", "amount": -3400.00, "merchant": "WIRE OUT - NORTHGATE HOLDINGS", "status": "posted"},
-        {"id": "TXN-6604", "date": "2026-06-08", "amount": -210.45, "merchant": "STATE FARM INSURANCE", "status": "posted"},
-        {"id": "TXN-6603", "date": "2026-06-06", "amount": 5200.00, "merchant": "PAYROLL - MERCY GENERAL HOSPITAL", "status": "posted"},
-        {"id": "TXN-6602", "date": "2026-06-05", "amount": -1450.00, "merchant": "FIRST UNION MORTGAGE", "status": "posted"},
-        {"id": "TXN-6601", "date": "2026-06-03", "amount": -96.20, "merchant": "CITY WATER DEPT", "status": "posted"},
-        {"id": "TXN-6600", "date": "2026-06-02", "amount": -54.99, "merchant": "STREAMING BUNDLE", "status": "posted"}
+      "PER-CHK-{{chk_num}}": [
+        {
+          "id": "TXN-{{fraud_txn}}",
+          "date": "2026-06-09",
+          "amount": "{{fraud_amount}}",
+          "merchant": "WIRE OUT - {{fraud_payee}}",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-6604",
+          "date": "2026-06-08",
+          "amount": -210.45,
+          "merchant": "STATE FARM INSURANCE",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-6603",
+          "date": "2026-06-06",
+          "amount": 5200.0,
+          "merchant": "PAYROLL - MERCY GENERAL HOSPITAL",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-6602",
+          "date": "2026-06-05",
+          "amount": -1450.0,
+          "merchant": "FIRST UNION MORTGAGE",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-6601",
+          "date": "2026-06-03",
+          "amount": -96.2,
+          "merchant": "CITY WATER DEPT",
+          "status": "posted"
+        },
+        {
+          "id": "TXN-6600",
+          "date": "2026-06-02",
+          "amount": -54.99,
+          "merchant": "STREAMING BUNDLE",
+          "status": "posted"
+        }
       ]
     },
     "recurring_transfers": [],
     "fraud_cases": [],
     "loan_applications": [],
-    "interest_rates": {"mortgage": {"premium": 0.0589, "personal": 0.0625}, "savings": {"premium": 0.043, "personal": 0.032}}
+    "interest_rates": {
+      "mortgage": {
+        "premium": 0.0589,
+        "personal": 0.0625
+      },
+      "savings": {
+        "premium": 0.043,
+        "personal": 0.032
+      }
+    }
   },
   "expected_state_changes": [
-    {"assert": "accounts.PER-CHK-401.balance", "op": "increased_by", "value": 15000.00,
-     "goal": "Move $15,000 from his savings into checking so the funds are ready if he moves forward on the home-equity plan"},
-    {"assert": "accounts.PER-SAV-402.balance", "op": "decreased_by", "value": 15000.00,
-     "goal": "Move $15,000 from his savings into checking so the funds are ready if he moves forward on the home-equity plan"},
-    {"assert": "fraud_cases", "op": "contains",
-     "match": {"transaction_id": "TXN-6605", "reason_contains": "NORTHGATE HOLDINGS"},
-     "goal": "Report a $3,400 outgoing wire to 'NORTHGATE HOLDINGS' that he never set up"},
-    {"assert": "accounts.PER-CHK-401.frozen", "op": "equals", "value": true,
-     "goal": "Place a temporary security freeze on the checking account so nothing else can leave it while the wire is investigated"},
-    {"assert": "loan_applications", "op": "contains",
-     "match": {"loan_type": "home_equity", "amount": 40000, "term_months": 120},
-     "goal": "Submit a home-equity loan application for $40,000 over 120 months on his stated income"}
+    {
+      "assert": "accounts.PER-CHK-{{chk_num}}.balance",
+      "op": "increased_by",
+      "value": "{{transfer_amount}}",
+      "goal": "Move ${{transfer_amount}} from his savings into checking so the funds are ready if he moves forward on the home-equity plan"
+    },
+    {
+      "assert": "accounts.PER-SAV-{{sav_num}}.balance",
+      "op": "decreased_by",
+      "value": "{{transfer_amount}}",
+      "goal": "Move ${{transfer_amount}} from his savings into checking so the funds are ready if he moves forward on the home-equity plan"
+    },
+    {
+      "assert": "fraud_cases",
+      "op": "contains",
+      "match": {
+        "transaction_id": "TXN-{{fraud_txn}}",
+        "reason_contains": "{{fraud_payee}}"
+      },
+      "goal": "Report a ${{fraud_amount}} outgoing wire to '{{fraud_payee}}' that he never set up"
+    },
+    {
+      "assert": "accounts.PER-CHK-{{chk_num}}.frozen",
+      "op": "equals",
+      "value": true,
+      "goal": "Place a temporary security freeze on the checking account so nothing else can leave it while the wire is investigated"
+    },
+    {
+      "assert": "loan_applications",
+      "op": "contains",
+      "match": {
+        "loan_type": "home_equity",
+        "amount": "{{loan_amount}}",
+        "term_months": "{{loan_term}}"
+      },
+      "goal": "Submit a home-equity loan application for ${{loan_amount}} over {{loan_term}} months on his stated income"
+    }
   ],
   "rubric_criteria": [
     {
@@ -213,25 +577,25 @@
     },
     {
       "id": "fraud_report_northgate_wire",
-      "text": "Agent reported the unauthorized $3,400 NORTHGATE HOLDINGS wire (TXN-6605) as suspicious.",
+      "text": "Agent reported the unauthorized ${{fraud_amount}} {{fraud_payee}} wire (TXN-{{fraud_txn}}) as suspicious.",
       "dimension": "task_completion",
       "weight": 1.0
     },
     {
       "id": "freeze_after_fraud",
-      "text": "Agent placed a security freeze on checking PER-CHK-401 via freeze_account after the unauthorized wire was identified.",
+      "text": "Agent placed a security freeze on checking PER-CHK-{{chk_num}} via freeze_account after the unauthorized wire was identified.",
       "dimension": "tool_selection",
       "weight": 2.0
     },
     {
       "id": "transfer_15000",
-      "text": "Agent moved $15,000 from savings PER-SAV-402 into checking PER-CHK-401 via initiate_transfer.",
+      "text": "Agent moved ${{transfer_amount}} from savings PER-SAV-{{sav_num}} into checking PER-CHK-{{chk_num}} via initiate_transfer.",
       "dimension": "tool_selection",
       "weight": 1.0
     },
     {
       "id": "loan_application_terms",
-      "text": "Agent submitted a home_equity loan application for $40,000 over 120 months via submit_loan_application.",
+      "text": "Agent submitted a home_equity loan application for ${{loan_amount}} over {{loan_term}} months via submit_loan_application.",
       "dimension": "task_completion",
       "weight": 1.0
     }

@@ -122,6 +122,25 @@ scenario is templated — a non-templated run pre-registers exactly as today.
 5. **Backwards compatible** — the 92 non-templated scenarios are byte-for-content
    unchanged; templating is opt-in per scenario.
 
+## Status update (issue #79): public corpus converted
+
+The decision below describes the **staging** branch, which deliberately deferred
+conversion. Issue #79 carries out the deferred work: **90 of the 92 public
+scenarios are now parameterized templates** (`template_slots` + coherent `{{slot}}`
+substitution), converted in place under `data/scenarios/`. Two scenarios —
+`banking_adaptive_tool_use_0001` and `cs_adaptive_tool_use_0001` — are left static
+on purpose: the offline end-to-end test (`tests/test_e2e_offline.py`) pins their
+exact surface (account ids, amounts, transaction ids) as a behavioral fixture, so
+templating them would break a behavioral test, not just a hash pin. This is the
+pre-registered, **version-affecting** corpus change: it is only "free" before the
+first published run, and it only buys anti-memorization if a published run passes a
+**fresh** `--instantiation-seed` (not the default 0). The original `_tmpl`
+demonstration copies in `data/scenarios_templates/` are retained as the worked
+reference and remain test-backed.
+
+The remainder of this section is the original staging-branch rationale, kept for
+provenance.
+
 ## Conversion decision: mechanism-plus-demonstration, not corpus conversion
 
 This PR **deliberately does not convert the real corpus.** Converting all 92

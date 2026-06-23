@@ -1,6 +1,16 @@
 {
   "id": "customer_success_empathetic_resolution_0000_9c510900",
   "category": "empathetic_resolution",
+  "template_slots": {
+    "acct_num": {
+      "type": "digits",
+      "length": 5
+    },
+    "ticket_num": {
+      "type": "digits",
+      "length": 5
+    }
+  },
   "persona": {
     "name": "Marcus Feldman",
     "age": 49,
@@ -448,7 +458,7 @@
   },
   "ground_truth": {
     "account": {
-      "account_id": "ACC-78432",
+      "account_id": "ACC-{{acct_num}}",
       "company_name": "Feldman Logistics Platforms",
       "contacts": [
         {
@@ -499,9 +509,9 @@
       }
     },
     "support_tickets": {
-      "TICK-11245": {
-        "ticket_id": "TICK-11245",
-        "account_id": "ACC-78432",
+      "TICK-{{ticket_num}}": {
+        "ticket_id": "TICK-{{ticket_num}}",
+        "account_id": "ACC-{{acct_num}}",
         "subject": "TrackAPI intermittent silent 503 failures",
         "status": "open",
         "priority": "normal",
@@ -527,7 +537,7 @@
   },
   "expected_state_changes": [
     {
-      "assert": "support_tickets.TICK-11245.escalation_level",
+      "assert": "support_tickets.TICK-{{ticket_num}}.escalation_level",
       "op": "equals",
       "value": "engineering_leadership",
       "goal": "Find our existing TrackAPI silent-failure ticket and escalate it directly to Engineering Leadership immediately."
@@ -574,7 +584,7 @@
     },
     {
       "id": "escalate_trackapi_ticket",
-      "text": "Agent escalated the existing TrackAPI ticket TICK-11245 to engineering leadership.",
+      "text": "Agent escalated the existing TrackAPI ticket TICK-{{ticket_num}} to engineering leadership.",
       "dimension": "task_completion",
       "weight": 1.0
     },
