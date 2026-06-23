@@ -140,6 +140,31 @@ class TestBuildPreRegistration:
         loaded = json.loads(path.read_text(encoding="utf-8"))
         assert loaded["scenario_set"]["sha256"] == reg["scenario_set"]["sha256"]
 
+    def test_templating_block_absent_when_no_templates_passed(self):
+        # Backwards compatible: no templates_by_domain -> no templating block.
+        assert self._build()["templating"] is None
+
+    def test_templating_block_records_seed_and_both_hashes(self):
+        # A run with a template declaration records the template-corpus hash
+        # (seed-invariant), the instantiation seed, and the instantiated hash
+        # (== scenario_set.sha256, since scenarios passed in are instantiated).
+        raw_template = {
+            "id": "banking_x_0000_aaaa1111",
+            "template_slots": {"n": {"type": "digits"}},
+        }
+        reg = self._build(
+            templates_by_domain={Domain.BANKING: [raw_template]},
+            instantiation_seed=7,
+        )
+        block = reg["templating"]
+        assert block is not None
+        assert block["instantiation_seed"] == 7
+        assert block["n_templated_scenarios"] == 1
+        assert len(block["template_corpus"]["sha256"]) == 64
+        assert block["instantiated_corpus_sha256"] == reg["scenario_set"]["sha256"]
+        # The raw template index marks it as templated.
+        assert block["template_corpus"]["template_index"][0]["templated"] is True
+
 
 class TestWrittenBeforeRun:
     """The honesty property: the pre-registration file must exist on disk before
@@ -156,7 +181,7 @@ class TestWrittenBeforeRun:
         output = results_dir / "results_20260610_010101.parquet"
 
         scenarios = [_scenario()]
-        monkeypatch.setattr(run_eval, "load_scenarios", lambda domain: scenarios)
+        monkeypatch.setattr(run_eval, "load_scenarios", lambda domain, seed: (scenarios, []))
         # Tracing is a no-op sink in tests; avoid touching the real exporter.
         monkeypatch.setattr(run_eval, "init_tracing", lambda **kw: None)
         monkeypatch.setattr(run_eval, "get_tracer", lambda: None)
@@ -212,7 +237,7 @@ class TestWrittenBeforeRun:
         output = results_dir / "results_20260610_020202.parquet"
 
         scenarios = [_scenario()]
-        monkeypatch.setattr(run_eval, "load_scenarios", lambda domain: scenarios)
+        monkeypatch.setattr(run_eval, "load_scenarios", lambda domain, seed: (scenarios, []))
         monkeypatch.setattr(run_eval, "init_tracing", lambda **kw: None)
         monkeypatch.setattr(run_eval, "get_tracer", lambda: None)
         monkeypatch.setattr(

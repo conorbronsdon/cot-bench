@@ -423,6 +423,86 @@
         }
         .sc-tooltip b { color: var(--accent); }
 
+        /* ---------- Diagnostics panel (#66/#70/#72) ---------- */
+        .diag-details summary {
+            cursor: pointer;
+            font-size: 1.05rem;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            user-select: none;
+            list-style-position: outside;
+        }
+        .diag-details summary:hover { color: var(--accent); }
+        .diag-summary-hint {
+            font-size: 0.78rem;
+            font-weight: 400;
+            color: var(--text-muted);
+            margin-left: 0.5rem;
+        }
+        .diag-section { margin-top: 1.5rem; }
+        .diag-section h3 { font-size: 0.92rem; margin-bottom: 0.3rem; letter-spacing: -0.01em; }
+
+        .diag-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+        .diag-table th {
+            text-align: right;
+            padding: 0.5rem 0.7rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.68rem;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+        .diag-table th.col-left, .diag-table td.col-left {
+            text-align: left;
+            font-family: var(--sans);
+            font-weight: 600;
+            color: var(--text);
+        }
+        .diag-table td {
+            padding: 0.5rem 0.7rem;
+            text-align: right;
+            border-bottom: 1px solid var(--border-soft);
+            font-family: var(--mono);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+        .diag-table tr:last-child td { border-bottom: none; }
+        .diag-zero { color: var(--text-muted); }
+
+        .diag-bar-track {
+            display: block;
+            height: 3px;
+            border-radius: 2px;
+            background: var(--border-soft);
+            margin-top: 0.3rem;
+            overflow: hidden;
+        }
+        .diag-bar-fill { display: block; height: 100%; border-radius: 2px; background: var(--red); }
+
+        /* Robustness deltas: a glyph (non-color cue) plus color. */
+        .diag-delta { display: block; font-size: 0.68rem; color: var(--text-muted); margin-top: 0.15rem; }
+        .diag-delta-bad { color: var(--red); font-weight: 600; }
+        .diag-delta-good { color: var(--green); }
+
+        .diag-stats { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.75rem; }
+        .diag-stat {
+            border: 1px solid var(--border-soft);
+            border-radius: 8px;
+            padding: 0.6rem 0.9rem;
+            background: var(--surface-2);
+            min-width: 10rem;
+        }
+        .diag-stat .num { font-family: var(--mono); font-weight: 700; font-size: 1.05rem; }
+        .diag-stat .lbl { font-size: 0.72rem; color: var(--text-dim); }
+        .diag-stat .why { display: block; font-size: 0.68rem; color: var(--text-muted); margin-top: 0.2rem; max-width: 24ch; white-space: normal; }
+        .diag-headline { font-size: 0.84rem; color: var(--text-dim); }
+
         /* ---------- Mobile card view ---------- */
         .cards { display: none; }
         .card {
@@ -524,9 +604,9 @@
             </ul>
             <div class="empty-links">
                 <a href="https://github.com/conorbronsdon/cot-bench">GitHub repo</a>
-                <a href="https://github.com/conorbronsdon/cot-bench/blob/master/docs/methodology.md">Methodology</a>
-                <a href="https://github.com/conorbronsdon/cot-bench/blob/master/docs/governance.md">Governance</a>
-                <a href="https://github.com/conorbronsdon/cot-bench/blob/master/eval/scoring/rubrics.py">Rubrics</a>
+                <a href="https://github.com/conorbronsdon/cot-bench/blob/main/docs/methodology.md">Methodology</a>
+                <a href="https://github.com/conorbronsdon/cot-bench/blob/main/docs/governance.md">Governance</a>
+                <a href="https://github.com/conorbronsdon/cot-bench/blob/main/eval/scoring/rubrics.py">Rubrics</a>
             </div>
         </section>
 
@@ -600,6 +680,57 @@
                 </div>
             </section>
 
+            <!-- Diagnostics (#66 / #70 / #72): secondary, collapsed by default —
+                 the leaderboard above stays the hero. Each sub-view renders only
+                 when its key is present in leaderboard.json; on legacy payloads
+                 with none of them, the whole panel stays hidden. -->
+            <section class="panel" id="diagnostics-panel" style="display:none;">
+                <details class="diag-details">
+                    <summary>Diagnostics<span class="diag-summary-hint">failure modes · sim-profile robustness · corpus health</span></summary>
+
+                    <div class="diag-section" id="diag-failure" style="display:none;">
+                        <h3>Failure-mode breakdown</h3>
+                        <p class="panel-desc">How each model's failures distribute across the
+                        failure-mode taxonomy (#66). Rates are per evaluated run; hover a cell
+                        for counts. Bars are scaled to the worst cell in the table.</p>
+                        <div class="table-scroll">
+                            <table class="diag-table">
+                                <thead id="failure-modes-head"></thead>
+                                <tbody id="failure-modes-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="diag-section" id="diag-robustness" style="display:none;">
+                        <h3>Sim-profile robustness</h3>
+                        <p class="panel-desc">Public board scores are cooperative-default: only
+                        cooperative user-sim rows count toward the rankings above. This is the
+                        stratified robustness view (#70) — pass rate per user-sim behavioral
+                        profile, with each profile's change vs the cooperative condition.
+                        A negative &ldquo;vs coop&rdquo; (marked &#9660;) means the model passes
+                        less often under that profile.</p>
+                        <div class="table-scroll">
+                            <table class="diag-table">
+                                <thead id="robustness-head"></thead>
+                                <tbody id="robustness-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="diag-section" id="diag-corpus" style="display:none;">
+                        <h3>Corpus health</h3>
+                        <p class="panel-desc">Pass-distribution over the public corpus (#72) —
+                        difficulty calibration and broken-task detection. Counts only; scenario
+                        ids are never published.</p>
+                        <div id="corpus-health-body"></div>
+                    </div>
+
+                    <!-- TODO(#74): recovery_probe_robustness — when it merges, add a
+                         diag-section container here and register its render function
+                         in DIAG_VIEWS below. -->
+                </details>
+            </section>
+
             <!-- Run history -->
             <section class="changelog">
                 <h2>Run history</h2>
@@ -610,9 +741,9 @@
         <footer>
             <div class="footer-links">
                 <a href="https://github.com/conorbronsdon/cot-bench">GitHub</a>
-                <a href="https://github.com/conorbronsdon/cot-bench/blob/master/docs/methodology.md">Methodology</a>
-                <a href="https://github.com/conorbronsdon/cot-bench/blob/master/docs/governance.md">Governance</a>
-                <a href="https://github.com/conorbronsdon/cot-bench/blob/master/eval/scoring/rubrics.py">Rubrics</a>
+                <a href="https://github.com/conorbronsdon/cot-bench/blob/main/docs/methodology.md">Methodology</a>
+                <a href="https://github.com/conorbronsdon/cot-bench/blob/main/docs/governance.md">Governance</a>
+                <a href="https://github.com/conorbronsdon/cot-bench/blob/main/eval/scoring/rubrics.py">Rubrics</a>
                 <a href="https://chainofthought.show/">Chain of Thought</a>
                 <a href="https://github.com/conorbronsdon/cot-bench#paper">Paper (coming)</a>
             </div>
@@ -673,6 +804,7 @@
             populateDomainFilter();
             render();
             renderScatter();
+            renderDiagnostics();
             renderChangelog();
         }
 
@@ -1108,24 +1240,235 @@
                 ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
         }
 
+        // ---- Diagnostics panel (#66 / #70 / #72) ----
+        // Null-safe number formatters: every diagnostics value goes through one
+        // of these so a missing/NaN field renders "—", never NaN/undefined.
+        function isNum(v) { return typeof v === 'number' && isFinite(v); }
+        function fmtPct(v, digits = 1) { return isNum(v) ? (v * 100).toFixed(digits) + '%' : '—'; }
+        function fmtNum(v, digits = 3) { return isNum(v) ? v.toFixed(digits) : '—'; }
+        function fmtInt(v) { return isNum(v) ? String(Math.round(v)) : '—'; }
+
+        // Stable failure-mode column order: the taxonomy header from the JSON,
+        // plus any out-of-vocabulary modes a profile carries (future taxonomy
+        // growth) appended so no published count is dropped.
+        function failureModeOrder() {
+            const tax = leaderboardData.failure_taxonomy;
+            const order = (tax && Array.isArray(tax.modes))
+                ? tax.modes.filter(x => typeof x === 'string') : [];
+            const seen = new Set(order);
+            (leaderboardData.models || []).forEach(m => {
+                const modes = m.failure_profile && m.failure_profile.modes;
+                if (!modes || typeof modes !== 'object') return;
+                Object.keys(modes).forEach(k => { if (!seen.has(k)) { seen.add(k); order.push(k); } });
+            });
+            return order;
+        }
+
+        // Failure-mode breakdown (#66): per-model rates across the taxonomy as a
+        // compact table with mini-bars; counts live in the title tooltips.
+        // Returns false (section stays hidden) when no model has a profile.
+        function renderDiagFailureModes() {
+            const head = document.getElementById('failure-modes-head');
+            const body = document.getElementById('failure-modes-body');
+            if (!head || !body) return false;
+            const models = (leaderboardData.models || []).filter(m =>
+                m && m.failure_profile && typeof m.failure_profile === 'object' &&
+                m.failure_profile.modes && typeof m.failure_profile.modes === 'object');
+            if (!models.length) return false;
+            const modes = failureModeOrder();
+            if (!modes.length) return false;
+
+            // Bars scale against the worst cell in the table so small rates stay visible.
+            let maxRate = 0;
+            models.forEach(m => modes.forEach(mode => {
+                const v = m.failure_profile.modes[mode];
+                if (v && isNum(v.rate) && v.rate > maxRate) maxRate = v.rate;
+            }));
+            const scale = maxRate > 0 ? maxRate : 1;
+
+            head.innerHTML = `<tr><th class="col-left">Model</th>
+                <th title="Share of this model's evaluated runs that failed (any mode)">Fail rate</th>
+                ${modes.map(mode => `<th title="${esc(mode)}">${esc(mode.replace(/-/g, ' '))}</th>`).join('')}</tr>`;
+
+            body.innerHTML = models.map(m => {
+                const fp = m.failure_profile;
+                const failTitle = `${fmtInt(fp.n_failures)} of ${fmtInt(fp.n_rows)} runs failed`;
+                const cells = modes.map(mode => {
+                    const v = fp.modes[mode];
+                    const rate = v && isNum(v.rate) ? v.rate : null;
+                    const count = v && isNum(v.count) ? v.count : 0;
+                    if (rate == null || count === 0) {
+                        return `<td><span class="diag-zero" title="${esc(mode)}: no failures">&middot;</span></td>`;
+                    }
+                    const w = Math.max(4, Math.min(100, (rate / scale) * 100));
+                    return `<td title="${esc(mode)}: ${count} of ${fmtInt(fp.n_rows)} runs (${fmtPct(rate)})">
+                        ${fmtPct(rate)}
+                        <span class="diag-bar-track"><span class="diag-bar-fill" style="width:${w.toFixed(0)}%"></span></span></td>`;
+                }).join('');
+                return `<tr><td class="col-left">${esc(m.name)}</td>
+                    <td title="${esc(failTitle)}">${fmtPct(fp.failure_rate)}</td>${cells}</tr>`;
+            }).join('');
+            return true;
+        }
+
+        // Sim-profile robustness (#70 / H4): rows = models, cols = profiles,
+        // cells = pass rate + change vs the cooperative condition. Rendered only
+        // when the aggregate emitted sim_profile_robustness (a stratified run).
+        function renderDiagRobustness() {
+            const head = document.getElementById('robustness-head');
+            const body = document.getElementById('robustness-body');
+            if (!head || !body) return false;
+            const spr = leaderboardData.sim_profile_robustness;
+            if (!spr || !spr.models || typeof spr.models !== 'object') return false;
+            const names = Object.keys(spr.models);
+            if (!names.length) return false;
+            const coop = typeof spr.cooperative_profile === 'string' ? spr.cooperative_profile : 'cooperative';
+
+            // Rows follow leaderboard order where possible; extra names appended.
+            const boardOrder = (leaderboardData.models || []).map(m => m.name).filter(n => names.includes(n));
+            const rows = [...boardOrder, ...names.filter(n => !boardOrder.includes(n)).sort()];
+
+            // Columns: cooperative first, then the other profiles alphabetically.
+            const seen = new Set();
+            const profiles = [];
+            rows.forEach(n => Object.keys(spr.models[n] || {}).forEach(p => {
+                if (!seen.has(p)) { seen.add(p); profiles.push(p); }
+            }));
+            profiles.sort((a, b) => (a === coop ? -1 : b === coop ? 1 : a.localeCompare(b)));
+            if (!profiles.length) return false;
+
+            head.innerHTML = `<tr><th class="col-left">Model</th>${profiles.map(p =>
+                `<th title="Pass rate under the ${esc(p)} user-sim profile">${esc(p.replace(/-/g, ' '))}${p === coop ? ' (board)' : ''}</th>`).join('')}</tr>`;
+
+            body.innerHTML = rows.map(name => {
+                const byProfile = spr.models[name] || {};
+                const cells = profiles.map(p => {
+                    const e = byProfile[p];
+                    if (!e || !isNum(e.pass_rate)) return '<td><span class="na">&mdash;</span></td>';
+                    const title = `${esc(p)}: pass rate ${fmtNum(e.pass_rate)}` +
+                        (isNum(e.mean_efficacy) ? `, mean efficacy ${fmtNum(e.mean_efficacy)}` : '') +
+                        (isNum(e.n_rows) ? `, ${fmtInt(e.n_rows)} runs` : '') +
+                        (isNum(e.n_scenarios) ? ` over ${fmtInt(e.n_scenarios)} scenarios` : '');
+                    // delta_vs_cooperative = coop - profile, so the natural signed
+                    // change under this profile is its negation: negative = worse.
+                    let deltaTxt = '';
+                    if (isNum(e.delta_vs_cooperative)) {
+                        const change = -e.delta_vs_cooperative;
+                        const cls = change < 0 ? 'diag-delta-bad' : change > 0 ? 'diag-delta-good' : '';
+                        const glyph = change < 0 ? '&#9660; ' : change > 0 ? '&#9650; ' : '';
+                        deltaTxt = `<span class="diag-delta ${cls}">${glyph}${change > 0 ? '+' : ''}${change.toFixed(3)} vs coop</span>`;
+                    }
+                    return `<td title="${title}">${fmtNum(e.pass_rate)}${deltaTxt}</td>`;
+                }).join('');
+                return `<tr><td class="col-left">${esc(name)}</td>${cells}</tr>`;
+            }).join('');
+            return true;
+        }
+
+        // Corpus health (#72): headline + the pass-distribution counts behind it.
+        // The headline also rides the stat note above; this block adds the counts.
+        function renderDiagCorpusHealth() {
+            const wrap = document.getElementById('corpus-health-body');
+            if (!wrap) return false;
+            const ch = leaderboardData.corpus_health;
+            if (!ch || typeof ch !== 'object') return false;
+            const headline = typeof ch.headline === 'string' ? ch.headline : null;
+            const counts = [
+                { v: ch.never_passed, lbl: 'never passed', why: 'Possible defects — routed to expert review.' },
+                { v: ch.passed_by_every_model, lbl: 'passed by every model', why: 'Low discriminative signal — hard-tier replacement candidates.' },
+                { v: ch.total_scenarios, lbl: 'total scenarios', why: 'Public corpus only; holdout never counted here.' },
+            ].filter(c => isNum(c.v));
+            if (!headline && !counts.length) return false;
+            wrap.innerHTML =
+                (headline ? `<p class="diag-headline">${esc(headline)}.</p>` : '') +
+                (counts.length ? `<div class="diag-stats">${counts.map(c =>
+                    `<div class="diag-stat"><span class="num">${fmtInt(c.v)}</span>
+                    <span class="lbl">${esc(c.lbl)}</span><span class="why">${esc(c.why)}</span></div>`).join('')}</div>` : '');
+            return true;
+        }
+
+        // Section registry: each view renders only when its key is present, and
+        // the panel shows only when at least one view rendered — a legacy payload
+        // hides the whole thing. New diagnostic surfaces slot in by adding a
+        // container div in the markup and one entry here.
+        // TODO(#74): register recovery_probe_robustness here once it merges.
+        const DIAG_VIEWS = [
+            { id: 'diag-failure', render: renderDiagFailureModes },
+            { id: 'diag-robustness', render: renderDiagRobustness },
+            { id: 'diag-corpus', render: renderDiagCorpusHealth },
+        ];
+
+        function renderDiagnostics() {
+            const panel = document.getElementById('diagnostics-panel');
+            if (!panel || !leaderboardData) return;
+            let any = false;
+            DIAG_VIEWS.forEach(v => {
+                const el = document.getElementById(v.id);
+                if (!el) return;
+                const on = v.render() === true;
+                el.style.display = on ? '' : 'none';
+                any = any || on;
+            });
+            panel.style.display = any ? '' : 'none';
+        }
+
         function renderDemo() {
             // Synthetic data for local preview ONLY (?demo=1). Fabricated numbers on
             // real model names — never a public fallback. Banner makes that loud.
+            // Compact fabricators for the diagnostics payloads, so each model line
+            // below stays readable. Same shapes aggregate_results.py emits.
+            const DEMO_MODES = ['tool-selection-error', 'policy-violation', 'incomplete-task',
+                'premature-end', 'wrong-parameters', 'hallucinated-capability'];
+            const demoFailureProfile = counts => {
+                const n_rows = 240, modes = {};
+                let n_failures = 0;
+                DEMO_MODES.forEach((mode, i) => {
+                    modes[mode] = { count: counts[i], rate: +(counts[i] / n_rows).toFixed(4) };
+                    n_failures += counts[i];
+                });
+                return { n_rows, n_failures, failure_rate: +(n_failures / n_rows).toFixed(4), modes };
+            };
+            const demoProfiles = (coop, imp, conf, adv) => {
+                const entry = (rate, isCoop) => ({
+                    pass_rate: rate, mean_efficacy: +(rate - 0.03).toFixed(4),
+                    n_rows: isCoop ? 240 : 80, n_scenarios: 80,
+                    delta_vs_cooperative: isCoop ? null : +(coop - rate).toFixed(4),
+                });
+                return {
+                    'cooperative': entry(coop, true),
+                    'impatient': entry(imp, false),
+                    'technically-confused': entry(conf, false),
+                    'adversarial': entry(adv, false),
+                };
+            };
             leaderboardData = {
                 updated: new Date().toISOString(),
                 version: '0.1.0-demo',
                 domains: ['banking', 'customer_success'],
                 holdout: { present: true },
                 n_rank_bands: 3,
+                failure_taxonomy: { modes: DEMO_MODES },
+                sim_profile_robustness: {
+                    cooperative_profile: 'cooperative',
+                    pass_threshold: 0.7,
+                    models: {
+                        'GPT-5.5': demoProfiles(0.85, 0.74, 0.79, 0.61),
+                        'Claude Opus 4.8': demoProfiles(0.82, 0.75, 0.78, 0.66),
+                        'Gemini 3.1 Pro': demoProfiles(0.80, 0.66, 0.71, 0.52),
+                        'DeepSeek-V4 Pro': demoProfiles(0.78, 0.61, 0.68, 0.47),
+                        'Gemini 3.5 Flash': demoProfiles(0.81, 0.69, 0.70, 0.55),
+                        'Mistral Large 3': demoProfiles(0.74, 0.55, 0.62, 0.41),
+                    },
+                },
                 corpus_health: { total_scenarios: 80, passed_at_least_once: 78, never_passed: 2, passed_by_every_model: 11, n_models: 6, headline: '78 of 80 scenarios passed at least once; 11 passed by every model' },
                 statistical_note: 'DEMO DATA — fabricated numbers, not benchmark results.',
                 models: [
-                    { name: 'GPT-5.5', clear_score: 0.847, clear_score_ci: [0.82, 0.874], efficacy: 0.89, efficacy_ci: [0.86, 0.92], task_completion: 0.91, tool_selection: 0.87, cost_per_task_usd: 0.0234, reliability: 0.85, reliability_pass_hat_k: {1:0.88,2:0.80,3:0.72}, consistency_band: { solid_rate: 0.72, avg_pass_rate: 0.85, best_of_rate: 0.94, n_scenarios: 80, n_runs: 3 }, premature_end_rate: 0.03, avg_latency_ms: 3200, judge_agreement: { task_completion: 0.92, tool_selection: 0.88 }, holdout_gap: 0.012, holdout_score: 0.878, rank_band: 1 },
-                    { name: 'Claude Opus 4.8', clear_score: 0.831, clear_score_ci: [0.805, 0.857], efficacy: 0.87, efficacy_ci: [0.84, 0.90], task_completion: 0.89, tool_selection: 0.85, cost_per_task_usd: 0.0412, reliability: 0.82, reliability_pass_hat_k: {1:0.85,2:0.77,3:0.68}, consistency_band: { solid_rate: 0.68, avg_pass_rate: 0.82, best_of_rate: 0.92, n_scenarios: 80, n_runs: 3 }, premature_end_rate: 0.04, avg_latency_ms: 2800, judge_agreement: { task_completion: 0.90, tool_selection: 0.85 }, holdout_gap: 0.071, holdout_score: 0.799, rank_band: 1 },
-                    { name: 'Gemini 3.1 Pro', clear_score: 0.819, clear_score_ci: [0.79, 0.848], efficacy: 0.85, efficacy_ci: [0.82, 0.88], task_completion: 0.87, tool_selection: 0.83, cost_per_task_usd: 0.0198, reliability: 0.80, reliability_pass_hat_k: {1:0.83,2:0.74,3:0.64}, premature_end_rate: 0.05, avg_latency_ms: 3500, judge_agreement: { task_completion: 0.89, tool_selection: 0.86 }, holdout_gap: -0.008, holdout_score: 0.858, rank_band: 1 },
-                    { name: 'DeepSeek-V4 Pro', clear_score: 0.803, clear_score_ci: [0.77, 0.836], efficacy: 0.82, efficacy_ci: [0.79, 0.85], task_completion: 0.84, tool_selection: 0.80, cost_per_task_usd: 0.0045, reliability: 0.78, reliability_pass_hat_k: {1:0.80,2:0.70,3:0.60}, premature_end_rate: 0.06, avg_latency_ms: 4100, judge_agreement: { task_completion: 0.87, tool_selection: 0.83 }, holdout_gap: 0.02, holdout_score: 0.80, rank_band: 2 },
-                    { name: 'Gemini 3.5 Flash', clear_score: 0.771, clear_score_ci: [0.74, 0.802], efficacy: 0.74, efficacy_ci: [0.71, 0.77], task_completion: 0.76, tool_selection: 0.72, cost_per_task_usd: 0.0012, reliability: 0.81, reliability_pass_hat_k: {1:0.83,2:0.75,3:0.66}, premature_end_rate: 0.04, avg_latency_ms: 1600, judge_agreement: { task_completion: 0.88, tool_selection: 0.84 }, holdout_gap: 0.005, holdout_score: 0.735, rank_band: 2 },
-                    { name: 'Mistral Large 3', clear_score: 0.728, clear_score_ci: [0.69, 0.766], efficacy: 0.71, efficacy_ci: [0.67, 0.75], task_completion: 0.73, tool_selection: 0.69, cost_per_task_usd: 0.0178, reliability: 0.74, reliability_pass_hat_k: {1:0.77,2:0.68,3:0.58}, premature_end_rate: 0.08, avg_latency_ms: 3100, judge_agreement: { task_completion: 0.84, tool_selection: 0.81 }, holdout_gap: 0.09, holdout_score: 0.62, rank_band: 3 },
+                    { name: 'GPT-5.5', clear_score: 0.847, clear_score_ci: [0.82, 0.874], efficacy: 0.89, efficacy_ci: [0.86, 0.92], task_completion: 0.91, tool_selection: 0.87, cost_per_task_usd: 0.0234, reliability: 0.85, reliability_pass_hat_k: {1:0.88,2:0.80,3:0.72}, consistency_band: { solid_rate: 0.72, avg_pass_rate: 0.85, best_of_rate: 0.94, n_scenarios: 80, n_runs: 3 }, premature_end_rate: 0.03, avg_latency_ms: 3200, judge_agreement: { task_completion: 0.92, tool_selection: 0.88 }, holdout_gap: 0.012, holdout_score: 0.878, failure_profile: demoFailureProfile([8, 1, 10, 4, 3, 1]), rank_band: 1 },
+                    { name: 'Claude Opus 4.8', clear_score: 0.831, clear_score_ci: [0.805, 0.857], efficacy: 0.87, efficacy_ci: [0.84, 0.90], task_completion: 0.89, tool_selection: 0.85, cost_per_task_usd: 0.0412, reliability: 0.82, reliability_pass_hat_k: {1:0.85,2:0.77,3:0.68}, consistency_band: { solid_rate: 0.68, avg_pass_rate: 0.82, best_of_rate: 0.92, n_scenarios: 80, n_runs: 3 }, premature_end_rate: 0.04, avg_latency_ms: 2800, judge_agreement: { task_completion: 0.90, tool_selection: 0.85 }, holdout_gap: 0.071, holdout_score: 0.799, failure_profile: demoFailureProfile([6, 2, 12, 6, 4, 0]), rank_band: 1 },
+                    { name: 'Gemini 3.1 Pro', clear_score: 0.819, clear_score_ci: [0.79, 0.848], efficacy: 0.85, efficacy_ci: [0.82, 0.88], task_completion: 0.87, tool_selection: 0.83, cost_per_task_usd: 0.0198, reliability: 0.80, reliability_pass_hat_k: {1:0.83,2:0.74,3:0.64}, premature_end_rate: 0.05, avg_latency_ms: 3500, judge_agreement: { task_completion: 0.89, tool_selection: 0.86 }, holdout_gap: -0.008, holdout_score: 0.858, failure_profile: demoFailureProfile([10, 3, 14, 7, 5, 2]), rank_band: 1 },
+                    { name: 'DeepSeek-V4 Pro', clear_score: 0.803, clear_score_ci: [0.77, 0.836], efficacy: 0.82, efficacy_ci: [0.79, 0.85], task_completion: 0.84, tool_selection: 0.80, cost_per_task_usd: 0.0045, reliability: 0.78, reliability_pass_hat_k: {1:0.80,2:0.70,3:0.60}, premature_end_rate: 0.06, avg_latency_ms: 4100, judge_agreement: { task_completion: 0.87, tool_selection: 0.83 }, holdout_gap: 0.02, holdout_score: 0.80, failure_profile: demoFailureProfile([12, 4, 16, 9, 6, 3]), rank_band: 2 },
+                    { name: 'Gemini 3.5 Flash', clear_score: 0.771, clear_score_ci: [0.74, 0.802], efficacy: 0.74, efficacy_ci: [0.71, 0.77], task_completion: 0.76, tool_selection: 0.72, cost_per_task_usd: 0.0012, reliability: 0.81, reliability_pass_hat_k: {1:0.83,2:0.75,3:0.66}, premature_end_rate: 0.04, avg_latency_ms: 1600, judge_agreement: { task_completion: 0.88, tool_selection: 0.84 }, holdout_gap: 0.005, holdout_score: 0.735, failure_profile: demoFailureProfile([15, 5, 22, 12, 8, 4]), rank_band: 2 },
+                    { name: 'Mistral Large 3', clear_score: 0.728, clear_score_ci: [0.69, 0.766], efficacy: 0.71, efficacy_ci: [0.67, 0.75], task_completion: 0.73, tool_selection: 0.69, cost_per_task_usd: 0.0178, reliability: 0.74, reliability_pass_hat_k: {1:0.77,2:0.68,3:0.58}, premature_end_rate: 0.08, avg_latency_ms: 3100, judge_agreement: { task_completion: 0.84, tool_selection: 0.81 }, holdout_gap: 0.09, holdout_score: 0.62, failure_profile: demoFailureProfile([18, 7, 26, 15, 11, 6]), rank_band: 3 },
                 ],
             };
             onDataLoaded();

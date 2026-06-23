@@ -93,15 +93,16 @@ def _holdout_scenario(scenario_id="banking_x_9999_dummyhh", holdout=True):
 class TestLoadHoldout:
     def test_loads_and_tags_holdout(self, tmp_path):
         root = _write_dummy_holdout(tmp_path, n=2)
-        scenarios = load_holdout_scenarios(root, Domain.BANKING)
+        # Issue #60: returns (instantiated_scenarios, raw_template_dicts).
+        scenarios, _raw = load_holdout_scenarios(root, Domain.BANKING, 0)
         assert len(scenarios) == 2
         assert all(s.holdout is True for s in scenarios)
         assert all(s.domain is Domain.BANKING for s in scenarios)
 
     def test_missing_domain_returns_empty(self, tmp_path):
         root = _write_dummy_holdout(tmp_path, domain="banking", n=1)
-        # No customer_success subdir -> empty list, not an error.
-        assert load_holdout_scenarios(root, Domain.CUSTOMER_SUCCESS) == []
+        # No customer_success subdir -> ([], []), not an error.
+        assert load_holdout_scenarios(root, Domain.CUSTOMER_SUCCESS, 0) == ([], [])
 
 
 # --- 2. Row tagging ----------------------------------------------------------
@@ -359,7 +360,7 @@ class TestRunEvalHoldoutWiring:
 
         public = [_holdout_scenario("banking_pub_0000_aaaa", holdout=False)]
         # Public loader returns the public scenario; holdout loader reads the dir.
-        monkeypatch.setattr(run_eval, "load_scenarios", lambda domain: public)
+        monkeypatch.setattr(run_eval, "load_scenarios", lambda domain, seed: (public, []))
         monkeypatch.setattr(run_eval, "init_tracing", lambda **kw: None)
         monkeypatch.setattr(run_eval, "get_tracer", lambda: None)
 
@@ -432,7 +433,9 @@ class TestRunEvalHoldoutWiring:
         results_dir.mkdir()
         output = results_dir / "results_20260610_040404.parquet"
         monkeypatch.setattr(
-            run_eval, "load_scenarios", lambda domain: [_holdout_scenario(holdout=False)]
+            run_eval,
+            "load_scenarios",
+            lambda domain, seed: ([_holdout_scenario(holdout=False)], []),
         )
         monkeypatch.setattr(run_eval, "init_tracing", lambda **kw: None)
         monkeypatch.setattr(run_eval, "get_tracer", lambda: None)

@@ -190,6 +190,36 @@ class TestContains:
         assert r["passed"] is False
 
 
+class TestNotExists:
+    """not_exists (issue #57): the recovery-probe "bad entity not created" op.
+
+    It is the ONLY op for which an absent path is the success case.
+    """
+
+    def test_absent_path_passes(self):
+        r = check_assertion(
+            {"accounts": {"A": {}}},
+            {"accounts": {"A": {}}},
+            {"assert": "accounts.BUS-CHK-999", "op": "not_exists"},
+        )
+        assert r["passed"] is True
+
+    def test_present_path_fails(self):
+        r = check_assertion(
+            {"accounts": {"A": {}}},
+            {"accounts": {"A": {}, "BUS-CHK-999": {"balance": 500}}},
+            {"assert": "accounts.BUS-CHK-999", "op": "not_exists"},
+        )
+        assert r["passed"] is False
+        assert "should not exist" in r["detail"]
+
+    def test_present_but_none_value_still_counts_as_exists(self):
+        # A path that resolves to None is PRESENT (resolve_path distinguishes
+        # present-and-None from absent), so not_exists fails.
+        r = check_assertion({}, {"x": None}, {"assert": "x", "op": "not_exists"})
+        assert r["passed"] is False
+
+
 class TestUnknownOp:
     def test_unknown_op(self):
         r = check_assertion({}, {}, {"assert": "x", "op": "frobnicate"})

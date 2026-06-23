@@ -190,6 +190,57 @@ def compute_dual_control_rates(df: pd.DataFrame) -> dict:
     return out
 
 
+def compute_recovery_rates(df: pd.DataFrame) -> dict:
+    """Per-model recovery rate over probe-carrying rows only (issue #57).
+
+    A recovery probe injects a deterministic mid-conversation fault and grades —
+    via state checking — whether the agent reached the correct end state DESPITE
+    it. ``recovered`` is the boolean verdict on each FIRED probe row; it is None
+    on non-probe rows AND on declared-probe rows whose injection never fired
+    (the conversation ended before ``probe.turn`` — the runner refuses to grade
+    a fault that was never injected; the per-row ``probe_fired`` flag makes
+    those rows auditable). This computes, per model::
+
+        {model: {"recovery_rate": .., "n_probe_rows": .., "n_probe_scenarios": ..,
+                 "by_kind": {kind: {"recovery_rate": .., "n_rows": ..}}}}
+
+    over ONLY the rows where a probe FIRED (``recovered`` is non-null) — so the
+    denominator never mixes in rows where no fault occurred. Returns
+    ``{}`` when no probe rows exist — which is every run on the v1 corpus, since
+    no published scenario carries a probe (demo probes live in test fixtures
+    only). Deterministic: plain group means, no resampling. This is a reporting
+    helper, NOT part of the public efficacy/CLEAR aggregates — probe rows are a
+    separate dimension, exactly like the persona-stratified robustness table.
+    """
+    if df.empty or "recovered" not in df.columns or "model" not in df.columns:
+        return {}
+    # Probe rows are the ones with a non-null ``recovered`` verdict. A null/absent
+    # column means no probes ran — return empty so nothing is emitted.
+    work = df[df["recovered"].notna()].copy()
+    if work.empty:
+        return {}
+    work["_recovered"] = work["recovered"].astype(bool)
+
+    out: dict[str, dict] = {}
+    for model, grp in sorted(work.groupby("model"), key=lambda kv: str(kv[0])):
+        by_kind: dict[str, dict] = {}
+        if "recovery_probe_kind" in grp.columns:
+            for kind, kgrp in sorted(grp.groupby("recovery_probe_kind"), key=lambda kv: str(kv[0])):
+                by_kind[str(kind)] = {
+                    "recovery_rate": round(float(kgrp["_recovered"].mean()), 4),
+                    "n_rows": int(len(kgrp)),
+                }
+        out[str(model)] = {
+            "recovery_rate": round(float(grp["_recovered"].mean()), 4),
+            "n_probe_rows": int(len(grp)),
+            "n_probe_scenarios": (
+                int(grp["scenario_id"].nunique()) if "scenario_id" in grp else None
+            ),
+            "by_kind": by_kind,
+        }
+    return out
+
+
 # --- Bootstrap configuration ---
 # Confidence intervals are estimated by resampling SCENARIOS (not individual
 # rows) with replacement. The scenario is the exchangeable unit here: all runs
@@ -996,6 +1047,14 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
     # ONLY and emitted conditionally — absent on every v1 run, since no published
     # scenario carries a dual_control block.
     dual_control_rates = compute_dual_control_rates(robustness_source)
+    # Recovery-probe table (issue #57 / H). Like the robustness table, this reads
+    # from the full frame BEFORE the cooperative exclusion (a probe is orthogonal
+    # to the sim profile — it can ride any profile), with null-agent rows already
+    # gone and holdout rows dropped (governance §4: holdout detail never reaches a
+    # published surface). recovery_rate is computed over probe-carrying rows ONLY
+    # and emitted conditionally — absent on every v1 run, since no published
+    # scenario carries a probe.
+    recovery_rates = compute_recovery_rates(robustness_source)
 
     # Strip rows from non-cooperative user-sim profiles (issue #59) before ANY
     # aggregate — including the holdout gap below — so a behavioral-profile run
@@ -1286,6 +1345,30 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
                 "above. Holdout and null-agent rows are never included."
             ),
             "models": dual_control_rates,
+        }
+
+    # Recovery-probe robustness table (issue #57): per-model recovery rate over
+    # probe-carrying rows, broken down by probe kind. Key present ONLY when probe
+    # rows exist — so a normal run (the entire v1 corpus has no probes) ships no
+    # empty surface, mirroring the holdout "present" and sim_profile_robustness
+    # patterns. Probe rows feed THIS surface only; they never move public
+    # efficacy/CLEAR (probe scenarios are a separate tier — see
+    # docs/recovery-probes.md).
+    if recovery_rates:
+        leaderboard["recovery_probe_robustness"] = {
+            "note": (
+                "Per-model recovery rate over recovery-probe scenarios (issue "
+                "#57): a deterministic mid-conversation fault is injected at turn "
+                "4-5 and recovery is verified by state grading (correct end state "
+                "reached DESPITE the fault, and the bad entity not acted on). "
+                "recovery_rate is the fraction of FIRED-probe rows the model "
+                "recovered (rows where the probe was declared but never fired "
+                "carry recovered=null and are excluded; see probe_fired per row), "
+                "with a by_kind breakdown. These rows are a SEPARATE dimension — "
+                "they are excluded from the public efficacy/CLEAR rankings above. "
+                "Holdout and null-agent rows are never included."
+            ),
+            "models": recovery_rates,
         }
 
     for _, row in overall.iterrows():

@@ -143,6 +143,13 @@ def _sim_namespace(payload: dict):
         user_actions_fired=int(meta.get("user_actions_fired", 0) or 0),
         user_actions_suppressed=int(meta.get("user_actions_suppressed", 0) or 0),
         coordination_ok=meta.get("coordination_ok"),
+        # Recovery probe (issue #57). Older artifacts predate the fields; the
+        # non-probe majority carry None/False — both reconstruct the row
+        # identically. ``probe_fired`` records whether the injection was
+        # actually delivered (recovered is None when it was not).
+        recovery_probe_kind=meta.get("recovery_probe_kind"),
+        recovered=meta.get("recovered"),
+        probe_fired=bool(meta.get("probe_fired", False)),
     )
 
 

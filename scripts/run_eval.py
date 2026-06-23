@@ -60,8 +60,10 @@ from eval.scoring.rubrics import (
 )
 from eval.scoring.state_check import score_state_changes
 from eval.simulation.dual_control import DualControl
+from eval.simulation.probes import RecoveryProbe
 from eval.simulation.profiles import DEFAULT_SIM_PROFILE, SIM_PROFILES
 from eval.simulation.runner import Scenario, SimulationRunner
+from eval.templating import DEFAULT_INSTANTIATION_SEED, instantiate
 from eval.tracing import (
     get_tracer,
     init_tracing,
@@ -132,7 +134,14 @@ def capture_environment(freeze_path: Path) -> dict:
 
 
 def _scenario_from_dict(data: dict, domain: Domain, *, holdout: bool) -> Scenario:
-    """Build a Scenario from a loaded JSON dict (shared by both loaders)."""
+    """Build a Scenario from a loaded JSON dict (shared by both loaders).
+
+    ``data`` is the INSTANTIATED scenario dict (see ``eval.templating.instantiate``):
+    a template has had its ``template_slots`` consumed and its ``{{slot}}``
+    placeholders substituted; a non-template scenario is returned unchanged. Either
+    way, by the time this builder runs the dict is an ordinary v0.2 scenario with no
+    ``template_slots`` key, so the Scenario carries the concrete surface a run uses.
+    """
     return Scenario(
         id=data["id"],
         domain=domain,
@@ -151,24 +160,42 @@ def _scenario_from_dict(data: dict, domain: Domain, *, holdout: bool) -> Scenari
         # the user_actions, and the authorization scope at load time, so a
         # malformed dual_control block fails before any run.
         dual_control=DualControl.from_dict(data.get("dual_control")),
+        # Recovery probe (issue #57); None for scenarios without one (the entire
+        # public corpus today). RecoveryProbe.from_dict validates kind/turn/
+        # injection at load time, so a malformed probe fails before any run.
+        recovery_probe=RecoveryProbe.from_dict(data.get("recovery_probe")),
     )
 
 
-def load_scenarios(domain: Domain) -> list[Scenario]:
-    """Load public scenarios from the in-repo data directory."""
+def load_scenarios(domain: Domain, instantiation_seed: int) -> tuple[list[Scenario], list[dict]]:
+    """Load public scenarios, instantiating templates with ``instantiation_seed``.
+
+    Returns ``(instantiated_scenarios, raw_dicts)`` (issue #60). A templated
+    scenario is instantiated against the seed (fresh surface values, invariant
+    logical task); a non-template scenario passes through unchanged. Instantiation
+    is deterministic, so the same seed yields byte-identical scenarios across
+    processes (resume / reproducibility). ``raw_dicts`` are the on-disk dicts
+    BEFORE instantiation (the authored templates), used by the pre-registration to
+    record the seed-invariant template-corpus hash alongside the instantiated one.
+    """
     scenario_dir = Path(f"data/scenarios/{domain.value}")
     if not scenario_dir.exists():
         logger.warning("Scenario directory not found: %s", scenario_dir)
-        return []
-    scenarios = []
+        return [], []
+    scenarios: list[Scenario] = []
+    raw: list[dict] = []
     for path in sorted(scenario_dir.glob("*.json")):
         with open(path) as f:
             data = json.load(f)
-        scenarios.append(_scenario_from_dict(data, domain, holdout=False))
-    return scenarios
+        raw.append(data)
+        instantiated = instantiate(data, instantiation_seed)
+        scenarios.append(_scenario_from_dict(instantiated, domain, holdout=False))
+    return scenarios, raw
 
 
-def load_holdout_scenarios(holdout_root: Path, domain: Domain) -> list[Scenario]:
+def load_holdout_scenarios(
+    holdout_root: Path, domain: Domain, instantiation_seed: int
+) -> tuple[list[Scenario], list[dict]]:
     """Load private-holdout scenarios for a domain from an EXTERNAL directory.
 
     ``holdout_root`` is a directory laid out exactly like ``data/scenarios/``:
@@ -177,22 +204,27 @@ def load_holdout_scenarios(holdout_root: Path, domain: Domain) -> list[Scenario]
     ``holdout=True`` so its result rows carry ``holdout: true`` and the
     aggregation can split public vs holdout efficacy.
 
-    Returning ``[]`` for a domain with no holdout subdir is intentional — a
-    holdout need not cover every domain; the run simply has no holdout rows for
-    the uncovered ones.
+    Like the public loader (issue #60), holdout templates are instantiated against
+    ``instantiation_seed`` — a holdout may be templated too — and the raw template
+    dicts are returned for the (private) holdout template-corpus hash. Returns
+    ``(instantiated_scenarios, raw_dicts)``; ``([], [])`` for a domain with no
+    holdout subdir is intentional — a holdout need not cover every domain.
     """
     domain_dir = holdout_root / domain.value
     if not domain_dir.exists():
         # Path at DEBUG: CI logs on a public repo are public; don't reveal
         # where the private holdout lives.
         logger.debug("No holdout scenarios for domain %s under %s", domain.value, holdout_root)
-        return []
-    scenarios = []
+        return [], []
+    scenarios: list[Scenario] = []
+    raw: list[dict] = []
     for path in sorted(domain_dir.glob("*.json")):
         with open(path) as f:
             data = json.load(f)
-        scenarios.append(_scenario_from_dict(data, domain, holdout=True))
-    return scenarios
+        raw.append(data)
+        instantiated = instantiate(data, instantiation_seed)
+        scenarios.append(_scenario_from_dict(instantiated, domain, holdout=True))
+    return scenarios, raw
 
 
 def format_transcript(turns) -> str:
@@ -350,6 +382,19 @@ def build_result_row(
         "user_actions_fired": int(getattr(sim_result, "user_actions_fired", 0) or 0),
         "user_actions_suppressed": int(getattr(sim_result, "user_actions_suppressed", 0) or 0),
         "coordination_ok": getattr(sim_result, "coordination_ok", None),
+        # Recovery probe (issue #57). ``recovery_probe_kind`` is the DECLARED
+        # probe kind (None for the non-probe majority — the entire public corpus
+        # today); ``probe_fired`` records whether the injection was actually
+        # delivered as a user turn; ``recovered`` is the deterministic recovery
+        # verdict, None unless the probe fired (a conversation that ended before
+        # probe.turn saw no fault, so it must not be graded). Aggregation
+        # computes a per-model recovery_rate over fired-probe rows ONLY
+        # (recovered non-null) and emits it conditionally, so a normal
+        # cooperative run with no probe rows is byte-identical downstream;
+        # probe_fired makes the rate's denominator auditable on the rows.
+        "recovery_probe_kind": getattr(sim_result, "recovery_probe_kind", None),
+        "recovered": getattr(sim_result, "recovered", None),
+        "probe_fired": bool(getattr(sim_result, "probe_fired", False)),
         "tc_agreement": _round_or_none(tc_result.agreement_rate, 4),
         "ts_agreement": _round_or_none(ts_result.agreement_rate, 4),
         "tc_max_disagreement": _round_or_none(tc_result.max_disagreement, 4),
@@ -958,6 +1003,23 @@ def main():
             "path halves judge calls and input tokens with no row-schema change."
         ),
     )
+    parser.add_argument(
+        "--instantiation-seed",
+        type=int,
+        default=DEFAULT_INSTANTIATION_SEED,
+        help=(
+            "Seed for instantiating parameterized scenario templates (issue #60). "
+            "Templated scenarios get fresh surface values (names, account ids, "
+            "amounts, dates) drawn deterministically from this seed; the logical "
+            "task is invariant, so memorizing a published surface gains nothing. "
+            "Non-templated scenarios are unaffected. Recorded in "
+            "pre_registration.json alongside the seed-invariant template-corpus "
+            "hash AND the instantiated-corpus hash, so the surface a run used is "
+            f"reproducible from (templates, seed). Default {DEFAULT_INSTANTIATION_SEED} "
+            "(deterministic); a published run should pass a fresh seed. On --resume "
+            "the original run's seed is reused (this flag is ignored)."
+        ),
+    )
     args = parser.parse_args()
 
     # Resolve the output path / run_id. On --resume the run_id is FIXED to the
@@ -994,17 +1056,39 @@ def main():
     init_tracing(trace_dir=trace_dir)
     tracer = get_tracer()
 
+    # Resolve the template-instantiation seed (issue #60) BEFORE loading, because
+    # loading instantiates templated scenarios against it. On --resume the seed is
+    # NOT taken from the CLI — it is read from the original pre-registration so the
+    # resumed run reproduces the exact same surface (otherwise the instantiated
+    # corpus hash would diverge and the resume guard would correctly abort). A run
+    # whose original pre-registration predates templating has no recorded seed; the
+    # default is used and, with no templated scenarios, instantiation is a no-op.
+    if args.resume:
+        original_prereg = load_pre_registration(results_dir, PRE_REGISTRATION_FILENAME)
+        tmpl_block = original_prereg.get("templating") or {}
+        instantiation_seed = tmpl_block.get("instantiation_seed", DEFAULT_INSTANTIATION_SEED)
+        if instantiation_seed is None:
+            instantiation_seed = DEFAULT_INSTANTIATION_SEED
+        logger.info("RESUME %s: reusing original instantiation seed %d", run_id, instantiation_seed)
+    else:
+        instantiation_seed = args.instantiation_seed
+
     # Load PUBLIC scenarios for all requested domains. Kept separate from the
     # holdout set (below) so the pre-registration hashes the public corpus on its
-    # own — its scenario index is published, the holdout's is not.
+    # own — its scenario index is published, the holdout's is not. Templated
+    # scenarios are instantiated against ``instantiation_seed`` here; the raw
+    # (pre-instantiation) template dicts are collected for the template-corpus hash.
     public_by_domain: dict[Domain, list[Scenario]] = {}
+    public_templates_by_domain: dict[Domain, list[dict]] = {}
     for domain_str in args.domains:
         domain = Domain(domain_str)
-        scenarios = load_scenarios(domain)
+        scenarios, raw = load_scenarios(domain, instantiation_seed)
         if scenarios:
             if args.scenario_limit > 0:
                 scenarios = scenarios[: args.scenario_limit]
+                raw = raw[: args.scenario_limit]
             public_by_domain[domain] = scenarios
+            public_templates_by_domain[domain] = raw
             logger.info("Loaded %d scenarios for %s", len(scenarios), domain.value)
         else:
             logger.warning("No scenarios found for %s, skipping", domain.value)
@@ -1030,7 +1114,10 @@ def main():
             )
         for domain_str in args.domains:
             domain = Domain(domain_str)
-            held = load_holdout_scenarios(holdout_root, domain)
+            # ``_`` discards the raw holdout templates: the holdout's surface is
+            # pinned via holdout_set_hash (hash + count only, no IDs/index), so its
+            # raw templates must NOT flow into the published pre-registration.
+            held, _ = load_holdout_scenarios(holdout_root, domain, instantiation_seed)
             if not held:
                 continue
             if args.scenario_limit > 0:
@@ -1133,7 +1220,11 @@ def main():
         # Verify the current scenario set still matches the corpus hash recorded
         # there; abort on any drift so a resume cannot silently mix two run
         # definitions.
-        pre_registration = load_pre_registration(results_dir, PRE_REGISTRATION_FILENAME)
+        # Reuse the pre-registration already loaded above to read the seed; the
+        # corpus check compares the INSTANTIATED hash (templates re-instantiated
+        # with that same recorded seed) against scenario_set.sha256, so a templated
+        # run resumes only when both the templates AND the seed are unchanged.
+        pre_registration = original_prereg
         current_public_hash, _ = scenario_set_hash(public_by_domain)
         current_holdout_hash = holdout_set_hash(holdout_by_domain)[0] if holdout_by_domain else None
         verify_corpus_unchanged(
@@ -1163,6 +1254,13 @@ def main():
             tool_simulator_model=sim_config.tool_simulator_model,
             user_sim_profile=sim_config.user_sim_profile,
             separate_judge_calls=args.separate_judge_calls,
+            # Templating (issue #60): pass the RAW (pre-instantiation) public
+            # templates so the pre-registration records the seed-invariant
+            # template-corpus hash + the seed alongside the instantiated hash. The
+            # holdout's templates are private, so they are NOT passed here — its
+            # surface is pinned via the holdout_set hash only (no IDs/index).
+            templates_by_domain=public_templates_by_domain,
+            instantiation_seed=instantiation_seed,
             artifacts_dir=(str(Path(artifacts_root) / run_id) if artifacts_root else None),
             trace_dir=str(trace_dir),
         )
@@ -1393,6 +1491,25 @@ def main():
                 "n_scenarios": pre_registration["holdout_set"]["n_scenarios"],
             }
             if pre_registration.get("holdout_set")
+            else None
+        ),
+        # Templating (issue #60): the instantiation seed + both corpus hashes
+        # (template-invariant and instantiated), lifted from the pre-registration
+        # so the completion record states which surface the run actually used and
+        # how to reproduce it. None for runs with no templated scenarios.
+        "templating": (
+            {
+                "instantiation_seed": pre_registration["templating"]["instantiation_seed"],
+                "n_templated_scenarios": pre_registration["templating"]["n_templated_scenarios"],
+                "template_corpus_sha256": pre_registration["templating"]["template_corpus"][
+                    "sha256"
+                ],
+                "instantiated_corpus_sha256": pre_registration["templating"][
+                    "instantiated_corpus_sha256"
+                ],
+            }
+            if pre_registration.get("templating")
+            and pre_registration["templating"]["n_templated_scenarios"]
             else None
         ),
     }

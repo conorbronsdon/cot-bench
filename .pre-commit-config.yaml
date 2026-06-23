@@ -1,0 +1,21 @@
+# Local pre-commit hooks. Install once with:
+#   pip install pre-commit && pre-commit install
+#
+# The gitleaks hook blocks a commit that contains a provider API key BEFORE it
+# ever lands in history — the local complement to the CI secret-scan job. Added
+# after the 2026-06 incident review (keys were drained by a runaway scheduled
+# eval, not a commit, but a committed key is the other way this goes wrong).
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+        args: ["--config", ".gitleaks.toml"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: ["--config", "pyproject.toml"]
+      - id: ruff-format
+        args: ["--check"]

@@ -26,6 +26,15 @@ from eval.simulation.dual_control import (
     USER_ACTION_TURN_MAX,
     USER_ACTION_TURN_MIN,
 )
+from eval.simulation.probes import PROBE_KINDS, PROBE_TURN_MAX, PROBE_TURN_MIN
+from eval.templating import (
+    DEFAULT_INSTANTIATION_SEED,
+    SLOT_TYPES,
+    TEMPLATE_SLOTS_KEY,
+    find_placeholders,
+    instantiate,
+    resolve_slots,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -39,7 +48,7 @@ VALID_CATEGORIES = {
     "adversarial_input_mitigation",
 }
 
-VALID_OPS = {"equals", "increased_by", "decreased_by", "contains"}
+VALID_OPS = {"equals", "increased_by", "decreased_by", "contains", "not_exists"}
 
 # Dedup thresholds (difflib SequenceMatcher ratio, 0-1).
 DEDUP_HARD_THRESHOLD = 0.85
@@ -150,6 +159,11 @@ class ScenarioSchema(BaseModel):
     # ground_truth in _validate_dual_control, and its assertion-free deltas use
     # the same dotted-path format as expected_state_changes).
     dual_control: dict | None = None
+    # Recovery probe (issue #57) — optional deterministic mid-conversation
+    # perturbation. Kept as a raw dict (its ``recovery_assertions`` use the
+    # ``assert`` key, a Python keyword) and validated by hand in
+    # _validate_recovery_probe.
+    recovery_probe: dict | None = None
 
 
 def _author_blocklist() -> set[str]:
@@ -455,6 +469,162 @@ def _validate_dual_control(scenario: ScenarioSchema) -> list[str]:
     return errors
 
 
+def _validate_assertion_block(assertions, ground_truth: dict | None, loc_prefix: str) -> list[str]:
+    """Validate a list of state assertions against ground_truth (issue #57).
+
+    Factored out of _validate_v02_blocks' expected_state_changes loop so the
+    recovery-probe's ``recovery_assertions`` are held to EXACTLY the same op /
+    path-resolution / contains-match rules as the scenario's own assertions —
+    one grammar, one validator. ``goal`` fuzzy-matching is deliberately NOT
+    applied here: a probe assertion (e.g. "the wrong account never came into
+    existence") need not correspond to a user_goal.
+    """
+    errors: list[str] = []
+    if not isinstance(assertions, list):
+        return [f"{loc_prefix}: must be a list of assertions"]
+    for i, raw in enumerate(assertions):
+        loc = f"{loc_prefix}[{i}]"
+        if not isinstance(raw, dict):
+            errors.append(f"{loc}: assertion must be an object")
+            continue
+        path = raw.get("assert")
+        op = raw.get("op")
+        if not path:
+            errors.append(f"{loc}: missing 'assert' path")
+            continue
+        if op not in VALID_OPS:
+            errors.append(f"{loc}: unknown op '{op}' (allowed: {sorted(VALID_OPS)})")
+            continue
+        # Path resolution against ground_truth. An ``equals`` assertion MAY name a
+        # path absent from ground_truth on purpose — the canonical "the bad entity
+        # the probe introduced must NOT exist / be acted on" check (e.g. assert a
+        # wrong account id equals null). So absent paths are only an error for the
+        # delta ops, which require a resolvable initial value to diff against.
+        found, value = _resolve_path(ground_truth, path) if ground_truth else (False, None)
+        if op in {"increased_by", "decreased_by"} and not found:
+            errors.append(f"{loc}: assert path '{path}' does not resolve in ground_truth")
+        elif op == "contains":
+            if found and not isinstance(value, list):
+                errors.append(
+                    f"{loc}: op 'contains' requires '{path}' to be a list in ground_truth"
+                )
+            if not isinstance(raw.get("match"), dict):
+                errors.append(f"{loc}: op 'contains' requires a 'match' partial dict")
+    return errors
+
+
+def _validate_recovery_probe(scenario: ScenarioSchema) -> list[str]:
+    """Validate a recovery_probe block when present (issue #57).
+
+    Presence-gated on any schema version: a scenario without ``recovery_probe``
+    is untouched. With a probe: a valid kind (the small enum), a turn in
+    [4, 5], a non-empty injection string, and — if recovery_assertions are
+    present — assertions held to the same grammar as expected_state_changes.
+    Mirrors RecoveryProbe.__init__ so the on-disk validator and the runtime
+    object agree on what a valid probe is.
+    """
+    probe = scenario.recovery_probe
+    if probe is None:
+        return []
+
+    errors: list[str] = []
+    if not isinstance(probe, dict):
+        return ["recovery_probe must be an object"]
+
+    kind = probe.get("kind")
+    if kind not in PROBE_KINDS:
+        errors.append(f"recovery_probe.kind '{kind}' not in {sorted(PROBE_KINDS)}")
+
+    turn = probe.get("turn")
+    if not isinstance(turn, int) or isinstance(turn, bool):
+        errors.append("recovery_probe.turn must be an integer")
+    elif not (PROBE_TURN_MIN <= turn <= PROBE_TURN_MAX):
+        errors.append(
+            f"recovery_probe.turn {turn} out of range [{PROBE_TURN_MIN}, {PROBE_TURN_MAX}]"
+        )
+
+    injection = probe.get("injection")
+    if not isinstance(injection, str) or not injection.strip():
+        errors.append("recovery_probe.injection must be a non-empty string")
+
+    recovery_assertions = probe.get("recovery_assertions")
+    if recovery_assertions:
+        errors.extend(
+            _validate_assertion_block(
+                recovery_assertions, scenario.ground_truth, "recovery_probe.recovery_assertions"
+            )
+        )
+
+    return errors
+
+
+def _validate_template(data: dict) -> list[str]:
+    """Validate a ``template_slots`` declaration + slot/placeholder coherence (#60).
+
+    Checks, all on the RAW template (before instantiation):
+
+    - every slot declaration is an object with a known ``type`` (or a pinned
+      ``value``);
+    - ``choice`` slots carry a non-empty ``options`` list (the one type whose
+      generation can otherwise raise at instantiation);
+    - every ``{{slot}}`` referenced ANYWHERE in the scenario is declared, and
+      every declared slot is referenced somewhere — so a template can neither
+      reference an undeclared slot (instantiation would leave a literal ``{{…}}``)
+      nor declare a dead slot.
+
+    The placeholder scan deliberately ignores the ``template_slots`` block itself
+    (its keys ARE the slot names, not references) by scanning the rest of the dict.
+    """
+    errors: list[str] = []
+    slot_specs = data.get(TEMPLATE_SLOTS_KEY)
+    if not isinstance(slot_specs, dict) or not slot_specs:
+        errors.append(f"'{TEMPLATE_SLOTS_KEY}' must be a non-empty object when present")
+        return errors
+
+    declared = set(slot_specs)
+    for name, spec in slot_specs.items():
+        loc = f"{TEMPLATE_SLOTS_KEY}['{name}']"
+        if not isinstance(spec, dict):
+            errors.append(f"{loc}: declaration must be an object")
+            continue
+        if "value" in spec and "type" not in spec:
+            continue  # pinned literal, no generator
+        slot_type = spec.get("type")
+        if slot_type not in SLOT_TYPES:
+            errors.append(f"{loc}: unknown slot type {slot_type!r} (known: {list(SLOT_TYPES)})")
+        elif slot_type == "choice" and not spec.get("options"):
+            errors.append(f"{loc}: slot type 'choice' requires a non-empty 'options' list")
+
+    # Coherence: referenced (everywhere except the declaration block) vs declared.
+    referenced = find_placeholders({k: v for k, v in data.items() if k != TEMPLATE_SLOTS_KEY})
+    for missing in sorted(referenced - declared):
+        errors.append(
+            f"placeholder '{{{{{missing}}}}}' referenced but not declared in {TEMPLATE_SLOTS_KEY}"
+        )
+    for dead in sorted(declared - referenced):
+        errors.append(f"slot '{dead}' declared in {TEMPLATE_SLOTS_KEY} but never referenced")
+
+    # Stable-identifier guard: slots rotate surface VALUES only. The scenario id,
+    # criteria ids, and authorship records are stable keys — file/board identity,
+    # judge verdict round-trip keys, and the contamination audit trail — so a
+    # placeholder in any of them would silently rotate the key per seed.
+    if find_placeholders(data.get("id")):
+        errors.append("placeholders are not allowed in 'id' (stable scenario identifier)")
+    criteria = data.get("rubric_criteria")
+    if isinstance(criteria, list):
+        for i, crit in enumerate(criteria):
+            if isinstance(crit, dict) and find_placeholders(crit.get("id")):
+                errors.append(
+                    f"rubric_criteria[{i}]: placeholders are not allowed in criterion "
+                    "ids (stable scoring keys)"
+                )
+    for block in ("authorship", "criteria_authorship"):
+        if find_placeholders(data.get(block)):
+            errors.append(f"placeholders are not allowed in '{block}' (audit trail)")
+
+    return errors
+
+
 def validate_scenario_dict(data: dict) -> list[str]:
     """Validate an in-memory scenario dict. Returns list of error messages.
 
@@ -464,8 +634,29 @@ def validate_scenario_dict(data: dict) -> list[str]:
     EXACTLY the same rules whether it lives in a file or in memory. The error
     strings are stable and human-readable; the repair loop feeds them verbatim
     back to the author model.
+
+    Parameterized templates (issue #60): when ``data`` carries a
+    ``template_slots`` block, the declaration and slot/placeholder coherence are
+    validated first, then the template is INSTANTIATED with the default seed and
+    the rest of the schema/content checks run against the instantiated scenario —
+    so a template is held to exactly the same bar as a concrete scenario (its
+    assertions resolve, its criteria reference real entities, etc.). A scenario
+    with no ``template_slots`` is validated unchanged.
     """
     errors: list[str] = []
+
+    if data.get(TEMPLATE_SLOTS_KEY) is not None:
+        errors.extend(_validate_template(data))
+        # Don't try to instantiate an ill-formed template — slot resolution could
+        # raise and the placeholder errors above are the actionable ones.
+        if errors:
+            return errors
+        try:
+            resolve_slots(data.get("id", ""), data[TEMPLATE_SLOTS_KEY], DEFAULT_INSTANTIATION_SEED)
+        except ValueError as e:
+            return [f"template instantiation: {e}"]
+        # Validate the INSTANTIATED scenario against the full schema/content rules.
+        data = instantiate(data, DEFAULT_INSTANTIATION_SEED)
 
     # expected_state_changes assertions are kept as raw dicts (the JSON key
     # `assert` is a Python keyword, so a Pydantic field model would need an
@@ -505,6 +696,9 @@ def validate_scenario_dict(data: dict) -> list[str]:
 
     # Dual control (issue #58) — presence-gated, any schema version.
     errors.extend(_validate_dual_control(scenario))
+
+    # Recovery probe (issue #57) — presence-gated, any schema version.
+    errors.extend(_validate_recovery_probe(scenario))
 
     return errors
 

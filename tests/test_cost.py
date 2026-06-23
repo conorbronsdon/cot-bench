@@ -177,7 +177,7 @@ def test_max_cost_aborts_with_distinct_exit_and_persists(tmp_path, monkeypatch):
     output = results_dir / "results_20260610_999999.parquet"
 
     scenarios = _scenarios(10)
-    monkeypatch.setattr(run_eval, "load_scenarios", lambda domain: scenarios)
+    monkeypatch.setattr(run_eval, "load_scenarios", lambda domain, seed: (scenarios, []))
     monkeypatch.setattr(run_eval, "init_tracing", lambda **kw: None)
     monkeypatch.setattr(run_eval, "get_tracer", lambda: None)
     # Avoid building a real SimulationRunner (would create API clients).
@@ -228,7 +228,7 @@ def test_no_cap_runs_to_completion_exit_zero(tmp_path, monkeypatch):
     output = results_dir / "results_20260610_888888.parquet"
 
     scenarios = _scenarios(4)
-    monkeypatch.setattr(run_eval, "load_scenarios", lambda domain: scenarios)
+    monkeypatch.setattr(run_eval, "load_scenarios", lambda domain, seed: (scenarios, []))
     monkeypatch.setattr(run_eval, "init_tracing", lambda **kw: None)
     monkeypatch.setattr(run_eval, "get_tracer", lambda: None)
     monkeypatch.setattr(run_eval, "SimulationRunner", lambda *a, **k: object())

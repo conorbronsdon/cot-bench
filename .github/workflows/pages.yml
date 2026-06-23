@@ -2,7 +2,7 @@ name: Deploy Leaderboard to GitHub Pages
 
 on:
   push:
-    branches: [master]
+    branches: [main]
     paths:
       - 'frontend/**'
       - 'data/results/leaderboard.json'
