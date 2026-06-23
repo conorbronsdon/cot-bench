@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import platform
+import secrets
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -996,7 +997,34 @@ def main():
             "the original run's seed is reused (this flag is ignored)."
         ),
     )
+    parser.add_argument(
+        "--random-instantiation-seed",
+        action="store_true",
+        help=(
+            "Draw a FRESH non-zero instantiation seed for this run instead of the "
+            f"default {DEFAULT_INSTANTIATION_SEED} (issue #60). This is the seed a "
+            "PUBLISHED run over a templated corpus must use: seed "
+            f"{DEFAULT_INSTANTIATION_SEED} produces the same surface every run, so "
+            "templating gains nothing against memorization — the publish gate "
+            f"(scripts.check_publish_ready) rejects a templated run at seed "
+            f"{DEFAULT_INSTANTIATION_SEED}. The drawn seed is logged and recorded in "
+            "pre_registration.json + run_manifest.json exactly like a manually-passed "
+            "--instantiation-seed, so the surface stays reproducible. Mutually "
+            "exclusive with --instantiation-seed; ignored on --resume (the original "
+            "run's seed is reused)."
+        ),
+    )
     args = parser.parse_args()
+    # --random-instantiation-seed draws a fresh seed; it cannot be combined with an
+    # explicit --instantiation-seed (the two would contradict). argparse can't
+    # express "mutually exclusive unless default" because --instantiation-seed has a
+    # non-None default, so detect an explicitly-passed seed here.
+    if args.random_instantiation_seed and args.instantiation_seed != DEFAULT_INSTANTIATION_SEED:
+        parser.error(
+            "--random-instantiation-seed and --instantiation-seed are mutually "
+            "exclusive: pass one or the other. --random-instantiation-seed draws a "
+            "fresh seed; --instantiation-seed pins a specific one."
+        )
 
     # Resolve the output path / run_id. On --resume the run_id is FIXED to the
     # original run so artifacts, pre_registration.json, and the final parquet line
@@ -1046,6 +1074,18 @@ def main():
         if instantiation_seed is None:
             instantiation_seed = DEFAULT_INSTANTIATION_SEED
         logger.info("RESUME %s: reusing original instantiation seed %d", run_id, instantiation_seed)
+    elif args.random_instantiation_seed:
+        # Draw a FRESH non-zero seed (issue #60). Range 1..2**31-1 so it is always
+        # truthy/non-zero (the publish gate treats seed 0 as "unset/CI" over a
+        # templated corpus). secrets.randbelow gives 0..N-1, so +1 shifts it to
+        # 1..N. This seed flows into instantiation, the pre-registration, and the
+        # run manifest identically to a manually-passed --instantiation-seed.
+        instantiation_seed = secrets.randbelow(2**31 - 1) + 1
+        logger.info(
+            "Drew a fresh instantiation seed %d (--random-instantiation-seed); "
+            "recorded in pre_registration.json for reproducibility.",
+            instantiation_seed,
+        )
     else:
         instantiation_seed = args.instantiation_seed
 

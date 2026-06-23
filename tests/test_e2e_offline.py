@@ -1005,3 +1005,65 @@ class TestEnvironmentCaptureDegradation:
         # The manifest survives with an honest marker instead of an env block.
         assert manifest["environment"] == {"capture_failed": "disk full"}
         assert manifest["models_completed"] == ["GPT-5.5"]
+
+
+class TestRandomInstantiationSeed:
+    """Issue #60: --random-instantiation-seed draws a fresh non-zero seed and
+    records it in the pre-registration + manifest, so a published templated run
+    can satisfy the publish gate. The default (seed 0) leaves the surface fixed.
+    """
+
+    def _load_with_one_template(self, base_load):
+        """Wrap a load_scenarios fake so banking reports one templated raw entry.
+
+        The instantiated Scenario list is unchanged (offline machinery still runs
+        the real scenarios); only the RAW template list gains an entry carrying
+        ``template_slots``, which is what makes n_templated > 0 and surfaces the
+        instantiation seed in pre_registration.templating / manifest.templating.
+        """
+
+        def fake(domain, instantiation_seed):
+            scenarios, _raw = base_load(domain, instantiation_seed)
+            raw = list(_raw)
+            if domain == Domain.BANKING:
+                raw = [
+                    {
+                        "id": "banking_templated_probe_0001",
+                        "template_slots": {"amount": {"type": "int", "min": 1, "max": 9}},
+                    }
+                ]
+            return scenarios, raw
+
+        return fake
+
+    def test_random_seed_drawn_nonzero_and_recorded(self, offline_pipeline, monkeypatch):
+        ctx = offline_pipeline
+        base_load = run_eval.load_scenarios
+        monkeypatch.setattr(run_eval, "load_scenarios", self._load_with_one_template(base_load))
+
+        ctx.run_main(["--models", "GPT-5.5", "--random-instantiation-seed"])
+
+        reg = json.loads((ctx.results_dir / PRE_REGISTRATION_FILENAME).read_text("utf-8"))
+        seed = reg["templating"]["instantiation_seed"]
+        # Fresh seed: non-zero and inside the documented 1..2**31-1 range.
+        assert seed != 0
+        assert 1 <= seed <= 2**31 - 1
+
+        # Same seed flows verbatim into the run manifest's templating block.
+        manifest = json.loads((ctx.results_dir / "run_manifest.json").read_text("utf-8"))
+        assert manifest["templating"]["instantiation_seed"] == seed
+
+    def test_both_seed_flags_is_an_error(self, offline_pipeline):
+        ctx = offline_pipeline
+        # argparse parser.error() raises SystemExit(2); the two flags contradict.
+        with pytest.raises(SystemExit) as excinfo:
+            ctx.run_main(
+                [
+                    "--models",
+                    "GPT-5.5",
+                    "--random-instantiation-seed",
+                    "--instantiation-seed",
+                    "42",
+                ]
+            )
+        assert excinfo.value.code != 0

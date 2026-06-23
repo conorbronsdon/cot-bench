@@ -16,6 +16,7 @@ import pytest
 
 from eval.config import JUDGES, MIN_SCENARIOS_FOR_PUBLISH, RELIABILITY_RUNS
 from eval.simulation.profiles import DEFAULT_SIM_PROFILE
+from eval.templating import DEFAULT_INSTANTIATION_SEED
 from scripts.check_publish_ready import check_publish_ready
 
 
@@ -241,6 +242,56 @@ class TestSimProfileGate:
         del manifest["sim_profile"]
         path.write_text(json.dumps(manifest))
         assert check_publish_ready(path) == 0
+
+
+class TestTemplatingSeedGate:
+    """Issue #60: a published TEMPLATED run must not use the default seed (0).
+
+    The manifest's ``templating`` block is present only when the corpus actually
+    contained templated scenarios, so it doubles as the "templating was used"
+    signal. A non-templated run (no block) is never gated on this condition.
+    """
+
+    def _templating(self, seed):
+        return {
+            "instantiation_seed": seed,
+            "n_templated_scenarios": 5,
+            "template_corpus_sha256": "a" * 64,
+            "instantiated_corpus_sha256": "b" * 64,
+        }
+
+    def test_templated_run_with_default_seed_blocks(self, tmp_path, capsys):
+        path = _write_manifest(
+            tmp_path,
+            templating=self._templating(DEFAULT_INSTANTIATION_SEED),
+        )
+        assert check_publish_ready(path) != 0
+        err = capsys.readouterr().err
+        assert "::error::" in err
+        assert "--random-instantiation-seed" in err
+        assert "CI-only" in err
+
+    def test_templated_run_with_fresh_seed_passes(self, tmp_path):
+        path = _write_manifest(
+            tmp_path,
+            templating=self._templating(1234567),
+        )
+        assert check_publish_ready(path) == 0
+
+    def test_non_templated_run_with_default_seed_unaffected(self, tmp_path):
+        # No templating block (non-templated run): seed 0 is fine, gate is silent.
+        path = _write_manifest(tmp_path)
+        manifest = json.loads(path.read_text())
+        assert "templating" not in manifest
+        assert check_publish_ready(path) == 0
+
+    def test_allow_partial_rescues_templated_default_seed(self, tmp_path, capsys):
+        path = _write_manifest(
+            tmp_path,
+            templating=self._templating(DEFAULT_INSTANTIATION_SEED),
+        )
+        assert check_publish_ready(path, allow_partial=True) == 0
+        assert "::warning::" in capsys.readouterr().err
 
 
 class TestAllH2BlockersReportedTogether:

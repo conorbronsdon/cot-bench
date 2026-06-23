@@ -24,8 +24,17 @@ a scheduled publish when:
      board — this gate names the cause loudly rather than letting it surface as
      a confusing empty publish.)
 
+  6. Templating was used but the instantiation seed was the default (0). The
+     anti-memorization benefit of templating (issue #60) only exists when a
+     published run instantiates the corpus with a FRESH seed; at seed 0 the
+     surface is identical every run, so a memorized surface defeats the
+     benchmark. Seed 0 is CI-only — a published templated run must pass
+     --random-instantiation-seed. Non-templated runs have no templating block in
+     the manifest and are never gated on this condition.
+
 Conditions 3-5 only trip via an explicit ``workflow_dispatch`` with non-default
 inputs; the scheduled path always uses the defaults, so it passes them silently.
+Condition 6 only applies once the corpus actually contains templated scenarios.
 
 Exit codes:
   0  manifest is complete (no failed models, all domains >= minimum, full judge
@@ -45,6 +54,7 @@ from pathlib import Path
 
 from eval.config import JUDGES, MIN_SCENARIOS_FOR_PUBLISH, RELIABILITY_RUNS
 from eval.simulation.profiles import DEFAULT_SIM_PROFILE
+from eval.templating import DEFAULT_INSTANTIATION_SEED
 
 MANIFEST_PATH = Path("data/results/run_manifest.json")
 
@@ -140,6 +150,29 @@ def check_publish_ready(manifest_path: Path = MANIFEST_PATH, allow_partial: bool
             "different condition (and its rows are stripped from the public "
             "aggregates). Re-run cooperative before publishing."
         )
+
+    # Template-instantiation seed (issue #60). The anti-memorization benefit of
+    # templating only exists if a PUBLISHED run instantiates the corpus with a FRESH
+    # seed: at the default seed (0) the surface is identical every run, so memorizing
+    # a published surface defeats the benchmark and templating gains nothing. The
+    # manifest's ``templating`` block is present ONLY when at least one scenario was
+    # actually a template (n_templated_scenarios > 0), so it doubles as the
+    # "templating was used" signal — a non-templated run has no block and is never
+    # gated here. Block a templated publish that used seed 0; seed 0 is CI-only.
+    templating = manifest.get("templating")
+    if templating:
+        instantiation_seed = templating.get("instantiation_seed")
+        if instantiation_seed == DEFAULT_INSTANTIATION_SEED:
+            blockers.append(
+                f"Templating was used ({templating.get('n_templated_scenarios')} "
+                f"templated scenario(s)) but the instantiation seed was "
+                f"{DEFAULT_INSTANTIATION_SEED} (the default). At seed "
+                f"{DEFAULT_INSTANTIATION_SEED} the instantiated surface is identical "
+                "every run, so a memorized surface defeats the benchmark and "
+                "templating gains nothing. Re-run with --random-instantiation-seed "
+                f"(which draws a fresh non-zero seed); seed "
+                f"{DEFAULT_INSTANTIATION_SEED} is CI-only, not for a published board."
+            )
 
     if not blockers:
         completed = manifest.get("models_completed") or []
