@@ -38,10 +38,18 @@ a scheduled publish when:
      comparable to a full-corpus board. The per-domain scenario minimum does not
      catch this (a limit can still clear the minimum), so this is a distinct
      gate. Absent / 0 => unlimited (the full corpus), which passes.
+  8. Templating was used and the instantiated surface was ALREADY published. The
+     seed gate (6) only blocks seed 0; it does not stop reusing the same FRESH
+     seed across two published runs, which re-exposes a byte-identical surface and
+     defeats the anti-memorization goal exactly like seed 0. The committed ledger
+     ``data/results/published_surfaces.jsonl`` records the ``instantiated_corpus_sha256``
+     of every published run; if this run's surface hash already appears there, a
+     prior board exposed this exact surface and the publish is blocked. A novel
+     surface, or a missing/empty ledger (no prior publishes), passes.
 
 Conditions 3-5 only trip via an explicit ``workflow_dispatch`` with non-default
 inputs; the scheduled path always uses the defaults, so it passes them silently.
-Condition 6 only applies once the corpus actually contains templated scenarios.
+Conditions 6-7 only apply once the corpus actually contains templated scenarios.
 
 Exit codes:
   0  manifest is complete (no failed models, all domains >= minimum, full judge
@@ -62,17 +70,29 @@ from pathlib import Path
 from eval.config import JUDGES, MIN_SCENARIOS_FOR_PUBLISH, RELIABILITY_RUNS
 from eval.simulation.profiles import DEFAULT_SIM_PROFILE
 from eval.templating import DEFAULT_INSTANTIATION_SEED
+from scripts.record_published_surface import (
+    LEDGER_PATH,
+    find_prior_publish,
+    read_published_hashes,
+)
 
 MANIFEST_PATH = Path("data/results/run_manifest.json")
 
 
-def check_publish_ready(manifest_path: Path = MANIFEST_PATH, allow_partial: bool = False) -> int:
+def check_publish_ready(
+    manifest_path: Path = MANIFEST_PATH,
+    allow_partial: bool = False,
+    ledger_path: Path = LEDGER_PATH,
+) -> int:
     """Return an exit code for the publish gate.
 
     Returns 0 when the run is complete (or partial is explicitly allowed),
     1 when models failed or the manifest can't be read. Emits GitHub Actions
     workflow annotations (::error::/::warning::) so failures surface in the
     Actions UI, not just the raw log.
+
+    ``ledger_path`` points at the published-surfaces ledger (JSONL) used by the
+    surface-reuse gate; it is a parameter so tests can point it at a temp file.
     """
     if not manifest_path.exists():
         print(
@@ -185,10 +205,29 @@ def check_publish_ready(manifest_path: Path = MANIFEST_PATH, allow_partial: bool
                 f"{DEFAULT_INSTANTIATION_SEED} is CI-only, not for a published board."
             )
 
+        # Surface-reuse gate (closes the gap left open by #82). The seed gate above
+        # only stops seed 0; it does NOT stop reusing the SAME fresh seed across two
+        # published runs, which re-exposes a byte-identical instantiated surface and
+        # defeats the anti-memorization goal (issue #60) exactly like seed 0 does.
+        # The collision key is the actual surface a published board exposed —
+        # ``instantiated_corpus_sha256``. Read the committed ledger of already-
+        # published surfaces; if this run's surface hash already appears there, a
+        # prior published board already exposed this exact surface. A missing/empty
+        # ledger (no prior publishes) or a novel surface passes.
+        instantiated_hash = templating.get("instantiated_corpus_sha256")
+        if instantiated_hash and instantiated_hash in read_published_hashes(ledger_path):
+            prior = find_prior_publish(instantiated_hash, ledger_path) or {}
+            prior_run = prior.get("run_id")
+            prior_seed = prior.get("instantiation_seed")
+            blockers.append(
+                "this exact instantiated surface was already published (run "
+                f"{prior_run!r}, seed {prior_seed!r}); a new published board must "
+                "draw a fresh seed via --random-instantiation-seed so the surface "
+                "differs. Reusing the same seed re-exposes a byte-identical surface, "
+                "which a memorized surface defeats just like seed 0."
+            )
+
     # --- S1: scenario-limited (non-representative) run -----------------------
-    # Kept as its own self-contained block (separate from the conditions above)
-    # to minimize merge conflicts with other in-flight publish-gate work.
-    #
     # run_eval's --scenario-limit slices a fixed lexicographic prefix of each
     # domain (scenarios[:N]). A positive limit therefore ships a deterministic
     # subset, NOT a representative sample of the corpus, so its leaderboard
@@ -248,8 +287,14 @@ def main():
         default=os.environ.get("ALLOW_PARTIAL_PUBLISH", "").lower() == "true",
         help="Downgrade a partial run to a warning and exit 0 (or set ALLOW_PARTIAL_PUBLISH=true).",
     )
+    parser.add_argument(
+        "--ledger",
+        type=Path,
+        default=LEDGER_PATH,
+        help="Path to the published-surfaces ledger (JSONL) used by the surface-reuse gate.",
+    )
     args = parser.parse_args()
-    sys.exit(check_publish_ready(args.manifest, args.allow_partial))
+    sys.exit(check_publish_ready(args.manifest, args.allow_partial, args.ledger))
 
 
 if __name__ == "__main__":

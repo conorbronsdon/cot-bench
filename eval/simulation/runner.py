@@ -903,6 +903,19 @@ class SimulationRunner:
             # triggers cannot normally reach this gate (USER_ACTION_TURN_MAX = 9
             # < the default max_turns = 10); ``agent_called`` can.
             if pending_actions and world is not None and turn_num + 1 >= self.config.max_turns:
+                # This branch can only run on the loop's FINAL iteration: the loop
+                # is ``range(self.config.max_turns)`` so ``turn_num <= max_turns-1``,
+                # and the guard requires ``turn_num+1 >= max_turns`` i.e.
+                # ``turn_num == max_turns-1``. The loop exits right after, so the
+                # suppressed actions are never re-evaluated and we deliberately do
+                # NOT rebuild ``pending_actions`` here (unlike the fire branch's
+                # ``still_pending``). The assertion pins that invariant so a future
+                # change to the loop bound can't silently make this branch leave a
+                # suppressed-but-still-pending action to be re-fired next iteration.
+                assert turn_num + 1 == self.config.max_turns, (
+                    "dual-control suppression branch must be terminal "
+                    f"(turn_num={turn_num}, max_turns={self.config.max_turns})"
+                )
                 for action in pending_actions:
                     if action_fires(
                         action,
