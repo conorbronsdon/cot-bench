@@ -32,7 +32,13 @@ a scheduled publish when:
      --random-instantiation-seed. Non-templated runs have no templating block in
      the manifest and are never gated on this condition.
 
-  7. Templating was used and the instantiated surface was ALREADY published. The
+  7. scenario_limit was set (> 0). run_eval's --scenario-limit slices a fixed
+     lexicographic prefix of each domain, so a positive limit ships a
+     deterministic subset, not a representative sample — its orderings are not
+     comparable to a full-corpus board. The per-domain scenario minimum does not
+     catch this (a limit can still clear the minimum), so this is a distinct
+     gate. Absent / 0 => unlimited (the full corpus), which passes.
+  8. Templating was used and the instantiated surface was ALREADY published. The
      seed gate (6) only blocks seed 0; it does not stop reusing the same FRESH
      seed across two published runs, which re-exposes a byte-identical surface and
      defeats the anti-memorization goal exactly like seed 0. The committed ledger
@@ -220,6 +226,24 @@ def check_publish_ready(
                 "differs. Reusing the same seed re-exposes a byte-identical surface, "
                 "which a memorized surface defeats just like seed 0."
             )
+
+    # --- S1: scenario-limited (non-representative) run -----------------------
+    # run_eval's --scenario-limit slices a fixed lexicographic prefix of each
+    # domain (scenarios[:N]). A positive limit therefore ships a deterministic
+    # subset, NOT a representative sample of the corpus, so its leaderboard
+    # orderings are not comparable to a full-corpus board. The scenario-count
+    # minimum above does not catch this: a limit of 30 can still clear the
+    # minimum while quietly publishing a prefix-subset. Absent => legacy manifest
+    # (treated as the unlimited default), skip.
+    scenario_limit = manifest.get("scenario_limit")
+    if scenario_limit is not None and scenario_limit > 0:
+        blockers.append(
+            f"scenario_limit was {scenario_limit} (> 0), so the run evaluated only a "
+            "fixed lexicographic-prefix subset of each domain, not the full corpus. "
+            "A prefix-subset board is non-representative and not comparable to a "
+            "full-corpus leaderboard; re-run with --scenario-limit 0 (all scenarios) "
+            "before publishing."
+        )
 
     if not blockers:
         completed = manifest.get("models_completed") or []

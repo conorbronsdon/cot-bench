@@ -70,6 +70,50 @@ class TestEquals:
         assert r["passed"] is False
         assert "not found" in r["detail"]
 
+    def test_numeric_within_tolerance_passes(self):
+        # S4: 250.0 vs 250.000001 -> within _TOLERANCE, equals must pass.
+        r = check_assertion(
+            {},
+            {"acct": {"balance": 250.000001}},
+            {"assert": "acct.balance", "op": "equals", "value": 250.0},
+        )
+        assert r["passed"] is True
+
+    def test_numeric_outside_tolerance_fails(self):
+        r = check_assertion(
+            {},
+            {"acct": {"balance": 250.5}},
+            {"assert": "acct.balance", "op": "equals", "value": 250.0},
+        )
+        assert r["passed"] is False
+
+    def test_non_numeric_still_exact(self):
+        # S4: string comparison stays exact (no tolerance fuzzing).
+        r = check_assertion(
+            {},
+            {"status": "open"},
+            {"assert": "status", "op": "equals", "value": "Open"},
+        )
+        assert r["passed"] is False
+
+    def test_bool_uses_exact_equality(self):
+        # S4: bool is excluded from the numeric tolerance branch and keeps exact
+        # == semantics. True equals True; True does NOT equal a near-but-distinct
+        # number via tolerance (1.005 is not within 0.01 of bool-as-1 because the
+        # numeric branch is skipped, so == is used: True != 1.005).
+        assert (
+            check_assertion({}, {"flag": True}, {"assert": "flag", "op": "equals", "value": True})[
+                "passed"
+            ]
+            is True
+        )
+        assert (
+            check_assertion({}, {"flag": True}, {"assert": "flag", "op": "equals", "value": 1.005})[
+                "passed"
+            ]
+            is False
+        )
+
 
 class TestIncreasedDecreased:
     def test_increased_pass(self):
@@ -187,6 +231,25 @@ class TestContains:
 
     def test_missing_path_fails(self):
         r = check_assertion({}, {}, {"assert": "nope", "op": "contains", "match": {"x": 1}})
+        assert r["passed"] is False
+
+    def test_numeric_match_within_tolerance(self):
+        # S4: contains match on a float money field tolerates 250.0 vs 250.000001.
+        final = {"transfers": [{"to": "A2", "amount": 250.000001}]}
+        r = check_assertion(
+            {},
+            final,
+            {"assert": "transfers", "op": "contains", "match": {"to": "A2", "amount": 250.0}},
+        )
+        assert r["passed"] is True
+
+    def test_numeric_match_outside_tolerance_fails(self):
+        final = {"transfers": [{"to": "A2", "amount": 250.5}]}
+        r = check_assertion(
+            {},
+            final,
+            {"assert": "transfers", "op": "contains", "match": {"to": "A2", "amount": 250.0}},
+        )
         assert r["passed"] is False
 
 

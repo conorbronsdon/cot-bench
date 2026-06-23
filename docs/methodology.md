@@ -49,6 +49,21 @@ that **no unauthorized mutation** occurred — a strong objective signal for the
 refusal-heavy scope-management and adversarial categories. The full schema is
 documented in [scenario-schema.md](scenario-schema.md).
 
+**What "deterministic" means here (scope of the claim).** The state grader
+(`score_state_changes`) is a deterministic *function*: given the same initial and
+final world, it returns the same `state_score` every time — there is no LLM in the
+grading step and no randomness. That determinism is about the **grading function**,
+not about end-to-end reproducibility. The *input* world it grades was produced by
+an **LLM tool simulator** that runs unseeded; temperature 0 is not bit-determinism
+on a hosted API, so the same scenario run twice can yield slightly different final
+worlds and therefore different `state_score` values. In short: the grade is
+reproducible **given a fixed world**, but the world it is handed is LLM-simulated,
+so the `state_score` is **not bit-for-bit reproducible across runs or machines**.
+We surface this rather than imply otherwise, and a tool-sim parse failure that
+leaves the world missing a mutation marks that run's state grade non-gradable
+(`state_gradable = false`, `state_score` excluded from aggregates) so an incomplete
+world is never scored as if it were complete.
+
 **Authorship and dedup gates.** Every v0.2 scenario records an `authorship` block
 (`author_model`, optional batch id and human reviewer). The validator rejects any
 `author_model` that appears in `MODELS_UNDER_TEST` — a model under test must never
