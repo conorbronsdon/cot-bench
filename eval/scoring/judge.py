@@ -159,22 +159,39 @@ def _extract_combined_dimension(parsed: dict, rubric_type: str) -> dict | None:
 
     The combined response nests each dimension under its rubric-type key, with
     the SAME shape the separate prompts produced. We require the nested object
-    to exist AND to carry a numeric ``overall_score`` — that is the load-bearing
-    field every downstream consumer reads. If either dimension is missing or has
-    a non-numeric/absent ``overall_score``, we return ``None`` for BOTH
-    dimensions (the caller treats the whole judge as parse-failed) — the
-    simplest honest rule, documented in score_with_judge_combined.
+    to exist AND to carry a numeric ``overall_score`` IN ``[0.0, 1.0]`` — that
+    is the load-bearing field every downstream consumer reads. If either
+    dimension is missing or has a non-numeric/absent/out-of-range
+    ``overall_score``, we return ``None`` for BOTH dimensions (the caller treats
+    the whole judge as parse-failed) — the simplest honest rule, documented in
+    score_with_judge_combined.
+
+    An out-of-range score (e.g. ``5.0`` or ``-1.0``) is treated as a PARSE
+    FAILURE rather than silently clamped: a judge that ignored the [0,1] scale
+    gives us no reason to trust the value, and clamping would let a bogus score
+    distort efficacy and the CLEAR min-max normalization. Routing it through the
+    parse-failed path triggers the standard one-retry-then-exclude handling.
     """
     if not isinstance(parsed, dict):
         return None
     dim = parsed.get(rubric_type)
     if not isinstance(dim, dict):
         return None
-    score = dim.get("overall_score")
-    # bool is an int subclass but is never a valid score here; reject it.
-    if isinstance(score, bool) or not isinstance(score, (int, float)):
+    if not _valid_overall_score(dim.get("overall_score")):
         return None
     return dim
+
+
+def _valid_overall_score(score) -> bool:
+    """True iff ``score`` is a numeric ``overall_score`` within ``[0.0, 1.0]``.
+
+    ``bool`` is an int subclass but is never a valid score here; reject it. A
+    numeric value outside [0,1] is rejected too (treated as a parse failure by
+    callers) rather than clamped — see ``_extract_combined_dimension``.
+    """
+    if isinstance(score, bool) or not isinstance(score, (int, float)):
+        return False
+    return 0.0 <= float(score) <= 1.0
 
 
 def _extract_criteria_verdicts(parsed: dict, rubric_criteria: list[dict]) -> list[dict] | None:
@@ -351,6 +368,11 @@ def score_with_judge(
         input_tokens += in_t
         output_tokens += out_t
         candidate = _parse_judge_response(content)
+        if candidate is not None and not _valid_overall_score(candidate.get("overall_score")):
+            # A missing/non-numeric/out-of-range overall_score is a parse failure
+            # (same rule the combined path applies via _extract_combined_dimension)
+            # — an out-of-range score is rejected, not clamped.
+            candidate = None
         if candidate is not None and rubric_criteria:
             # Criteria were requested: a response without a valid verdict block
             # is a parse failure (same strict rule as the combined path).

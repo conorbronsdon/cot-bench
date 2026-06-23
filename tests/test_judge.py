@@ -239,6 +239,35 @@ class TestConsensus:
         assert calls["n"] == 2  # initial + one retry, then gives up
         assert result.parse_failed is True
 
+    @pytest.mark.parametrize("bad_score", [5.0, -1.0])
+    def test_out_of_range_score_is_parse_failure(self, monkeypatch, bad_score):
+        # B1: an overall_score outside [0,1] is rejected as a parse failure (not
+        # clamped), so it retries once then is excluded. Both calls return the
+        # same out-of-range score -> parse_failed.
+        @dataclass(frozen=True)
+        class _Cfg:
+            name: str = "Solo"
+            provider: str = "anthropic"
+            model_id: str = "x"
+            temperature: float = 0.0
+            max_tokens: int = 4096
+            endpoint: str | None = None
+
+        calls = {"n": 0}
+
+        def fake_api(judge, system_prompt, rubric_prompt):
+            calls["n"] += 1
+            return (
+                f'{{"overall_score": {bad_score}, "overall_reasoning": "off-scale"}}',
+                "fake-model-v1",
+                (10, 5),
+            )
+
+        monkeypatch.setattr(judge_mod, "_call_judge_api", fake_api)
+        result = judge_mod.score_with_judge(_Cfg(), "sys", "rub", "task_completion")
+        assert calls["n"] == 2  # initial + one retry, then gives up
+        assert result.parse_failed is True
+
     def test_api_failure_recorded(self, monkeypatch, three_judges):
         # (c) one judge raises -> api_failures records it; consensus from 2.
         _install_fake_scorer(
@@ -419,6 +448,25 @@ class TestCombinedConsensus:
             body = (
                 '{"task_completion": {"overall_score": 0.9, "overall_reasoning": "ok"}, '
                 '"tool_selection": {"overall_reasoning": "no score field"}}'
+            )
+            return body, "fake-model-v1", (10, 5)
+
+        monkeypatch.setattr(judge_mod, "_call_judge_api", fake_api)
+        tc_jr, ts_jr = judge_mod.score_with_judge_combined(_CombinedCfg(), "sys", "combined")
+        assert tc_jr.parse_failed is True
+        assert ts_jr.parse_failed is True
+        assert tc_jr.overall_score == 0.0
+        assert ts_jr.overall_score == 0.0
+
+    @pytest.mark.parametrize("bad_score", [5.0, -1.0])
+    def test_out_of_range_score_fails_both(self, monkeypatch, bad_score):
+        # B1: one dimension carries an out-of-range overall_score. It is rejected
+        # (not clamped), so the whole judge is parse-failed for BOTH dimensions.
+        def fake_api(judge, system_prompt, rubric_prompt):
+            body = (
+                f'{{"task_completion": {{"overall_score": {bad_score}, '
+                '"overall_reasoning": "ok"}, '
+                '"tool_selection": {"overall_score": 0.6, "overall_reasoning": "ok"}}'
             )
             return body, "fake-model-v1", (10, 5)
 
@@ -697,3 +745,74 @@ class TestBuildResultRow:
         assert row["state_score"] == 0.5
         assert row["state_checks_passed"] == 1
         assert row["state_checks_total"] == 2
+        # S3: a clean stateful run is gradable and carries the graded score.
+        assert row["state_gradable"] is True
+        assert row["tool_sim_parse_failures"] == 0
+
+    def test_state_nongradable_when_tool_sim_parse_failure(self):
+        # S3: a stateful scenario whose run had a tool-sim parse failure is NOT
+        # gradable — state columns null, state_gradable False, count surfaced.
+        from scripts.run_eval import build_result_row
+
+        @dataclass
+        class _SimWithParseFailure:
+            total_latency_ms: float = 1234.5
+            total_turns: int = 4
+            total_input_tokens: int = 100
+            total_output_tokens: int = 50
+            completed: bool = True
+            tool_sim_parse_failures: int = 1
+
+        tc = _consensus(judge_results=[_valid("Kimi", 0.8)], consensus_score=0.8, n_judges_valid=1)
+        ts = _consensus(rubric_type="tool_selection", n_judges_valid=1)
+        state_result = {
+            "score": 1.0,
+            "checks": [{"passed": True, "detail": "x"}],
+            "n_passed": 1,
+            "n_total": 1,
+        }
+        row = build_result_row(
+            _FakeScenario(),
+            _FakeSpec(),
+            _SimWithParseFailure(),
+            tc,
+            ts,
+            efficacy=0.5,
+            cost_usd=0.001,
+            state_result=state_result,
+        )
+        assert row["state_gradable"] is False
+        assert row["state_score"] is None
+        assert row["state_checks_passed"] is None
+        assert row["state_checks_total"] is None
+        assert row["tool_sim_parse_failures"] == 1
+
+    def test_stateless_scenario_gradable_with_parse_failure(self):
+        # S3: a parse failure on a STATELESS scenario (no state_result) leaves
+        # nothing to null — state_gradable stays True, state columns stay None.
+        from scripts.run_eval import build_result_row
+
+        @dataclass
+        class _SimWithParseFailure:
+            total_latency_ms: float = 1.0
+            total_turns: int = 1
+            total_input_tokens: int = 1
+            total_output_tokens: int = 1
+            completed: bool = True
+            tool_sim_parse_failures: int = 2
+
+        tc = _consensus(judge_results=[_valid("Kimi", 0.8)], consensus_score=0.8, n_judges_valid=1)
+        ts = _consensus(rubric_type="tool_selection", n_judges_valid=1)
+        row = build_result_row(
+            _FakeScenario(),
+            _FakeSpec(),
+            _SimWithParseFailure(),
+            tc,
+            ts,
+            efficacy=0.5,
+            cost_usd=0.001,
+            state_result=None,
+        )
+        assert row["state_gradable"] is True
+        assert row["state_score"] is None
+        assert row["tool_sim_parse_failures"] == 2
