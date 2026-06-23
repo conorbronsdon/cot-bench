@@ -46,6 +46,24 @@ jobs:
       - name: Check formatting
         run: ruff format --check eval/ scripts/ tests/
 
+  # Secret scan — backstop for committed credentials (this repo has no GitHub
+  # Advanced Security, so native push protection is unavailable). Runs gitleaks
+  # over the full history on push and over the PR range on pull_request.
+  # Config + allowlist live in .gitleaks.toml. Added after the 2026-06 incident.
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Full history so gitleaks scans every commit, not just the tip.
+          fetch-depth: 0
+
+      - name: Scan for secrets (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
   # Matrix aggregator — single check for branch protection to require.
   # Resilient to matrix changes: add/remove a Python version without touching
   # branch protection rules. If any matrix leg fails or is skipped, this fails.
