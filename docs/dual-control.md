@@ -189,17 +189,31 @@ an unauthorized mutation for the user's legitimate self-serve. The validator
 rejects a `dual_control` block whose scenario does not declare non-empty
 `expected_state_changes`.
 
-**Authoring constraint — user-owned keys must be agent-untouchable (the
-practical consequence of top-level-key granularity, open question 5):** a
-`user_tool`'s `scope` keys must be keys that **no agent tool writes**. Agent-side
-mutated keys come from the LLM tool-sim's *generated* `state_delta`, and the
-tool-sim can nondeterministically touch a shared key (e.g. simulating
-`request_wire_approval` as writing into `pending_requests` rather than a
-separate request store) — manufacturing a false double-apply against a
-perfectly-coordinating agent, run-to-run nondeterministically. Keep user-owned
-state in its own top-level key that only user actions touch; this is part of the
-per-scenario human-review gate ("does the verdict actually distinguish
-coordinate-correctly from double-apply?").
+**Checked write-scope contract (Option A) — replaces the old author-discipline
+rule.** Agent-side mutated keys come from the LLM tool-sim's *generated*
+`state_delta`, and the tool-sim can nondeterministically touch a shared key
+(e.g. while simulating an unrelated tool it hallucinates a write into the
+user-owned `contact` or `pending_requests` key) — manufacturing a false
+double-apply against a perfectly-coordinating agent, run-to-run
+nondeterministically. The original mitigation was an unenforced authoring
+discipline ("keep user-owned keys in a top-level key no agent tool writes"). That
+is now a **checked, deterministic contract**: every agent tool declares an
+optional `writes` allow-list — the top-level state keys it is permitted to mutate
+— and the runner **clamps** the tool-sim's `state_delta` to that list before
+applying it (`SimulationRunner._simulate_tool_stateful`). An out-of-scope path is
+dropped (with a logged warning) from **both** the world and the `agent_mutated_keys`
+attribution set, so a hallucinated write can no longer fabricate a trespass. The
+coordination verdict (`agent_mutated_keys & user_owned`) is unchanged — it is now
+deterministic because its input is clamped.
+
+A read-only tool declares `writes: []`. A tool that legitimately performs a
+double-apply you want the metric to catch declares the user-owned key in its own
+`writes` (e.g. an agent-side `update_contact_email` declares `writes: ["contact"]`):
+its write is in scope, kept, recorded, and so a **genuine** double-apply is still
+flagged. `writes` is **optional** in general (a tool without it is not clamped,
+so the single-control public corpus runs and hashes identically), but in a
+`dual_control` scenario the validator **requires** every agent tool to declare it,
+so the clamp is always in force where the coordination metric depends on it.
 
 ### The authorization boundary
 
@@ -329,9 +343,10 @@ surface; it only makes the capability available.
    a top-level key writing different sub-paths. Top-level is simpler and matches
    how scopes are declared; revisit only if a scenario genuinely needs shared
    ownership of one top-level object. The practical consequence for tier authors
-   is the "user-owned keys must be agent-untouchable" constraint in the
-   attribution section above: the tool-sim may nondeterministically write a
-   shared key, so scope keys must be keys no agent tool writes.
+   is now handled by the checked write-scope clamp (Option A) in the attribution
+   section above: each agent tool declares `writes`, the tool-sim's delta is
+   clamped to it, and a hallucinated shared-key write can no longer fabricate a
+   trespass — so this is a deterministic contract, not an author-discipline rule.
 6. **Independent review bar** — mirror the #54 / #57 bar: each dual-control
    scenario gets an independent adversarial review that the coordination is
    realistic and the verdict actually distinguishes coordinate-correctly from

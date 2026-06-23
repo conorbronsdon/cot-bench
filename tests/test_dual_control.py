@@ -48,6 +48,7 @@ from eval.simulation.runner import (
     CONVERSATION_COMPLETE,
     Scenario,
     SimulationRunner,
+    ToolCall,
 )
 from scripts.aggregate_results import compute_dual_control_rates, compute_leaderboard
 from scripts.validate_scenarios import validate_scenario_dict
@@ -439,6 +440,196 @@ class TestCoordinationVerdict:
 
 
 # --------------------------------------------------------------------------- #
+# 3c. Write-scope clamp (Option A, issue #58 determinism fix)
+#
+# The tool-sim is an LLM: while simulating an UNRELATED agent tool it can
+# hallucinate a write to a user-owned key, which — unclamped — lands in the
+# world and in _agent_mutated_keys and produces a FALSE, nondeterministic
+# trespass in the coordination verdict. Each agent tool declares a ``writes``
+# allow-list; the runner clamps the tool-sim delta to it BEFORE applying it.
+# These tests prove: (a) an out-of-scope path is dropped; (b) the false positive
+# is eliminated; (c) a real double-apply is still caught; (d) a tool with no
+# ``writes`` is not clamped (backwards-compat). The corpus-hash-unchanged case is
+# under TestHashHandling.
+# --------------------------------------------------------------------------- #
+def _stateful_runner(tool_sim_text):
+    """Bare runner with a const tool-sim returning ``tool_sim_text`` verbatim and
+    an initialized agent-mutated-keys sink, for direct _simulate_tool_stateful
+    calls (no run loop)."""
+    runner = SimulationRunner.__new__(SimulationRunner)
+    runner.config = DEFAULT_SIMULATION
+
+    class _ConstSim(BaseChatModel):
+        text: str = tool_sim_text
+
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=self.text))])
+
+        @property
+        def _llm_type(self):
+            return "const-tool-sim"
+
+    runner._tool_sim = _ConstSim()
+    runner._agent_mutated_keys = set()
+    return runner
+
+
+class TestWriteScopeClamp:
+    def test_out_of_scope_delta_path_dropped(self):
+        # (a) open_support_ticket declares writes=["tickets"]; the tool-sim
+        # hallucinates an extra "contact.email" write. The in-scope tickets write
+        # lands; the out-of-scope contact write is dropped from BOTH the world
+        # and the agent-mutated-keys attribution set.
+        tool = {
+            "name": "open_support_ticket",
+            "description": "open a ticket",
+            "parameters": [],
+            "writes": ["tickets"],
+        }
+        sim_out = json.dumps(
+            {
+                "response": "ticket opened",
+                "state_delta": {
+                    "tickets": {"__append__": {"id": "T-1", "subject": "SSO"}},
+                    "contact.email": "hacked@evil.example",
+                },
+            }
+        )
+        runner = _stateful_runner(sim_out)
+        world = {"tickets": [], "contact": {"email": "orig@x.example"}}
+        tc = ToolCall(turn=1, tool_name="open_support_ticket", arguments={}, result="")
+
+        runner._simulate_tool_stateful(tc, tool, world)
+
+        assert world["tickets"] == [{"id": "T-1", "subject": "SSO"}]
+        assert world["contact"]["email"] == "orig@x.example"  # untouched
+        assert runner._agent_mutated_keys == {"tickets"}  # contact NOT recorded
+
+    def test_false_positive_eliminated(self):
+        # (b) The agent calls ONLY a legit non-owning tool (open_support_ticket,
+        # writes=["tickets"]). The tool-sim attempts a user-owned "contact" write.
+        # The clamp drops it, so _agent_mutated_keys never contains the user-owned
+        # key and the coordination verdict stays True (no false trespass).
+        dc = DualControl(
+            user_tools=[UserTool(name="update_my_contact_info", scope=["contact"])],
+            user_actions=[
+                UserAction(
+                    tool="update_my_contact_info",
+                    trigger=TRIGGER_AFTER_TURN,
+                    trigger_value=2,
+                    state_delta={"contact.email": "derek.new@x.example"},
+                )
+            ],
+        )
+        scen = _scenario(
+            dc,
+            tools=[
+                {
+                    "name": "open_support_ticket",
+                    "description": "open a ticket",
+                    "parameters": [],
+                    "writes": ["tickets"],
+                }
+            ],
+            ground_truth={"contact": {"email": "derek.new@x.example"}, "tickets": []},
+            expected_state_changes=[
+                {"assert": "contact.email", "op": "equals", "value": "derek.new@x.example"}
+            ],
+        )
+        sim_out = json.dumps(
+            {
+                "response": "ticket opened",
+                "state_delta": {
+                    "tickets": {"__append__": {"id": "T-1"}},
+                    "contact.email": "agent-double-applied@x.example",
+                },
+            }
+        )
+        runner = _stateful_runner(sim_out)
+        world = {"contact": {"email": "derek.new@x.example"}, "tickets": []}
+        tc = ToolCall(turn=1, tool_name="open_support_ticket", arguments={}, result="")
+        runner._simulate_tool_stateful(tc, scen.tools[0], world)
+
+        # The user-owned key was never written by the agent (clamped), so the
+        # verdict is True: correct end state AND no trespass.
+        verdict = SimulationRunner._coordination_verdict(
+            scen, world, runner._agent_mutated_keys, user_mutated_keys={"contact"}
+        )
+        assert "contact" not in runner._agent_mutated_keys
+        assert verdict is True
+
+    def test_real_double_apply_still_caught(self):
+        # (c) The agent calls update_contact_email, which DECLARES the user-owned
+        # "contact" key in its writes. The tool-sim writes contact — that is a
+        # genuine double-apply, kept by the clamp (in scope), recorded in
+        # _agent_mutated_keys, and the verdict is False (trespass).
+        dc = DualControl(
+            user_tools=[UserTool(name="update_my_contact_info", scope=["contact"])],
+            user_actions=[
+                UserAction(
+                    tool="update_my_contact_info",
+                    trigger=TRIGGER_AFTER_TURN,
+                    trigger_value=2,
+                    state_delta={"contact.email": "derek.new@x.example"},
+                )
+            ],
+        )
+        scen = _scenario(
+            dc,
+            tools=[
+                {
+                    "name": "update_contact_email",
+                    "description": "agent updates the contact email",
+                    "parameters": [],
+                    "writes": ["contact"],
+                }
+            ],
+            ground_truth={"contact": {"email": "derek.new@x.example"}},
+            expected_state_changes=[
+                {"assert": "contact.email", "op": "equals", "value": "derek.new@x.example"}
+            ],
+        )
+        sim_out = json.dumps(
+            {
+                "response": "email updated",
+                "state_delta": {"contact.email": "derek.new@x.example"},
+            }
+        )
+        runner = _stateful_runner(sim_out)
+        world = {"contact": {"email": "old@x.example"}}
+        tc = ToolCall(turn=1, tool_name="update_contact_email", arguments={}, result="")
+        runner._simulate_tool_stateful(tc, scen.tools[0], world)
+
+        assert "contact" in runner._agent_mutated_keys  # kept (in scope)
+        verdict = SimulationRunner._coordination_verdict(
+            scen, world, runner._agent_mutated_keys, user_mutated_keys={"contact"}
+        )
+        assert verdict is False  # real double-apply still flagged
+
+    def test_no_writes_no_clamp_backwards_compat(self):
+        # (d) A tool with NO writes declaration is NOT clamped — every delta path
+        # is applied and recorded, byte-identical to pre-clamp behavior. This is
+        # what keeps the single-control public corpus (no tool declares writes)
+        # unchanged.
+        tool = {"name": "legacy_tool", "description": "no writes field", "parameters": []}
+        assert "writes" not in tool
+        sim_out = json.dumps(
+            {
+                "response": "done",
+                "state_delta": {"accounts.A.balance": 10.0, "contact.email": "x@y.example"},
+            }
+        )
+        runner = _stateful_runner(sim_out)
+        world = {"accounts": {"A": {"balance": 0.0}}, "contact": {"email": "old@y.example"}}
+        tc = ToolCall(turn=1, tool_name="legacy_tool", arguments={}, result="")
+        runner._simulate_tool_stateful(tc, tool, world)
+
+        assert world["accounts"]["A"]["balance"] == 10.0
+        assert world["contact"]["email"] == "x@y.example"
+        assert runner._agent_mutated_keys == {"accounts", "contact"}
+
+
+# --------------------------------------------------------------------------- #
 # 3b. The delivery gate — SHOULD-FIX 1 of the PR #77 review (the #74
 #     fired-but-not-delivered class): an agent_called action whose watched tool
 #     is first called on the FINAL outer turn must be treated as NOT fired.
@@ -516,6 +707,25 @@ class TestHashHandling:
         h2 = scenario_set_hash({Domain.BANKING: [_scenario(_approval_dc(message="B"))]})[0]
         assert h1 != h2
 
+    def test_writes_field_hash_safe_for_public_corpus(self):
+        # (e) The per-tool ``writes`` field (Option A) is hash-safe: tools that do
+        # NOT declare it (the entire 92-scenario public corpus) serialize to the
+        # exact same canonical dict and corpus hash as before the field existed.
+        # _scenario(None) tools carry no ``writes`` key, so the digest is what a
+        # pre-Option-A run would have produced.
+        no_writes = _scenario(None)
+        data = _scenario_to_canonical_dict(no_writes)
+        assert all("writes" not in t for t in data["tools"])
+        # Adding a ``writes`` key to a tool DOES change the hash (it is content),
+        # so the field is covered when present — proving the absence above is the
+        # reason the public corpus is unchanged, not that the field is ignored.
+        with_writes = _scenario(None)
+        with_writes.tools = [dict(t, writes=["x"]) for t in with_writes.tools]
+        assert (
+            scenario_set_hash({Domain.BANKING: [no_writes]})[0]
+            != scenario_set_hash({Domain.BANKING: [with_writes]})[0]
+        )
+
     def test_single_control_digest_matches_legacy_object(self):
         from types import SimpleNamespace
 
@@ -561,8 +771,13 @@ class TestValidator:
             },
             "user_goals": ["g1", "g2", "g3"],
             "tools": [
-                {"name": "request_approval", "description": "d", "parameters": []},
-                {"name": "execute", "description": "d", "parameters": []},
+                {"name": "request_approval", "description": "d", "parameters": [], "writes": []},
+                {
+                    "name": "execute",
+                    "description": "d",
+                    "parameters": [],
+                    "writes": ["pending_requests"],
+                },
             ],
             "initial_message": "hello there I need help",
             "ground_truth": {
@@ -669,6 +884,28 @@ class TestValidator:
         data["dual_control"] = dc
         errs = validate_scenario_dict(data)
         assert any("non-empty 'user_tools'" in e for e in errs)
+
+    def test_agent_tool_missing_writes_rejected(self):
+        # Option A (issue #58 determinism fix): in a dual_control scenario every
+        # agent tool MUST declare 'writes' so the per-tool clamp is in force and
+        # the coordination metric is deterministic. A tool without it is an error.
+        data = self._base()
+        data["expected_state_changes"] = self._nonempty_changes()
+        data["dual_control"] = self._valid_dc()
+        # Drop the writes declaration from one agent tool.
+        del data["tools"][0]["writes"]
+        errs = validate_scenario_dict(data)
+        assert any("requires every agent tool to declare 'writes'" in e for e in errs)
+        assert any("request_approval" in e for e in errs)
+
+    def test_read_only_tool_declares_empty_writes(self):
+        # A read-only agent tool satisfies the requirement with writes: [].
+        data = self._base()
+        data["expected_state_changes"] = self._nonempty_changes()
+        data["dual_control"] = self._valid_dc()
+        # _base() already gives request_approval writes=[] and execute its key.
+        assert data["tools"][0]["writes"] == []
+        assert validate_scenario_dict(data) == []
 
 
 # --------------------------------------------------------------------------- #

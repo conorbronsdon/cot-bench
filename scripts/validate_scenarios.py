@@ -91,6 +91,18 @@ class Tool(BaseModel):
     description: str
     parameters: list[ToolParameter]
     response_schema: dict | None = None
+    # Write-scope declaration (Option A, issue #58 determinism fix) — OPTIONAL.
+    # The top-level state keys this tool is permitted to mutate. When present, the
+    # tool simulator's state_delta is CLAMPED to these keys at runtime (see
+    # SimulationRunner._simulate_tool_stateful), so a hallucinated out-of-scope
+    # write can never reach the world or the dual-control attribution set. A
+    # read-only tool declares ``writes: []``. None (the field absent) means no
+    # clamping — backwards-compatible for the entire single-control public corpus,
+    # where no tool declares ``writes``, so those scenarios hash and run
+    # identically to before this field existed. REQUIRED on every tool of a
+    # dual_control scenario (see _validate_dual_control), where the deterministic
+    # coordination metric depends on the clamp being in force.
+    writes: list[str] | None = None
 
 
 class Persona(BaseModel):
@@ -388,6 +400,25 @@ def _validate_dual_control(scenario: ScenarioSchema) -> list[str]:
             "mutations always violate — the agent would be charged for the user's "
             "legitimate actions"
         )
+
+    # Write-scope requirement (Option A, issue #58 determinism fix). In a
+    # dual-control scenario the coordination verdict flags any agent write to a
+    # user-owned key as a trespass, so a tool-sim hallucination of such a write
+    # would be a FALSE, nondeterministic failure. The runtime clamp (each agent
+    # tool's ``writes`` allow-list bounds its tool-sim delta) eliminates that, but
+    # ONLY for tools that declare ``writes``. So in a dual-control scenario every
+    # agent tool MUST declare it (read-only tools declare ``writes: []``);
+    # otherwise the metric is not deterministic. Non-dual-control scenarios leave
+    # ``writes`` optional and are unaffected.
+    for tool in scenario.tools:
+        if getattr(tool, "writes", None) is None:
+            errors.append(
+                f"dual_control requires every agent tool to declare 'writes' "
+                f"(the top-level state keys it may mutate; read-only tools declare "
+                f"'writes': []), but tool '{tool.name}' does not — the per-tool "
+                f"write-scope clamp must be in force for the coordination metric to "
+                f"be deterministic"
+            )
 
     tools_raw = block.get("user_tools")
     if not isinstance(tools_raw, list) or not tools_raw:

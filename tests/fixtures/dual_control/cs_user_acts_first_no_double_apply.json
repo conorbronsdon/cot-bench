@@ -27,7 +27,8 @@
       "description": "Retrieve a customer account's plan, renewal date, and primary contact",
       "parameters": [
         {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true}
-      ]
+      ],
+      "writes": []
     },
     {
       "name": "update_contact_email",
@@ -35,7 +36,8 @@
       "parameters": [
         {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
         {"name": "email", "type": "string", "description": "New primary contact email", "required": true}
-      ]
+      ],
+      "writes": ["contact"]
     },
     {
       "name": "open_support_ticket",
@@ -44,7 +46,8 @@
         {"name": "account_id", "type": "string", "description": "Customer account identifier", "required": true},
         {"name": "subject", "type": "string", "description": "Ticket subject", "required": true},
         {"name": "body", "type": "string", "description": "Ticket details", "required": true}
-      ]
+      ],
+      "writes": ["tickets"]
     }
   ],
   "initial_message": "Hey! Couple of quick things on my account — let me also poke around in settings while we talk.",

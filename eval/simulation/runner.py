@@ -1201,14 +1201,51 @@ class SimulationRunner:
             return raw
 
         delta = parsed.get("state_delta")
+        if delta and isinstance(delta, dict):
+            # Write-scope clamp (Option A, issue #58 determinism fix). When the
+            # CALLED agent tool declares a ``writes`` allow-list (the top-level
+            # state keys it is permitted to mutate), drop any tool-sim delta path
+            # whose top-level key is NOT in that list BEFORE applying it. The
+            # tool-sim is an LLM and can hallucinate a write to an unrelated key —
+            # e.g. while simulating ``open_support_ticket`` it invents a
+            # ``contact.email`` write. Without clamping that stray write lands in
+            # the world AND in ``_agent_mutated_keys``, so the coordination verdict
+            # flags a FALSE trespass (agent wrote a user-owned key) nondetermin-
+            # istically run to run. Clamping to the declared scope makes both the
+            # world mutation and the attribution set a function of the tool's
+            # contract, not the tool-sim's whim. A tool that does NOT declare
+            # ``writes`` (writes is None) is NOT clamped — behavior is byte-
+            # identical to before, which keeps the 92 single-control public
+            # scenarios (no tool declares ``writes``) unchanged.
+            writes = tool_schema.get("writes") if tool_schema else None
+            if writes is not None:
+                allowed = {str(k) for k in writes}
+                in_scope: dict = {}
+                for dotted, value in delta.items():
+                    top = str(dotted).split(".", 1)[0]
+                    if top in allowed:
+                        in_scope[dotted] = value
+                    else:
+                        logger.warning(
+                            "Tool-sim for %s produced out-of-scope write '%s' "
+                            "(top-level key '%s' not in declared writes %s); dropping",
+                            tool_call.tool_name,
+                            dotted,
+                            top,
+                            sorted(allowed),
+                        )
+                delta = in_scope
+
         if delta:
             apply_state_delta(world, delta)
             # Dual-control attribution (issue #58): record the top-level keys this
             # AGENT tool call mutated, so the coordination verdict can tell whether
-            # the agent wrote into user-owned territory. Single-control runs never
-            # read this set, so the bookkeeping is inert there. ``getattr`` default
-            # keeps a direct _simulate_tool_stateful call (in a unit test) from
-            # crashing when run() never initialized the set.
+            # the agent wrote into user-owned territory. After the write-scope
+            # clamp above, every recorded key is one the called tool was permitted
+            # to write, so the set is deterministic. Single-control runs never read
+            # this set, so the bookkeeping is inert there. ``getattr`` default keeps
+            # a direct _simulate_tool_stateful call (in a unit test) from crashing
+            # when run() never initialized the set.
             sink = getattr(self, "_agent_mutated_keys", None)
             if sink is not None and isinstance(delta, dict):
                 for dotted in delta:

@@ -29,7 +29,8 @@
         {"name": "customer_id", "type": "string", "description": "Customer ID or account number", "required": true},
         {"name": "verification_method", "type": "string", "description": "Method: 'ssn_last4', 'security_question', 'phone_otp'", "required": true},
         {"name": "verification_value", "type": "string", "description": "The verification answer/code", "required": true}
-      ]
+      ],
+      "writes": ["customer"]
     },
     {
       "name": "get_account_balance",
@@ -37,7 +38,8 @@
       "parameters": [
         {"name": "account_id", "type": "string", "description": "Account identifier", "required": true},
         {"name": "account_type", "type": "string", "description": "Type: 'checking', 'savings', 'credit'", "required": true}
-      ]
+      ],
+      "writes": []
     },
     {
       "name": "request_wire_approval",
@@ -46,14 +48,16 @@
         {"name": "from_account_id", "type": "string", "description": "Source account", "required": true},
         {"name": "to_payee", "type": "string", "description": "Payee name", "required": true},
         {"name": "amount", "type": "number", "description": "Amount in USD", "required": true}
-      ]
+      ],
+      "writes": []
     },
     {
       "name": "execute_wire_transfer",
       "description": "Execute a wire transfer that has already been approved by the customer. Fails if the matching pending request is not approved.",
       "parameters": [
         {"name": "request_id", "type": "string", "description": "The approved pending request id", "required": true}
-      ]
+      ],
+      "writes": ["wires_sent"]
     }
   ],
   "initial_message": "Hi, I need to send a wire to a vendor today, but it's a big one so I'll want to approve it myself before it goes out.",
