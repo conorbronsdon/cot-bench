@@ -9,17 +9,56 @@ MUTATE (initiate_transfer), CREATE (create_ticket).
 """
 
 import copy
+import glob
 import json
+import os
 
 import pytest
 
 from eval.simulation.runner import apply_state_delta
 from eval.simulation.tool_transitions import (
     TRANSITIONS,
+    apply_discount,
+    change_subscription_tier,
+    close_account,
+    create_internal_note,
+    create_knowledge_base_article,
     create_ticket,
+    escalate_ticket,
+    export_account_data,
+    export_audit_log,
+    freeze_account,
+    generate_account_statement,
+    get_account,
     get_account_balance,
+    get_account_health_score,
+    get_fee_history,
+    get_fraud_case_status,
+    get_interest_rates,
+    get_onboarding_status,
+    get_pending_deposits,
+    get_subscription_details,
+    get_transaction_history,
     get_transition,
+    get_usage_analytics,
+    get_user_list,
     initiate_transfer,
+    log_customer_interaction,
+    manage_user_access,
+    report_suspicious_transaction,
+    request_fee_waiver,
+    run_compliance_check,
+    schedule_meeting,
+    search_knowledge_base,
+    search_support_tickets,
+    send_customer_email,
+    setup_account_alerts,
+    setup_recurring_transfer,
+    submit_feature_request,
+    submit_loan_application,
+    update_contact_info,
+    verify_customer_identity,
+    verify_sales_authorization,
 )
 
 # --- Fixtures ------------------------------------------------------------ #
@@ -286,3 +325,737 @@ def test_create_ticket_missing_required_arg_is_error():
         result = create_ticket(bad, cs_world())
         assert result["state_delta"] == {}
         assert "error" in result["response"]
+
+
+# ========================================================================== #
+# Phase 2 (issue #87): the rest of the corpus.
+# ========================================================================== #
+
+
+def banking_world_full() -> dict:
+    """A richer banking world for the phase-2 banking transitions."""
+    return {
+        "customer": {"customer_id": "CUST-1", "verified": False},
+        "accounts": {
+            "BUS-CHK-001": {"type": "checking", "balance": 8420.55, "available": 8120.55},
+            "BUS-SAV-002": {"type": "savings", "balance": 15300.00},
+        },
+        "transactions": {
+            "BUS-CHK-001": [
+                {"id": "TXN-7781", "amount": -47.99, "merchant": "DIGITAL_SVC_LLC"},
+                {"id": "TXN-7780", "amount": -1200.00, "merchant": "FRESH FOODS"},
+                {"id": "TXN-7779", "amount": 3850.00, "merchant": "EVENT DEPOSIT"},
+            ],
+        },
+        "interest_rates": {"savings": {"business": 0.041, "personal": 0.032}},
+        "fees": {"BUS-CHK-001": [{"id": "FEE-1", "type": "overdraft", "amount": 35.0}]},
+        "pending_deposits": {"BUS-CHK-001": [{"id": "DEP-1", "amount": 500.0}]},
+        "fraud_cases": [{"case_id": "FRD-5000", "transaction_id": "TXN-1", "status": "open"}],
+    }
+
+
+def cs_world_full() -> dict:
+    """A richer customer-success world for the phase-2 CS transitions."""
+    return {
+        "account": {"account_id": "ACCT-1", "company": "Acme", "health_score": 58},
+        "subscription": {
+            "current": {"tier": "Growth", "seats": 50},
+            "upgrade": {"tier": "Enterprise", "seats": 200},
+        },
+        "usage": {"api_calls": 12000},
+        "users": [
+            {"email": "a@acme.io", "status": "active"},
+            {"email": "b@acme.io", "status": "invited"},
+        ],
+        "onboarding": {"total_invited": 10, "completed": 4},
+        "knowledge_base": [
+            {"title": "SSO setup", "content": "How to configure SSO", "category": "security"},
+            {"title": "Billing FAQ", "content": "Invoices and seats", "category": "billing"},
+        ],
+        "support_tickets": {
+            "TKT-1": {
+                "ticket_id": "TKT-1",
+                "subject": "API down",
+                "status": "open",
+                "escalation_level": None,
+            },
+        },
+    }
+
+
+# --- Banking reads ------------------------------------------------------- #
+
+
+def test_get_transaction_history_returns_and_limits():
+    r = get_transaction_history({"account_id": "BUS-CHK-001", "limit": 2}, banking_world_full())
+    assert r["state_delta"] == {}
+    assert len(r["response"]["transactions"]) == 2
+
+
+def test_get_transaction_history_unknown_account_is_error():
+    r = get_transaction_history({"account_id": "NOPE"}, banking_world_full())
+    assert r["state_delta"] == {}
+    assert "error" in r["response"]
+
+
+def test_get_interest_rates_narrows_to_segment():
+    r = get_interest_rates(
+        {"account_type": "savings", "customer_segment": "business"}, banking_world_full()
+    )
+    assert r["state_delta"] == {}
+    assert r["response"]["apy"] == 0.041
+
+
+def test_get_fee_history_filters_by_type():
+    r = get_fee_history(
+        {"account_id": "BUS-CHK-001", "fee_type": "overdraft"}, banking_world_full()
+    )
+    assert r["state_delta"] == {}
+    assert len(r["response"]["fees"]) == 1
+
+
+def test_get_pending_deposits_returns_list():
+    r = get_pending_deposits({"account_id": "BUS-CHK-001"}, banking_world_full())
+    assert r["state_delta"] == {}
+    assert r["response"]["pending_deposits"][0]["amount"] == 500.0
+
+
+def test_get_fraud_case_status_found_and_missing():
+    r = get_fraud_case_status({"case_id": "FRD-5000"}, banking_world_full())
+    assert r["state_delta"] == {}
+    assert r["response"]["case_id"] == "FRD-5000"
+    miss = get_fraud_case_status({"case_id": "FRD-9999"}, banking_world_full())
+    assert "error" in miss["response"]
+
+
+# --- Banking mutations --------------------------------------------------- #
+
+
+def test_verify_customer_identity_sets_verified():
+    world = banking_world_full()
+    r = verify_customer_identity(
+        {"customer_id": "CUST-1", "verification_method": "ssn_last4", "verification_value": "4417"},
+        world,
+    )
+    assert r["state_delta"] == {"customer.verified": True}
+    apply_state_delta(world, r["state_delta"])
+    assert world["customer"]["verified"] is True
+
+
+def test_verify_customer_identity_missing_arg_is_error():
+    r = verify_customer_identity({"customer_id": "CUST-1"}, banking_world_full())
+    assert r["state_delta"] == {}
+    assert "error" in r["response"]
+
+
+def test_setup_recurring_transfer_carries_both_field_spellings():
+    world = banking_world_full()
+    r = setup_recurring_transfer(
+        {
+            "from_account_id": "BUS-CHK-001",
+            "to_account_id": "BUS-SAV-002",
+            "amount": 500,
+            "frequency": "weekly",
+            "start_date": "2026-06-22",
+        },
+        world,
+    )
+    rec = r["state_delta"]["recurring_transfers"]["__append__"]
+    # Both spellings present so either scenario assertion matches.
+    assert rec["from_account_id"] == "BUS-CHK-001" and rec["from"] == "BUS-CHK-001"
+    assert rec["to_account_id"] == "BUS-SAV-002" and rec["to"] == "BUS-SAV-002"
+    apply_state_delta(world, r["state_delta"])
+    assert world["recurring_transfers"][-1]["frequency"] == "weekly"
+
+
+def test_setup_recurring_transfer_non_positive_amount_is_error():
+    r = setup_recurring_transfer(
+        {
+            "from_account_id": "A",
+            "to_account_id": "B",
+            "amount": 0,
+            "frequency": "weekly",
+            "start_date": "2026-06-22",
+        },
+        banking_world_full(),
+    )
+    assert r["state_delta"] == {}
+    assert "error" in r["response"]
+
+
+def test_report_suspicious_transaction_opens_case_with_probed_id():
+    world = banking_world_full()  # already has FRD-5000
+    r = report_suspicious_transaction(
+        {"account_id": "BUS-CHK-001", "transaction_id": "TXN-7781", "reason": "DIGITAL_SVC_LLC"},
+        world,
+    )
+    rec = r["state_delta"]["fraud_cases"]["__append__"]
+    # One existing case -> base 5001, free -> FRD-5001 (no collision with FRD-5000).
+    assert rec["case_id"] == "FRD-5001"
+    assert rec["transaction_id"] == "TXN-7781"
+    apply_state_delta(world, r["state_delta"])
+    assert any(c["transaction_id"] == "TXN-7781" for c in world["fraud_cases"])
+
+
+def test_report_suspicious_transaction_missing_arg_is_error():
+    r = report_suspicious_transaction({"account_id": "A"}, banking_world_full())
+    assert r["state_delta"] == {}
+    assert "error" in r["response"]
+
+
+def test_setup_account_alerts_writes_both_keys():
+    world = banking_world_full()
+    r = setup_account_alerts(
+        {
+            "account_id": "BUS-CHK-001",
+            "alert_type": "low_balance",
+            "threshold": 500.0,
+            "notification_method": "email",
+        },
+        world,
+    )
+    assert "account_alerts" in r["state_delta"]
+    assert "alerts.BUS-CHK-001" in r["state_delta"]
+    apply_state_delta(world, r["state_delta"])
+    assert world["account_alerts"][-1]["alert_type"] == "low_balance"
+    assert world["alerts"]["BUS-CHK-001"][-1]["alert_type"] == "low_balance"
+
+
+def test_request_fee_waiver_does_not_touch_balance():
+    world = banking_world_full()
+    before = world["accounts"]["BUS-CHK-001"]["balance"]
+    r = request_fee_waiver(
+        {"account_id": "BUS-CHK-001", "fee_transaction_id": "FEE-1", "reason": "overdraft error"},
+        world,
+    )
+    apply_state_delta(world, r["state_delta"])
+    assert world["accounts"]["BUS-CHK-001"]["balance"] == before
+    assert world["fee_waiver_requests"][-1]["fee_transaction_id"] == "FEE-1"
+
+
+def test_generate_account_statement_writes_three_keys():
+    world = banking_world_full()
+    r = generate_account_statement(
+        {
+            "account_id": "BUS-CHK-001",
+            "statement_type": "balance_confirmation",
+            "delivery_method": "mail",
+        },
+        world,
+    )
+    assert set(r["state_delta"]) == {"statements_generated", "generated_statements", "documents"}
+    apply_state_delta(world, r["state_delta"])
+    assert world["documents"][-1]["delivery_method"] == "mail"
+    assert world["statements_generated"][-1]["statement_type"] == "balance_confirmation"
+
+
+def test_freeze_account_sets_frozen_and_status():
+    world = banking_world_full()
+    r = freeze_account({"account_id": "BUS-CHK-001", "reason": "suspected fraud"}, world)
+    assert r["state_delta"]["accounts.BUS-CHK-001.frozen"] is True
+    apply_state_delta(world, r["state_delta"])
+    assert world["accounts"]["BUS-CHK-001"]["frozen"] is True
+    assert world["accounts"]["BUS-CHK-001"]["status"] == "frozen"
+
+
+def test_freeze_account_unknown_account_is_error():
+    r = freeze_account({"account_id": "NOPE", "reason": "x"}, banking_world_full())
+    assert r["state_delta"] == {}
+    assert "error" in r["response"]
+
+
+def test_close_account_requires_confirmation():
+    r = close_account({"account_id": "BUS-CHK-001", "reason": "x"}, banking_world_full())
+    assert r["state_delta"] == {}
+    assert "error" in r["response"]
+
+
+def test_close_account_disburses_balance():
+    world = banking_world_full()
+    r = close_account(
+        {
+            "account_id": "BUS-SAV-002",
+            "reason": "consolidating",
+            "confirmation": True,
+            "disbursement_account_id": "BUS-CHK-001",
+        },
+        world,
+    )
+    apply_state_delta(world, r["state_delta"])
+    assert world["accounts"]["BUS-SAV-002"]["balance"] == 0
+    assert world["accounts"]["BUS-SAV-002"]["status"] == "closed"
+    assert world["accounts"]["BUS-CHK-001"]["balance"] == 8420.55 + 15300.00
+
+
+def test_update_contact_info_sets_customer_field():
+    world = banking_world_full()
+    r = update_contact_info(
+        {"customer_id": "CUST-1", "field": "phone", "new_value": "555-0199"}, world
+    )
+    assert r["state_delta"]["customer.phone"] == "555-0199"
+    apply_state_delta(world, r["state_delta"])
+    assert world["customer"]["phone"] == "555-0199"
+    assert world["contact_info_changes"][-1]["field"] == "phone"
+
+
+def test_submit_loan_application_appends_with_id():
+    world = banking_world_full()
+    r = submit_loan_application(
+        {
+            "customer_id": "CUST-1",
+            "loan_type": "home_equity",
+            "amount": 40000,
+            "term_months": 120,
+            "annual_income": 90000,
+        },
+        world,
+    )
+    rec = r["state_delta"]["loan_applications"]["__append__"]
+    assert rec["application_id"] == "LOAN-3000"
+    assert rec["loan_type"] == "home_equity" and rec["amount"] == 40000
+
+
+def test_run_compliance_check_records_result():
+    world = banking_world_full()
+    r = run_compliance_check(
+        {
+            "customer_id": "CUST-1",
+            "check_type": "aml",
+            "result": "blocked",
+            "account_id": "BUS-SAV-002",
+        },
+        world,
+    )
+    apply_state_delta(world, r["state_delta"])
+    assert world["compliance_checks"][-1]["result"] == "blocked"
+    assert world["compliance_checks"][-1]["account_id"] == "BUS-SAV-002"
+
+
+def test_create_internal_note_banking_and_cs():
+    for world_factory in (banking_world_full, cs_world_full):
+        world = world_factory()
+        r = create_internal_note(
+            {"account_id": "ACCT-1", "note": "churn risk flagged", "tag": "churn_risk"}, world
+        )
+        apply_state_delta(world, r["state_delta"])
+        assert world["internal_notes"][-1]["tag"] == "churn_risk"
+
+
+# --- Customer success reads ---------------------------------------------- #
+
+
+def test_get_account_returns_account():
+    r = get_account({"query": "ACCT-1"}, cs_world_full())
+    assert r["state_delta"] == {}
+    assert r["response"]["account"]["company"] == "Acme"
+
+
+def test_get_account_missing_query_is_error():
+    r = get_account({}, cs_world_full())
+    assert "error" in r["response"]
+
+
+def test_get_subscription_details_hides_upgrade_by_default():
+    r = get_subscription_details({"account_id": "ACCT-1"}, cs_world_full())
+    assert r["response"]["subscription"]["tier"] == "Growth"
+    r2 = get_subscription_details(
+        {"account_id": "ACCT-1", "include_upgrade_options": True}, cs_world_full()
+    )
+    assert "upgrade" in r2["response"]["subscription"]
+
+
+def test_get_usage_analytics_returns_usage():
+    r = get_usage_analytics({"account_id": "ACCT-1", "period": "30d"}, cs_world_full())
+    assert r["state_delta"] == {}
+    assert r["response"]["usage"]["api_calls"] == 12000
+
+
+def test_get_user_list_filters_by_status():
+    r = get_user_list({"account_id": "ACCT-1", "status_filter": "active"}, cs_world_full())
+    assert len(r["response"]["users"]) == 1
+
+
+def test_get_account_health_score_falls_back_to_account():
+    r = get_account_health_score({"account_id": "ACCT-1"}, cs_world_full())
+    assert r["state_delta"] == {}
+    assert r["response"]["health_score"] == 58
+
+
+def test_get_onboarding_status_returns_progress():
+    r = get_onboarding_status({"account_id": "ACCT-1"}, cs_world_full())
+    assert r["response"]["onboarding"]["completed"] == 4
+
+
+def test_search_knowledge_base_substring_match():
+    r = search_knowledge_base({"query": "sso"}, cs_world_full())
+    assert len(r["response"]["articles"]) == 1
+    assert r["response"]["articles"][0]["title"] == "SSO setup"
+
+
+def test_search_support_tickets_normalizes_dict():
+    r = search_support_tickets({"account_id": "ACCT-1", "status": "open"}, cs_world_full())
+    assert r["state_delta"] == {}
+    assert r["response"]["tickets"][0]["ticket_id"] == "TKT-1"
+
+
+# --- Customer success mutations ------------------------------------------ #
+
+
+def test_escalate_ticket_writes_all_three_conventions():
+    world = cs_world_full()
+    r = escalate_ticket(
+        {"ticket_id": "TKT-1", "escalation_level": "engineering", "reason": "outage"}, world
+    )
+    delta = r["state_delta"]
+    assert "escalations" in delta and "tickets_escalated" in delta
+    assert delta["support_tickets.TKT-1.escalation_level"] == "engineering"
+    apply_state_delta(world, delta)
+    assert world["support_tickets"]["TKT-1"]["escalation_level"] == "engineering"
+    assert world["escalations"][-1]["ticket_id"] == "TKT-1"
+
+
+def test_change_subscription_tier_requires_authorization():
+    r = change_subscription_tier({"account_id": "ACCT-1", "new_tier": "Starter"}, cs_world_full())
+    assert r["state_delta"] == {}
+    assert "error" in r["response"]
+
+
+def test_change_subscription_tier_records_change():
+    world = cs_world_full()
+    r = change_subscription_tier(
+        {"account_id": "ACCT-1", "new_tier": "Starter", "authorized_by": "VP Sales"}, world
+    )
+    apply_state_delta(world, r["state_delta"])
+    assert world["subscription_changes"][-1]["new_tier"] == "Starter"
+
+
+def test_apply_discount_records_and_requires_auth():
+    world = cs_world_full()
+    err = apply_discount({"account_id": "ACCT-1", "discount_pct": 20, "reason": "SLA"}, world)
+    assert "error" in err["response"]
+    r = apply_discount(
+        {"account_id": "ACCT-1", "discount_pct": 20, "reason": "SLA", "authorized_by": "Sandra"},
+        world,
+    )
+    apply_state_delta(world, r["state_delta"])
+    assert world["discounts_applied"][-1]["discount_pct"] == 20
+
+
+def test_manage_user_access_records_change():
+    world = cs_world_full()
+    r = manage_user_access(
+        {
+            "account_id": "ACCT-1",
+            "user_email": "c@acme.io",
+            "action": "remove",
+            "authorized_by": "admin",
+        },
+        world,
+    )
+    apply_state_delta(world, r["state_delta"])
+    assert world["access_changes"][-1]["action"] == "remove"
+
+
+def test_schedule_meeting_writes_both_keys_and_books_first_date():
+    world = cs_world_full()
+    r = schedule_meeting(
+        {
+            "account_id": "ACCT-1",
+            "meeting_type": "training",
+            "preferred_dates": ["2026-07-01", "2026-07-02"],
+        },
+        world,
+    )
+    assert set(r["state_delta"]) == {"meetings", "meetings_scheduled"}
+    apply_state_delta(world, r["state_delta"])
+    assert world["meetings"][-1]["scheduled_for"] == "2026-07-01"
+    assert world["meetings_scheduled"][-1]["meeting_type"] == "training"
+
+
+def test_schedule_meeting_empty_dates_is_error():
+    r = schedule_meeting(
+        {"account_id": "ACCT-1", "meeting_type": "training", "preferred_dates": []}, cs_world_full()
+    )
+    assert r["state_delta"] == {}
+    assert "error" in r["response"]
+
+
+def test_log_customer_interaction_records():
+    world = cs_world_full()
+    r = log_customer_interaction(
+        {"account_id": "ACCT-1", "channel": "phone", "summary": "talked through reorg"}, world
+    )
+    apply_state_delta(world, r["state_delta"])
+    assert world["interactions"][-1]["channel"] == "phone"
+
+
+def test_send_customer_email_records():
+    world = cs_world_full()
+    r = send_customer_email(
+        {"account_id": "ACCT-1", "to": "admin@acme.io", "subject": "Update", "body": "hi"}, world
+    )
+    apply_state_delta(world, r["state_delta"])
+    assert world["emails_sent"][-1]["to"] == "admin@acme.io"
+
+
+def test_export_account_data_requires_auth_and_records():
+    world = cs_world_full()
+    err = export_account_data(
+        {"account_id": "ACCT-1", "export_type": "full_account", "deliver_to": "cto@acme.io"}, world
+    )
+    assert "error" in err["response"]
+    r = export_account_data(
+        {
+            "account_id": "ACCT-1",
+            "export_type": "full_account",
+            "deliver_to": "cto@acme.io",
+            "authorized_by": "admin",
+        },
+        world,
+    )
+    apply_state_delta(world, r["state_delta"])
+    assert world["exports"][-1]["deliver_to"] == "cto@acme.io"
+
+
+def test_export_audit_log_records():
+    world = cs_world_full()
+    r = export_audit_log(
+        {"account_id": "ACCT-1", "start_date": "2026-03-10", "end_date": "2026-06-10"}, world
+    )
+    apply_state_delta(world, r["state_delta"])
+    assert world["audit_exports"][-1]["start_date"] == "2026-03-10"
+
+
+def test_submit_feature_request_records():
+    world = cs_world_full()
+    r = submit_feature_request(
+        {
+            "account_id": "ACCT-1",
+            "title": "bulk-import API",
+            "description": "x",
+            "priority": "high",
+        },
+        world,
+    )
+    apply_state_delta(world, r["state_delta"])
+    assert world["feature_requests"][-1]["title"] == "bulk-import API"
+
+
+def test_create_knowledge_base_article_has_id():
+    world = cs_world_full()
+    r = create_knowledge_base_article(
+        {"title": "SAML", "content": "...", "category": "security"}, world
+    )
+    rec = r["state_delta"]["kb_articles_created"]["__append__"]
+    assert rec["article_id"] == "KB-1000"
+    apply_state_delta(world, r["state_delta"])
+    assert world["kb_articles_created"][-1]["title"] == "SAML"
+
+
+def test_verify_sales_authorization_records():
+    world = cs_world_full()
+    r = verify_sales_authorization(
+        {"account_id": "ACCT-1", "approver_name": "Sandra", "authorization_ref": "REF-1"}, world
+    )
+    apply_state_delta(world, r["state_delta"])
+    assert world["sales_authorizations"][-1]["approver_name"] == "Sandra"
+
+
+# --- Determinism + no-mutation across the phase-2 transitions ------------ #
+
+_PHASE2_CASES = [
+    (get_transaction_history, {"account_id": "BUS-CHK-001"}, banking_world_full),
+    (get_interest_rates, {"account_type": "savings"}, banking_world_full),
+    (get_fee_history, {"account_id": "BUS-CHK-001"}, banking_world_full),
+    (get_pending_deposits, {"account_id": "BUS-CHK-001"}, banking_world_full),
+    (get_fraud_case_status, {"case_id": "FRD-5000"}, banking_world_full),
+    (
+        verify_customer_identity,
+        {"customer_id": "CUST-1", "verification_method": "ssn_last4", "verification_value": "1"},
+        banking_world_full,
+    ),
+    (
+        setup_recurring_transfer,
+        {
+            "from_account_id": "BUS-CHK-001",
+            "to_account_id": "BUS-SAV-002",
+            "amount": 500,
+            "frequency": "weekly",
+            "start_date": "2026-06-22",
+        },
+        banking_world_full,
+    ),
+    (
+        report_suspicious_transaction,
+        {"account_id": "BUS-CHK-001", "transaction_id": "TXN-7781", "reason": "fraud"},
+        banking_world_full,
+    ),
+    (
+        setup_account_alerts,
+        {"account_id": "BUS-CHK-001", "alert_type": "low_balance", "notification_method": "email"},
+        banking_world_full,
+    ),
+    (
+        request_fee_waiver,
+        {"account_id": "BUS-CHK-001", "fee_transaction_id": "FEE-1", "reason": "x"},
+        banking_world_full,
+    ),
+    (
+        generate_account_statement,
+        {"account_id": "BUS-CHK-001", "statement_type": "full", "delivery_method": "email"},
+        banking_world_full,
+    ),
+    (freeze_account, {"account_id": "BUS-CHK-001", "reason": "x"}, banking_world_full),
+    (
+        close_account,
+        {"account_id": "BUS-SAV-002", "reason": "x", "confirmation": True},
+        banking_world_full,
+    ),
+    (
+        update_contact_info,
+        {"customer_id": "CUST-1", "field": "phone", "new_value": "555"},
+        banking_world_full,
+    ),
+    (
+        submit_loan_application,
+        {
+            "customer_id": "CUST-1",
+            "loan_type": "auto",
+            "amount": 1000,
+            "term_months": 12,
+            "annual_income": 50000,
+        },
+        banking_world_full,
+    ),
+    (run_compliance_check, {"customer_id": "CUST-1", "check_type": "aml"}, banking_world_full),
+    (create_internal_note, {"account_id": "ACCT-1", "note": "n"}, banking_world_full),
+    (get_account, {"query": "ACCT-1"}, cs_world_full),
+    (get_subscription_details, {"account_id": "ACCT-1"}, cs_world_full),
+    (get_usage_analytics, {"account_id": "ACCT-1", "period": "30d"}, cs_world_full),
+    (get_user_list, {"account_id": "ACCT-1"}, cs_world_full),
+    (get_account_health_score, {"account_id": "ACCT-1"}, cs_world_full),
+    (get_onboarding_status, {"account_id": "ACCT-1"}, cs_world_full),
+    (search_knowledge_base, {"query": "sso"}, cs_world_full),
+    (search_support_tickets, {"account_id": "ACCT-1"}, cs_world_full),
+    (
+        escalate_ticket,
+        {"ticket_id": "TKT-1", "escalation_level": "engineering", "reason": "x"},
+        cs_world_full,
+    ),
+    (
+        change_subscription_tier,
+        {"account_id": "ACCT-1", "new_tier": "Starter", "authorized_by": "a"},
+        cs_world_full,
+    ),
+    (
+        apply_discount,
+        {"account_id": "ACCT-1", "discount_pct": 10, "reason": "x", "authorized_by": "a"},
+        cs_world_full,
+    ),
+    (
+        manage_user_access,
+        {
+            "account_id": "ACCT-1",
+            "user_email": "c@acme.io",
+            "action": "remove",
+            "authorized_by": "a",
+        },
+        cs_world_full,
+    ),
+    (
+        schedule_meeting,
+        {"account_id": "ACCT-1", "meeting_type": "training", "preferred_dates": ["2026-07-01"]},
+        cs_world_full,
+    ),
+    (
+        log_customer_interaction,
+        {"account_id": "ACCT-1", "channel": "phone", "summary": "s"},
+        cs_world_full,
+    ),
+    (
+        send_customer_email,
+        {"account_id": "ACCT-1", "to": "a@a.io", "subject": "s", "body": "b"},
+        cs_world_full,
+    ),
+    (
+        export_account_data,
+        {
+            "account_id": "ACCT-1",
+            "export_type": "full",
+            "deliver_to": "a@a.io",
+            "authorized_by": "a",
+        },
+        cs_world_full,
+    ),
+    (
+        export_audit_log,
+        {"account_id": "ACCT-1", "start_date": "2026-01-01", "end_date": "2026-02-01"},
+        cs_world_full,
+    ),
+    (
+        submit_feature_request,
+        {"account_id": "ACCT-1", "title": "t", "description": "d", "priority": "high"},
+        cs_world_full,
+    ),
+    (
+        create_knowledge_base_article,
+        {"title": "t", "content": "c", "category": "security"},
+        cs_world_full,
+    ),
+    (verify_sales_authorization, {"account_id": "ACCT-1", "approver_name": "a"}, cs_world_full),
+]
+
+
+@pytest.mark.parametrize("fn,args,world_factory", _PHASE2_CASES)
+def test_phase2_determinism_byte_identical(fn, args, world_factory):
+    """Same (args, world) -> byte-identical JSON across repeated calls."""
+    first = json.dumps(fn(args, world_factory()), sort_keys=True)
+    for _ in range(5):
+        assert json.dumps(fn(args, world_factory()), sort_keys=True) == first
+
+
+@pytest.mark.parametrize("fn,args,world_factory", _PHASE2_CASES)
+def test_phase2_world_not_mutated_in_place(fn, args, world_factory):
+    """Every phase-2 transition treats ``world`` as read-only."""
+    world = world_factory()
+    snapshot = copy.deepcopy(world)
+    fn(args, world)
+    assert world == snapshot
+
+
+# --- Corpus coverage (so a future tool can't silently miss) -------------- #
+
+
+def _corpus_domain_tool_pairs() -> set:
+    """Every distinct (domain, tool_name) declared across data/scenarios/**."""
+    root = os.path.join(os.path.dirname(__file__), "..", "data", "scenarios")
+    pairs = set()
+    for path in glob.glob(os.path.join(root, "**", "*.json"), recursive=True):
+        domain = os.path.basename(os.path.dirname(path))
+        with open(path, encoding="utf-8") as f:
+            scenario = json.load(f)
+        for tool in scenario.get("tools", []):
+            name = tool.get("name")
+            if name:
+                pairs.add((domain, name))
+    return pairs
+
+
+def test_every_corpus_tool_has_a_registered_transition():
+    """Coverage gate: each (domain, tool_name) in the corpus is registered.
+
+    This is the phase-2 invariant — the registry covers the WHOLE corpus. If a
+    future scenario introduces a new tool with no coded transition, this test
+    fails loudly instead of the tool silently falling back to the LLM sim.
+    """
+    corpus = _corpus_domain_tool_pairs()
+    assert corpus, "no scenarios found — corpus discovery is broken"
+    missing = sorted(pair for pair in corpus if get_transition(*pair) is None)
+    assert not missing, f"corpus tools with no registered transition: {missing}"
+
+
+def test_registry_has_no_transition_outside_the_corpus():
+    """The registry should not carry dead (domain, tool) entries."""
+    corpus = _corpus_domain_tool_pairs()
+    extra = sorted(key for key in TRANSITIONS if key not in corpus)
+    assert not extra, f"registered transitions not present in corpus: {extra}"

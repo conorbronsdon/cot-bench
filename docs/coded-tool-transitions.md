@@ -1,10 +1,17 @@
 # Deterministic Coded Tool Transitions (issue #87)
 
-**Status: phase 1a — foundation only.** This PR ships the registry, the
-interface contract, three exemplar transitions, the unit tests, and this doc.
-It does NOT touch the runner. Runner wiring (with an LLM fallback) is phase 1b,
-a separate PR. The foundation is published first so the pattern can be reviewed
-before the remaining ~17 tools are built against it.
+**Status: phase 2 — full corpus coverage.** Phase 1a shipped the registry, the
+interface contract, three exemplar transitions, and the unit tests. **Phase 2
+(this PR) builds coded transitions for every remaining `(domain, tool_name)` in
+the corpus** — all 41 distinct tool pairs are now registered (3 from phase 1a +
+38 new), and a coverage test (`test_every_corpus_tool_has_a_registered_transition`)
+asserts the registry covers the whole corpus so a future tool cannot silently
+miss. This PR still does NOT touch the runner — runner wiring (with an LLM
+fallback) remains phase 1b, on a separate branch, to avoid colliding with an
+in-flight PR.
+
+See [Phase 2 coverage and per-tool assumptions](#phase-2-coverage-and-per-tool-assumptions)
+below.
 
 ## The problem
 
@@ -154,14 +161,108 @@ format the LLM sim emits, so:
   so the wiring is safe to land before the full tool set is coded. (Phase 1b
   edits the runner; phase 1a deliberately does not, so the two reviews stay
   independent.)
-- **Phase 2 — remaining mutating tools.** Build coded transitions for the rest
-  of the mutating tools (transfers, ticket/escalation, subscription, meeting
-  scheduling, recurring transfers, fraud reports, …), reconciling each against
-  its scenarios' arg names, world shape, and `expected_state_changes`.
+- **Phase 2 (this PR) — full corpus coverage (reads AND mutations).** Coded
+  transitions for the rest of the corpus — every remaining `(domain,
+  tool_name)`, reads included — reconciled against each tool's scenarios' arg
+  names, world shape, and `expected_state_changes`. Coded reads (not just
+  mutations) so the LLM sim can no longer feed the agent fabricated world data;
+  they are cheap deterministic world-slice returns with an empty delta. See the
+  coverage-and-assumptions section below.
 - **Phase 3 — state spine trusts only coded mutations.** Once every
   graded-state-mutating tool has a coded transition, tighten the state grade so
   it trusts only coded mutations for graded keys; the LLM sim stays only for
   read-only narration of tools that do not touch graded state.
+
+## Phase 2 coverage and per-tool assumptions
+
+### Coverage
+
+41 distinct `(domain, tool_name)` pairs across `data/scenarios/**` (19 banking,
+22 customer_success). All 41 are registered: 3 phase-1a exemplars +
+**38 new in phase 2**. The coverage test enumerates the corpus at test time and
+fails if any pair lacks a registered transition (and a companion test fails if
+the registry carries an entry not present in the corpus).
+
+**Reads** (empty delta, deterministic world slice): `get_transaction_history`,
+`get_interest_rates`, `get_fee_history`, `get_pending_deposits`,
+`get_fraud_case_status` (banking); `get_account`, `get_subscription_details`,
+`get_usage_analytics`, `get_user_list`, `get_account_health_score`,
+`get_onboarding_status`, `search_knowledge_base`, `search_support_tickets` (CS).
+
+**Mutations**: `verify_customer_identity`, `setup_recurring_transfer`,
+`report_suspicious_transaction`, `setup_account_alerts`, `request_fee_waiver`,
+`generate_account_statement`, `freeze_account`, `close_account`,
+`update_contact_info`, `submit_loan_application`, `run_compliance_check`,
+`create_internal_note` (banking); `escalate_ticket`, `change_subscription_tier`,
+`apply_discount`, `manage_user_access`, `schedule_meeting`,
+`log_customer_interaction`, `send_customer_email`, `export_account_data`,
+`export_audit_log`, `submit_feature_request`, `create_knowledge_base_article`,
+`verify_sales_authorization` (CS). `create_internal_note` is registered in BOTH
+domains (same implementation).
+
+### Deterministic id schemes
+
+Every generated id uses the phase-1a count-derived + forward-probe scheme,
+generalized into `_next_seq_id(prefix, existing_ids, base)`: candidate
+`n = base + len(existing_ids)`, probe `n+1, n+2, …` past any pre-seeded
+collision. Pure function of the existing-id set, byte-identical run to run.
+Prefixes/bases: tickets `TCK-`/10000 (phase 1a), fraud cases `FRD-`/5000,
+statements `STMT-`/9000, loan applications `LOAN-`/3000, KB articles `KB-`/1000.
+No transition reads the clock; where a real backend would stamp `created_at` /
+`as_of`, it is **omitted** (the grader never asserts a generated timestamp).
+
+### Per-tool assumptions (where the corpus authored a tool under multiple shapes)
+
+The grader's `contains` is a *subset* match (`state_check._match_item`), so a
+record may carry more fields / be written to more than one key without breaking
+any single scenario's assertion. Phase 2 uses that to reconcile the corpus's
+inconsistent authoring:
+
+- **`setup_recurring_transfer`** — scenarios assert `recurring_transfers` items
+  under both `from_account_id`/`to_account_id` and `from`/`to`. The record
+  carries **both spellings**. Setup does not move funds (the first scheduled run
+  is out of scope).
+- **`setup_account_alerts`** — asserted under both a flat `account_alerts` list
+  and a per-account `alerts.<account_id>` list. The same record is appended to
+  **both**. `threshold` is omitted when not supplied so a threshold-specific
+  assertion never mismatches.
+- **`generate_account_statement`** — asserted under `statements_generated`,
+  `generated_statements`, and `documents`. The same record is appended to **all
+  three**.
+- **`escalate_ticket`** — asserted under `escalations` (list), `tickets_escalated`
+  (list), and `support_tickets.<id>.escalation_level` (equals, when
+  `support_tickets` is a dict keyed by id). The delta writes **all three**;
+  setting the dotted path is safe even when no such ticket exists.
+- **`freeze_account`** — asserted as both `accounts.<id>.frozen == true` and
+  `accounts.<id>.status == "frozen"`. The delta sets **both**.
+- **`close_account`** — requires explicit `confirmation == true` (a
+  missing/false confirmation returns an in-task error with an empty delta, so the
+  adversarial bypass-confirmation cases stay untouched). Sweeps the balance to
+  `disbursement_account_id` when both accounts exist.
+- **`verify_customer_identity`** — sets `customer.verified == true` for a
+  well-formed call; it does **not** itself check the supplied value against a
+  seeded secret (the corpus does not encode a checkable secret for every method;
+  whether the agent verified appropriately is scored by the rubric, not the
+  state grade).
+- **`run_compliance_check`** — **records** the check rather than adjudicating
+  pass-vs-block (the corpus has no deterministic threshold table per
+  `check_type`; the block decision is rubric-scored policy). `result` is taken
+  from a `result` / `expected_result` arg when supplied, else `"flagged"`. If a
+  future scenario needs a coded block decision, encode the threshold in
+  `ground_truth`.
+- **Authorized actions** (`change_subscription_tier`, `apply_discount`,
+  `manage_user_access`, `export_account_data`) require `authorized_by`; a missing
+  value returns an in-task error with an empty delta. The "agent must refuse"
+  scenarios that assert `== []` rely on the agent *not calling the tool* — when
+  the tool is wrongly called the resulting mutation is exactly what the grader
+  flags.
+- **`verify_sales_authorization`** — no scenario asserts a direct state change
+  for it (it gates other actions via the rubric); it appends to a single
+  conventional `sales_authorizations` key, harmless to scenarios that do not read
+  it.
+
+These are the only places the corpus's authoring was genuinely ambiguous; no
+scenario contradicts the interface contract.
 
 ## References
 
