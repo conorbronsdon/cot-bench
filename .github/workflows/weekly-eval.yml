@@ -199,6 +199,18 @@ jobs:
           fi
           python -m scripts.check_publish_ready $ARGS
 
+      - name: Record published surface
+        # Anti-memorization ledger (closes the same-surface-reuse gap left open by
+        # #82). After the completeness gate passes, append THIS published run's
+        # instantiated surface (instantiated_corpus_sha256) to the committed
+        # ledger, so the NEXT published run is blocked from re-exposing the same
+        # surface. Gated on the same publish condition as the commit step below, so
+        # it never runs on a smoke/dry run (publish=false) — a smoke run must not
+        # claim a surface as "published". No-op for a non-templated run (the helper
+        # exits 0 without writing). Idempotent: a re-run won't double-append.
+        if: github.event_name == 'schedule' || github.event.inputs.publish == 'true'
+        run: python -m scripts.record_published_surface
+
       - name: Commit updated results
         # The scheduled run always publishes. A manual dispatch only publishes
         # when explicitly asked (publish=true) — so a subset smoke run can
@@ -211,13 +223,22 @@ jobs:
           test -f data/results/leaderboard.json || { echo "::error::leaderboard.json was not generated despite eval+aggregate exiting 0 — investigate scripts/aggregate_results.py"; exit 1; }
           git config user.name "COT Bench Bot"
           git config user.email "bot@cot-bench.dev"
+          # The ledger only exists after a TEMPLATED publish (the record step
+          # no-ops for a non-templated run). Ensure an empty file exists so the
+          # explicit `git add` below never dies on a missing pathspec; an empty
+          # ledger stages no change and is skipped by the `git diff --quiet`.
+          touch data/results/published_surfaces.jsonl
           # leaderboard.json + latest.csv are the published surfaces
           # (governance §4 / methodology); history.jsonl is the append-only
           # audit trail governance §1 leans on — it must be committed each run
           # or the public trend record is discarded with the CI workspace.
-          # All three are un-ignored in .gitignore; if that regresses this
-          # `git add` dies on a pathspec error (the H1 bug). The
+          # published_surfaces.jsonl is the anti-memorization ledger written by
+          # the "Record published surface" step above; committing it each publish
+          # is what lets the next published run be blocked from re-exposing the
+          # same instantiated surface (closes the gap left open by #82).
+          # All are un-ignored in .gitignore; if that regresses this `git add`
+          # dies on a pathspec error (the H1 bug). The
           # tests/test_published_surfaces_committable.py guard pins it.
-          git add data/results/leaderboard.json data/results/latest.csv data/results/history.jsonl
+          git add data/results/leaderboard.json data/results/latest.csv data/results/history.jsonl data/results/published_surfaces.jsonl
           git diff --staged --quiet || git commit -m "Update leaderboard results $(date +%Y-%m-%d)"
           git push
