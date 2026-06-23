@@ -374,6 +374,12 @@ def _validate_dual_control(scenario: ScenarioSchema) -> list[str]:
     bounds mirror
     ``DualControl``/``UserAction`` so the on-disk validator and the runtime
     object agree on what a valid block is.
+
+    Finally, the OPTIONAL ``double_apply_targets`` list (issue #83) names the keys
+    the scenario intends to trap for no-re-apply; each declared target must be
+    both user-owned and writable by some agent tool, so the Option A write-clamp
+    cannot silently declaw the trap (see the catchability guard at the end of this
+    function).
     """
     block = scenario.dual_control
     if block is None:
@@ -419,6 +425,17 @@ def _validate_dual_control(scenario: ScenarioSchema) -> list[str]:
                 f"write-scope clamp must be in force for the coordination metric to "
                 f"be deterministic"
             )
+
+    # Union of every agent tool's declared ``writes`` (the keys the clamp lets an
+    # agent tool's sim delta reach). Used by the double_apply_targets catchability
+    # guard below: a no-re-apply trap on a key NO agent tool can write is declawed
+    # by the clamp (the agent literally cannot write it, so the attribution check
+    # is vacuously empty and the scenario silently always-passes).
+    agent_writable: set[str] = set()
+    for tool in scenario.tools:
+        writes = getattr(tool, "writes", None)
+        if isinstance(writes, list):
+            agent_writable.update(str(w) for w in writes)
 
     tools_raw = block.get("user_tools")
     if not isinstance(tools_raw, list) or not tools_raw:
@@ -496,6 +513,47 @@ def _validate_dual_control(scenario: ScenarioSchema) -> list[str]:
             # OWN existing state), but absence is allowed (e.g. appending the first
             # item to an as-yet-absent list) — so this is a soft check, only the
             # scope breach above is a hard error.
+
+    # Catchability guard for explicit no-re-apply traps (issue #83, PR #77
+    # review). ``double_apply_targets`` lists the top-level state keys this
+    # scenario INTENDS to test for the no-double-apply contract. The Option A
+    # write-clamp (runner._simulate_tool_stateful) drops any agent tool-sim write
+    # to a key not in the called tool's ``writes``; so if a scenario means to trap
+    # "the agent must not re-apply user-owned key X" but X is not user-owned, or
+    # NO agent tool can write X, the clamp declaws the trap — the coordination
+    # verdict's ``agent_mutated_keys & user_owned`` is vacuously empty and the
+    # scenario silently ALWAYS-passes the no-double-apply contract. So each
+    # declared target must be (a) user-owned (in some user_tool's scope) AND
+    # (b) writable by some agent tool (in the ``writes`` union) — only then is the
+    # double-apply actually reachable and therefore catchable. Keys NOT listed as
+    # targets are unaffected: an approval-wait scenario whose user owns
+    # ``pending_requests`` with no agent tool writing it declares NO target here
+    # and correctly raises no error.
+    targets_raw = block.get("double_apply_targets")
+    if targets_raw is not None:
+        if not isinstance(targets_raw, list):
+            errors.append(
+                "dual_control.double_apply_targets must be a list of top-level state keys"
+            )
+        else:
+            user_owned: set[str] = set()
+            for scope in tool_scopes.values():
+                user_owned.update(scope)
+            for target in targets_raw:
+                key = str(target)
+                if key not in user_owned:
+                    errors.append(
+                        f"dual_control.double_apply_targets key '{key}' is not user-owned "
+                        f"(not in any user_tool scope {sorted(user_owned)}); a no-double-apply "
+                        "trap must target a key the USER owns"
+                    )
+                if key not in agent_writable:
+                    errors.append(
+                        f"dual_control.double_apply_targets key '{key}' is not in any agent "
+                        f"tool's 'writes' {sorted(agent_writable)}; the Option A write-clamp "
+                        "would declaw the trap (no agent tool can write it, so the "
+                        "no-double-apply check is vacuously empty and always passes)"
+                    )
 
     return errors
 

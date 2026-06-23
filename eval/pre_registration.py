@@ -239,12 +239,14 @@ def _dual_control_to_dict(dc) -> dict:
     optional fields are normalized (``arguments``/``state_delta`` -> ``{}``,
     ``scope``/``parameters`` -> ``[]``, ``user_message`` -> ``None``) to match the
     object's own normalization, so a block authored with an omitted optional
-    hashes the same as one with the explicit empty value.
+    hashes the same as one with the explicit empty value. The optional
+    ``double_apply_targets`` (issue #83) is emitted only when non-empty, so an
+    omitting block hashes identically to before that field existed.
     """
     if isinstance(dc, dict):
         tools = dc.get("user_tools", [])
         actions = dc.get("user_actions", [])
-        return {
+        out = {
             "user_tools": [
                 {
                     "name": t.get("name"),
@@ -266,28 +268,38 @@ def _dual_control_to_dict(dc) -> dict:
                 for a in actions
             ],
         }
-    return {
-        "user_tools": [
-            {
-                "name": t.name,
-                "description": t.description,
-                "parameters": t.parameters,
-                "scope": t.scope,
-            }
-            for t in dc.user_tools.values()
-        ],
-        "user_actions": [
-            {
-                "tool": a.tool,
-                "trigger": a.trigger,
-                "trigger_value": a.trigger_value,
-                "arguments": a.arguments,
-                "state_delta": a.state_delta,
-                "user_message": a.user_message,
-            }
-            for a in dc.user_actions
-        ],
-    }
+        targets = dc.get("double_apply_targets") or []
+    else:
+        out = {
+            "user_tools": [
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                    "scope": t.scope,
+                }
+                for t in dc.user_tools.values()
+            ],
+            "user_actions": [
+                {
+                    "tool": a.tool,
+                    "trigger": a.trigger,
+                    "trigger_value": a.trigger_value,
+                    "arguments": a.arguments,
+                    "state_delta": a.state_delta,
+                    "user_message": a.user_message,
+                }
+                for a in dc.user_actions
+            ],
+        }
+        targets = getattr(dc, "double_apply_targets", None) or []
+    # ``double_apply_targets`` is emitted ONLY when non-empty, so a block that
+    # omits it (every existing dual-control fixture, and the entire public
+    # corpus, which declares no dual_control at all) hashes exactly as it did
+    # before this optional field existed.
+    if targets:
+        out["double_apply_targets"] = [str(k) for k in targets]
+    return out
 
 
 def _recovery_probe_to_dict(probe) -> dict:

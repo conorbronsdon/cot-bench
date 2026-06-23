@@ -73,6 +73,7 @@
      "goal": "Ask the agent to open a support ticket to enable SSO for his team"}
   ],
   "dual_control": {
+    "double_apply_targets": ["contact"],
     "user_tools": [
       {
         "name": "update_my_contact_info",
