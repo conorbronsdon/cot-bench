@@ -29,7 +29,6 @@
     "email_local": {
       "type": "choice",
       "options": [
-        "raj.malhotra",
         "admin.ops",
         "it.lead",
         "systems.admin",

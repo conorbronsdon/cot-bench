@@ -39,11 +39,11 @@
     "gmail_local": {
       "type": "choice",
       "options": [
-        "devon.marsh.work",
-        "ea.devon.work",
-        "devonm.assistant",
-        "devon.ea.urgent",
-        "dmarsh.personal"
+        "exec.assistant.ops",
+        "priority.ea.urgent",
+        "assistant.escalation",
+        "urgent.exec.support",
+        "ops.assistant.priority"
       ]
     },
     "owner_first": {
