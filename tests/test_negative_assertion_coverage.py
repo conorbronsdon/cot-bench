@@ -151,9 +151,7 @@ def _key_literal_top_segments(key_node: ast.AST) -> set:
         # top segment. ``f"accounts.{id}.balance"`` -> ``accounts.\x00.balance`` ->
         # ``accounts``. The top segment is a literal in every transition (the
         # interpolation is always AFTER the first dot), so this is exact.
-        parts = [
-            str(v.value) if isinstance(v, ast.Constant) else "\x00" for v in key_node.values
-        ]
+        parts = [str(v.value) if isinstance(v, ast.Constant) else "\x00" for v in key_node.values]
         return {_top_segment("".join(parts))}
     return set()
 
@@ -169,7 +167,11 @@ def _keys_assigned_to_local(name: str, fn_node: ast.FunctionDef) -> set:
         if not isinstance(node, ast.Assign):
             continue
         for target in node.targets:
-            if isinstance(target, ast.Name) and target.id == name and isinstance(node.value, ast.Dict):
+            if (
+                isinstance(target, ast.Name)
+                and target.id == name
+                and isinstance(node.value, ast.Dict)
+            ):
                 for k in node.value.keys:
                     keys |= _key_literal_top_segments(k)
             elif (
@@ -218,9 +220,9 @@ def _tripwire_registry(domain: str) -> dict:
         registry = json.load(f)
     assert isinstance(registry, dict), f"{path}: tripwire registry must be a JSON object"
     for key, rationale in registry.items():
-        assert (
-            isinstance(rationale, str) and rationale.strip()
-        ), f"{path}: tripwire key {key!r} must have a non-empty rationale string"
+        assert isinstance(rationale, str) and rationale.strip(), (
+            f"{path}: tripwire key {key!r} must have a non-empty rationale string"
+        )
     return registry
 
 
