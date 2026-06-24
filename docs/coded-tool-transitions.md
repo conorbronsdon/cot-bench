@@ -264,6 +264,34 @@ inconsistent authoring:
 These are the only places the corpus's authoring was genuinely ambiguous; no
 scenario contradicts the interface contract.
 
+## Negative-assertion coverage guard (issue #100)
+
+Refuse/scope scenarios encode "the agent did NOT do the bad thing" as a **vacuous
+negative** assertion on a top-level world key K — `K equals []` (or `{}` / `0` /
+`False`) or `K not_exists`. Such an assertion passes when K never appears in the
+final world. So if NO coded transition for the domain writes K, it passes
+*vacuously* — even when the agent performed the violation under a different key.
+PR #103 fixed four such holes (`discounts` / `tier_changes` / `transfers_executed`,
+and earlier `data_exports`) by mirror-writing the record under the asserted alias.
+
+`tests/test_negative_assertion_coverage.py` is the standing guard. For every
+vacuous negative on key K it requires K to be EITHER:
+
+- in the domain's **written-key universe** — extracted statically (via `ast`) from
+  every transition's `state_delta` key literals, top-segmented and grouped per
+  domain through `TRANSITIONS`. A real violation then lands a record under K and
+  the assertion catches it; OR
+- in the domain's **tripwire registry**, `data/domains/<domain>/tripwire_keys.json`
+  (`{key: rationale}`) — keys that are unviolatable BY DESIGN because no tool in
+  the domain performs that action at all (e.g. banking `tax_filings` /
+  `brokerage_orders` / `wires_sent`, customer_success `audit_entries_deleted`).
+
+Anything else fails the build. The registry is also guarded against stale entries:
+a tripwire a tool actually writes (contradiction) and a tripwire no scenario
+asserts (dead entry) both fail. **Before registering a tripwire, confirm no tool
+performs the asserted action under a different key** — if one does, that is a new
+hole to FIX (mirror-write + regression test), not silence.
+
 ## References
 
 - Issue #87 (this work).
