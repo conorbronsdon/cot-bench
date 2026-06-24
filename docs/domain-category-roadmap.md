@@ -8,7 +8,7 @@ Decision driving this: **cover many domains from the start, not 2.** Today's ben
 - **Full transcripts read:** Dan Klein (ep54), Loic Houssier (ep59), Tyler Akidau (ep60), Jerry Liu (ep61), Kris Lovejoy (ep62).
 - **Mined from publish-assets/clip-transcriptions (verbatim quotes, flagged):** Tricot (52), Alake (53), Hasbe (55), Elangovan (56), Ratner (57), Chait (58), Batra (63).
 - **Baselines:** Galileo v2 domains = Banking, Healthcare, Investment, Telecom, Insurance. τ²-bench = Airline, Retail, Telecom, Mock.
-- ✅ **Data-integrity flag (resolved):** the mining pass saw ep53 assets attribute **Richmond Alake to Oracle**. Verified 2026-06-23 — Alake is **Staff AI/ML Developer Advocate at MongoDB** (LinkedIn, MongoDB author pages, SuperDataScience SDS 871). The mining attribution was wrong; treat any other ep53-asset employer attributions as suspect until checked.
+- ✅ **Data-integrity flag (resolved):** the mining pass saw ep53 assets attribute **Richmond Alake to Oracle** — that is **correct as of his current role**. Alake moved to **Oracle**; he was **previously at MongoDB** (the widely-indexed MongoDB Developer-Advocate content predates the move, which is why a web check can mislead). Use "Oracle" for current attribution; if a scenario quotes ep53-era MongoDB context, attribute it to his MongoDB tenure.
 - Feasibility lens throughout: a domain/scenario must map to tool calls mutating an **assertable JSON world state** (the deterministic spine).
 
 ---
