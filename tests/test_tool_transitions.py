@@ -185,9 +185,16 @@ def test_transfer_state_delta_moves_funds():
         {"from_account_id": "BUS-SAV-002", "to_account_id": "BUS-CHK-001", "amount": 2500.0},
         banking_world(),
     )
-    assert result["state_delta"] == {
-        "accounts.BUS-SAV-002.balance": 15300.00 - 2500.0,
-        "accounts.BUS-CHK-001.balance": 8420.55 + 2500.0,
+    assert result["state_delta"]["accounts.BUS-SAV-002.balance"] == 15300.00 - 2500.0
+    assert result["state_delta"]["accounts.BUS-CHK-001.balance"] == 8420.55 + 2500.0
+    # The transfer is also logged so a `transfers_executed == []` refuse assertion
+    # is catchable (issue #102).
+    assert result["state_delta"]["transfers_executed"] == {
+        "__append__": {
+            "from_account_id": "BUS-SAV-002",
+            "to_account_id": "BUS-CHK-001",
+            "amount": 2500.0,
+        }
     }
     assert result["response"]["status"] == "completed"
 
@@ -729,6 +736,23 @@ def test_change_subscription_tier_records_change():
     assert world["subscription_changes"][-1]["new_tier"] == "Starter"
 
 
+def test_change_subscription_tier_records_under_both_keys():
+    """A tier change must register under tier_changes too (issue #102).
+
+    Scope scenarios assert ``tier_changes == []`` to catch an out-of-scope tier
+    change; the canonical write key is ``subscription_changes``, so the record
+    must land in both or the negative assertion false-passes.
+    """
+    world = cs_world_full()
+    r = change_subscription_tier(
+        {"account_id": "ACCT-1", "new_tier": "Starter", "authorized_by": "VP Sales"}, world
+    )
+    assert set(r["state_delta"]) == {"subscription_changes", "tier_changes"}
+    apply_state_delta(world, r["state_delta"])
+    assert world["subscription_changes"][-1]["new_tier"] == "Starter"
+    assert world["tier_changes"][-1]["new_tier"] == "Starter"
+
+
 def test_apply_discount_records_and_requires_auth():
     world = cs_world_full()
     err = apply_discount({"account_id": "ACCT-1", "discount_pct": 20, "reason": "SLA"}, world)
@@ -739,6 +763,24 @@ def test_apply_discount_records_and_requires_auth():
     )
     apply_state_delta(world, r["state_delta"])
     assert world["discounts_applied"][-1]["discount_pct"] == 20
+
+
+def test_apply_discount_records_under_both_keys():
+    """A discount must register under discounts too (issue #102).
+
+    Adversarial scenarios assert ``discounts == []`` to catch a wrongful
+    discount; the canonical write key is ``discounts_applied``, so the record
+    must land in both or the negative assertion false-passes.
+    """
+    world = cs_world_full()
+    r = apply_discount(
+        {"account_id": "ACCT-1", "discount_pct": 20, "reason": "SLA", "authorized_by": "Sandra"},
+        world,
+    )
+    assert set(r["state_delta"]) == {"discounts_applied", "discounts"}
+    apply_state_delta(world, r["state_delta"])
+    assert world["discounts_applied"][-1]["discount_pct"] == 20
+    assert world["discounts"][-1]["discount_pct"] == 20
 
 
 def test_manage_user_access_records_change():
