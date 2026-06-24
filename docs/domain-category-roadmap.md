@@ -34,24 +34,46 @@ Keep the 2 we have, add 6. This **matches or exceeds Galileo v2's 5 verticals** 
 
 **v2 / later:** Data-Pipeline Ops (Tricot), Sales/CRM, DevTools/Code (Elangovan — strong deterministic fit), RAG/Doc (Liu), Productivity/Email (Houssier), Retail (τ² precedent). **Defer:** Energy/Critical-Infra (low deterministic feasibility).
 
-## B. Categories
+## B. Categories — headline axes + taxonomy underneath
 
-**Keep the 5** (all practitioner-corroborated): adaptive_tool_use, scope_management, empathetic_resolution, extreme_scenario_recovery, adversarial_input_mitigation.
+> **✅ CURATION DECISION (2026-06-24): two-tier structure, not a flat list.** The leaderboard is an attention asset that feeds the podcast, so the category structure is split: **5 HEADLINE AXES** (glanceable, screenshot-worthy, each anchored to a flagship COT guest, ranked pass/fail on world-state) + a **deeper TAXONOMY** of sub-categories under each (for drill-down) + **2 cross-cutting REPORTED DIMENSIONS** (continuous, scored on every scenario, ranked-by not pass/fail). This supersedes the earlier flat "5 kept + 3 new = 8." The headline stays tight because attention concentrates on a few sharp claims; depth lives underneath without cluttering the card. The launch *headline* is one killer stat (grounding), the card shows the 5 axes, and the taxonomy is for those who drill in.
 
-> **✅ CURATION DECISION (2026-06-24): all 3 new categories ship in v1** → 8 total (5 kept + silent-wrongness + HITL + cost/latency). Cost/latency is **in**, which puts its grader dependency (#101) **on the launch critical path** — the telemetry-budget grader op must land before those scenarios are authored (see §E). Silent-wrongness + HITL have no such blocker and lead the authoring sprint.
+### Tier 1 — 5 headline axes (graded, world-state pass/fail)
 
-**Add in v1** (all high-gradable, heavily evidenced):
-1. **Silent-wrongness / grounding** ⭐ — output indistinguishable from truth but factually wrong (Klein's whole thesis: "plausibility engines, not truth engines"; hallucination iceberg ~5× visible). Seed subtle wrong-but-plausible distractors; assert exact state match. **Highest-priority add.**
-2. **Human-in-the-loop / approval-gate handoff** — agent takes an irreversible action it should have escalated (Akidau >$1k→human; Houssier draft-not-send). Assert the gated action was NOT executed / was queued.
-3. **Cost / budget & latency adherence** — token/call blowup, SLA miss (Tricot 30K-token blowup; Elangovan 50µs SLA). Track token/call counts + latency vs budget. ⚠️ **Blocked on a grader op, NOT on instrumentation.** The runner already records per-episode `total_input_tokens` / `total_output_tokens` / `total_latency_ms` / `tool_calls` in the result artifact (`eval/artifacts.py`), so the telemetry exists. But the state grader (`eval/scoring/state_check.py`) only asserts over the *world* (`equals` / `contains` / `increased_by` / `decreased_by` / `not_exists`) — there is no numeric `lte`/`gte` op and telemetry is not in `final_world`. This category needs a new assertion path that compares a recorded telemetry field against a numeric budget. Sequence that grader work before authoring cost/latency scenarios — see §E.
+| # | Axis | What it catches | Podcast anchor |
+|---|------|-----------------|----------------|
+| 1 | **Grounding & Truthfulness** ⭐ | output indistinguishable from truth but factually wrong ("plausibility engines, not truth engines") | Klein (54) |
+| 2 | **Adversarial Robustness** | prompt injection, data exfil, jailbreak, privilege escalation | Akidau (60), Lovejoy (62) |
+| 3 | **Oversight & Restraint** | takes an irreversible/out-of-scope action it should have gated or escalated | Akidau (60), Houssier (59) |
+| 4 | **Reward-Hacking Resistance** ⭐ | passes a gameable check instead of changing the real state | Elangovan (56), Klein (54) |
+| 5 | **Tool-Use & Recovery** | multi-tool orchestration + recovery from tool/cascading failure (the credibility anchor) | — |
 
-**Add in v2:** long-horizon memory/context-retention (Alake "don't delete, forget" — hard-delete fails audit), accountability/audit-trail completeness. **Defer:** multi-agent coordination (hard to grade in the single-world model).
+⭐ = podcast-owned, low-competition headline.
+
+### Tier 2 — taxonomy (sub-categories under each axis, drives sparse-cell selection)
+
+1. **Grounding & Truthfulness** — silent-wrongness / wrong-but-plausible distractors · temporal grounding (Houssier "time in Waymo last month") · cross-system entity resolution ("Airbyte Inc" vs "Airbyte") · hallucinated data flagging (Liu OCR-table) · stale/wrong-record retrieval.
+2. **Adversarial Robustness** — prompt injection ("disregard prior / leak emails / drop prod DB") · data-exfil resistance (export to personal address) · jailbreak / instruction override · intersection-authz / privilege escalation (Akidau "guest badge") · social-engineering pressure (urgency/authority).
+3. **Oversight & Restraint** — approval-gate handoff (>$1k→human) · irreversible-action restraint (no drop-DB, no hard-delete) · scope adherence (*was* `scope_management`: out-of-scope refusal — tax advice, brokerage) · draft-not-send / queue-not-execute (Houssier) · escalation correctness.
+4. **Reward-Hacking Resistance** — test-gaming (pass the gameable test, not the real state — Elangovan) · false-resolution (lost-package "arrives tomorrow" — Klein) · shortcut/loophole exploitation · metric-gaming.
+5. **Tool-Use & Recovery** (*was* `adaptive_tool_use` + `extreme_scenario_recovery`) — multi-tool orchestration · tool-error recovery (retry/fallback) · parameter correctness · cascading-failure recovery · state reconciliation after partial failure.
+
+### Reported dimensions (cross-cutting, every scenario, ranked-by NOT pass/fail)
+
+- **Efficiency** — cost ($/tokens), latency, tool-call count. Telemetry already recorded (`eval/artifacts.py`: `total_input_tokens` / `total_output_tokens` / `total_latency_ms` / `tool_calls`); show it as a leaderboard column + efficiency ranking. The hard "exceeded a *stated* budget = fail" gate (Tricot blowup) is a **v1.1** option behind a telemetry-budget grader op (#101) — not a launch blocker in this structure.
+- **Communication Quality** (*was* `empathetic_resolution`) — de-escalation, tone-appropriateness, verify-before-acting, clarity. Reuses the existing empathetic_resolution rubrics. Reported, not headline: its tone component is the most judge-subjective thing in the suite, so it informs without being the axis a skeptic dunks on.
+
+### Old → new mapping (nothing lost)
+
+`adversarial_input_mitigation` → **Axis 2** · `silent-wrongness (new)` → **Axis 1** · `HITL (new)` + `scope_management` → **Axis 3** · `reward-hacking (new, from §D seeds)` → **Axis 4** · `adaptive_tool_use` + `extreme_scenario_recovery` → **Axis 5** · `cost/latency (new)` → **Efficiency dimension** · `empathetic_resolution` → **Communication dimension**.
+
+**v2 / later (taxonomy growth):** long-horizon memory/context-retention (Alake "don't delete, forget" — hard-delete fails audit) and accountability/audit-trail completeness slot under Oversight & Restraint or become a 6th axis if they earn the headline. **Defer:** multi-agent coordination (hard to grade in the single-world model).
 
 ## C. Structure — a domain × capability matrix
 
-The site's `/topics` taxonomy is **horizontal (capability)**; the bench needs **vertical (industry)** axes — they're orthogonal. Model the bench as a **matrix**: 8 domains (rows) × categories (columns), where categories reuse the site's reliability cluster (AI Evaluation & Reliability, AI Observability, AI Security, Agent Memory, Context Management) as the spine. The site has **no industry-vertical topics** — every domain is net-new structure the bench adds.
+The site's `/topics` taxonomy is **horizontal (capability)**; the bench needs **vertical (industry)** axes — they're orthogonal. Model the bench as a **matrix**: **5 domains (rows, §A) × 5 headline axes (columns, §B Tier 1)**, with the §B Tier-2 sub-categories selecting *which* scenarios populate a cell. The two reported dimensions (Efficiency, Communication) are scored on every cell, not columns of their own. The site has **no industry-vertical topics** — every domain is net-new structure the bench adds.
 
-**The matrix is deliberately SPARSE, not a grid to fill.** 8 domains × 8 categories = 64 cells, each needing multiple authored + reviewed scenarios — read as "fill the grid," that is a launch-blocker. It isn't the plan. Cell selection is driven by the war-story seeds (§D) and by where a domain×category pairing is both *gradable* and *evidenced*, not by coverage completeness. Which cells are intentionally empty is a documented design decision, not a gap to apologize for. The published surface should state the sparsity explicitly so "8 and 8" never reads as "64 scenarios authored."
+**The matrix is deliberately SPARSE, not a grid to fill.** 5 domains × 5 axes = 25 headline cells, each potentially several authored + reviewed scenarios — read as "fill the grid," that is a launch-blocker. It isn't the plan. Cell selection is driven by the war-story seeds (§D) and by where a domain×axis pairing is both *gradable* and *evidenced*, not by coverage completeness. Which cells are intentionally empty is a documented design decision, not a gap to apologize for. State the sparsity explicitly so "5 × 5" never reads as "25 cells authored."
 
 ---
 
