@@ -27,6 +27,7 @@ from eval.scoring.state_check import score_state_changes
 from eval.simulation.dual_control import DualControl, action_fires
 from eval.simulation.probes import RecoveryProbe
 from eval.simulation.profiles import DEFAULT_SIM_PROFILE, profile_instructions
+from eval.simulation.tool_transitions import get_transition
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +205,16 @@ class SimulationResult:
     # state grade non-gradable (see build_result_row's state_gradable). 0 for a
     # clean run and for every stateless (no ground_truth) scenario.
     tool_sim_parse_failures: int = 0
+    # Coded-vs-LLM tool authority split (issue #87, phase 1b). Every stateful tool
+    # call is served either by a DETERMINISTIC coded transition (the world mutation
+    # is a pure function of args+world) or by the LLM tool simulator (fallback for
+    # a tool with no registered transition). These two counters surface that split
+    # per run so a published leaderboard can report the fraction of the graded
+    # world that was deterministically mutated — the audit-S2 claim #87 exists to
+    # make true. Both 0 for a stateless (no ground_truth) run, which never engages
+    # either path.
+    coded_transition_calls: int = 0
+    llm_tool_sim_calls: int = 0
 
 
 @dataclass
@@ -654,6 +665,12 @@ class SimulationRunner:
         # each time a stateful tool-sim response can't be parsed (so no state_delta
         # is applied), and read at SimulationResult construction below.
         self._tool_sim_parse_failures = 0
+        # Coded-vs-LLM tool authority split for THIS run (#87 phase 1b). Reset per
+        # run alongside the other per-run sim counters; incremented in
+        # _simulate_tool_stateful (coded path vs LLM fallback) and read at
+        # SimulationResult construction below.
+        self._coded_transition_calls = 0
+        self._llm_tool_sim_calls = 0
         user_mutated_keys: set = set()
         user_actions_fired = 0
         user_actions_suppressed = 0
@@ -761,6 +778,8 @@ class SimulationRunner:
                         ),
                         probe_fired=probe_fired,
                         tool_sim_parse_failures=self._tool_sim_parse_failures,
+                        coded_transition_calls=self._coded_transition_calls,
+                        llm_tool_sim_calls=self._llm_tool_sim_calls,
                     )
                 agent_latency = (time.perf_counter() - start) * 1000
                 total_latency_ms += agent_latency
@@ -844,7 +863,9 @@ class SimulationRunner:
                     # the user approves the request right after the agent sends
                     # it). Inert for single-control runs.
                     agent_tool_calls_seen.add(tc.tool_name)
-                    tool_result = self._simulate_tool(tc, scenario.tools, world)
+                    tool_result = self._simulate_tool(
+                        tc, scenario.tools, world, scenario.domain.value
+                    )
                     tc.result = tool_result
                     turns.append(
                         ConversationTurn(
@@ -1071,6 +1092,9 @@ class SimulationRunner:
             # responses this run could not be parsed (so no state_delta applied).
             # >0 on a stateful scenario makes the state grade non-gradable.
             tool_sim_parse_failures=self._tool_sim_parse_failures,
+            # Coded-vs-LLM tool authority split (#87 phase 1b).
+            coded_transition_calls=self._coded_transition_calls,
+            llm_tool_sim_calls=self._llm_tool_sim_calls,
         )
 
     def _extract_tool_calls(self, response, content: str, turn: int) -> tuple[list[ToolCall], bool]:
@@ -1142,21 +1166,27 @@ class SimulationRunner:
         return calls
 
     def _simulate_tool(
-        self, tool_call: ToolCall, available_tools: list[dict], world: dict | None
+        self,
+        tool_call: ToolCall,
+        available_tools: list[dict],
+        world: dict | None,
+        domain: str | None = None,
     ) -> str:
-        """Use an LLM to generate a realistic tool response.
+        """Produce the tool result the agent sees, mutating the world if stateful.
 
-        Two paths:
+        Three paths:
 
         - **Stateless (legacy)** — ``world`` is ``None`` (scenario has no
           ground_truth). The simulator invents a realistic response from the tool
           schema and args, exactly as before.
-        - **Stateful (v0.2)** — ``world`` is the run's mutable world dict. The
-          simulator is told to answer ONLY from the world, and to return both the
-          tool ``response`` and a ``state_delta`` describing any mutation. The
-          delta is applied to ``world`` (so later calls see the change); only the
-          ``response`` part is fed back to the agent — it never sees the delta or
-          the world.
+        - **Coded transition (v0.3, #87 phase 1b)** — ``world`` is set AND
+          ``(domain, tool_name)`` has a registered deterministic transition. The
+          coded function is the sole authority over the world mutation; the LLM is
+          never called for this tool.
+        - **Stateful LLM fallback (v0.2)** — ``world`` is set but the tool has no
+          coded transition. The simulator is told to answer ONLY from the world
+          and to return both the tool ``response`` and a ``state_delta``; only the
+          ``response`` part is fed back to the agent.
         """
         tool_schema = next(
             (t for t in available_tools if t.get("name") == tool_call.tool_name),
@@ -1165,7 +1195,7 @@ class SimulationRunner:
 
         if world is None:
             return self._simulate_tool_stateless(tool_call, tool_schema)
-        return self._simulate_tool_stateful(tool_call, tool_schema, world)
+        return self._simulate_tool_stateful(tool_call, tool_schema, world, domain)
 
     def _simulate_tool_stateless(self, tool_call: ToolCall, tool_schema: dict | None) -> str:
         """Legacy stateless tool simulation (no ground-truth world)."""
@@ -1187,14 +1217,41 @@ class SimulationRunner:
         return response.content if isinstance(response.content, str) else str(response.content)
 
     def _simulate_tool_stateful(
-        self, tool_call: ToolCall, tool_schema: dict | None, world: dict
+        self,
+        tool_call: ToolCall,
+        tool_schema: dict | None,
+        world: dict,
+        domain: str | None = None,
     ) -> str:
-        """Stateful tool simulation: answer from + mutate the canonical world.
+        """Stateful tool result: answer from + mutate the canonical world.
 
         Returns the serialized ``response`` part only (the agent never sees the
-        ``state_delta`` or the world). Applies any parsed ``state_delta`` to
-        ``world`` in place so subsequent tool calls stay coherent.
+        ``state_delta`` or the world). Applies any ``state_delta`` to ``world`` in
+        place so subsequent tool calls stay coherent.
+
+        Authority over the world mutation is chosen per tool (#87 phase 1b):
+
+        - If ``(domain, tool_name)`` has a registered **coded transition**, that
+          deterministic pure function is the sole authority — it reads
+          ``(args, world)`` and returns the same ``{response, state_delta}`` shape
+          the LLM sim would, but as a byte-identical function of its inputs. The
+          LLM is NOT called. This is what makes the graded world reproducible.
+        - Otherwise the run falls back to the **LLM tool simulator** (the v0.2
+          behavior): prompt the sim to answer from STATE and emit a state_delta.
+
+        Both paths funnel through ``_commit_tool_result`` so the write-scope clamp,
+        the delta application, and the dual-control attribution are identical
+        regardless of who authored the delta.
         """
+        # Coded-transition path (#87 phase 1b): deterministic, no LLM call.
+        transition = get_transition(domain, tool_call.tool_name) if domain else None
+        if transition is not None:
+            self._coded_transition_calls = getattr(self, "_coded_transition_calls", 0) + 1
+            parsed = transition(dict(tool_call.arguments or {}), world)
+            return self._commit_tool_result(parsed, tool_schema, world, tool_call.tool_name)
+
+        # LLM fallback path (v0.2): the simulator authors the response + delta.
+        self._llm_tool_sim_calls = getattr(self, "_llm_tool_sim_calls", 0) + 1
         prompt = (
             "You are simulating a tool/API backend that operates on a canonical "
             "STATE (the source of truth). Answer ONLY from STATE. Do not invent "
@@ -1245,23 +1302,37 @@ class SimulationRunner:
             )
             return raw
 
+        return self._commit_tool_result(parsed, tool_schema, world, tool_call.tool_name)
+
+    def _commit_tool_result(
+        self, parsed: dict, tool_schema: dict | None, world: dict, tool_name: str
+    ) -> str:
+        """Clamp, apply, attribute, and serialize a ``{response, state_delta}``.
+
+        The single commit path shared by the coded-transition and LLM-fallback
+        branches of ``_simulate_tool_stateful``. ``parsed`` is a dict carrying a
+        ``state_delta`` (dotted-path -> new value, the format ``apply_state_delta``
+        consumes) and a ``response`` (what the agent sees). Whoever authored the
+        delta, it is funneled through the identical write-scope clamp, applier, and
+        dual-control attribution, then the response is serialized and returned.
+        """
         delta = parsed.get("state_delta")
         if delta and isinstance(delta, dict):
             # Write-scope clamp (Option A, issue #58 determinism fix). When the
             # CALLED agent tool declares a ``writes`` allow-list (the top-level
-            # state keys it is permitted to mutate), drop any tool-sim delta path
-            # whose top-level key is NOT in that list BEFORE applying it. The
-            # tool-sim is an LLM and can hallucinate a write to an unrelated key —
-            # e.g. while simulating ``open_support_ticket`` it invents a
-            # ``contact.email`` write. Without clamping that stray write lands in
-            # the world AND in ``_agent_mutated_keys``, so the coordination verdict
-            # flags a FALSE trespass (agent wrote a user-owned key) nondetermin-
-            # istically run to run. Clamping to the declared scope makes both the
-            # world mutation and the attribution set a function of the tool's
-            # contract, not the tool-sim's whim. A tool that does NOT declare
-            # ``writes`` (writes is None) is NOT clamped — behavior is byte-
-            # identical to before, which keeps the 92 single-control public
-            # scenarios (no tool declares ``writes``) unchanged.
+            # state keys it is permitted to mutate), drop any delta path whose
+            # top-level key is NOT in that list BEFORE applying it. For the LLM
+            # path this catches a hallucinated stray write (e.g. simulating
+            # ``open_support_ticket`` it invents a ``contact.email`` write); for the
+            # coded path it is the documented backstop enforcing each transition's
+            # declared scope. Without clamping a stray write lands in the world AND
+            # in ``_agent_mutated_keys``, so the coordination verdict flags a FALSE
+            # trespass (agent wrote a user-owned key). Clamping to the declared
+            # scope makes both the world mutation and the attribution set a function
+            # of the tool's contract. A tool that does NOT declare ``writes``
+            # (writes is None) is NOT clamped — behavior is byte-identical to
+            # before, which keeps the 92 single-control public scenarios (no tool
+            # declares ``writes``) unchanged.
             writes = tool_schema.get("writes") if tool_schema else None
             if writes is not None:
                 allowed = {str(k) for k in writes}
@@ -1272,9 +1343,9 @@ class SimulationRunner:
                         in_scope[dotted] = value
                     else:
                         logger.warning(
-                            "Tool-sim for %s produced out-of-scope write '%s' "
+                            "Tool %s produced out-of-scope write '%s' "
                             "(top-level key '%s' not in declared writes %s); dropping",
-                            tool_call.tool_name,
+                            tool_name,
                             dotted,
                             top,
                             sorted(allowed),
@@ -1289,8 +1360,8 @@ class SimulationRunner:
             # clamp above, every recorded key is one the called tool was permitted
             # to write, so the set is deterministic. Single-control runs never read
             # this set, so the bookkeeping is inert there. ``getattr`` default keeps
-            # a direct _simulate_tool_stateful call (in a unit test) from crashing
-            # when run() never initialized the set.
+            # a direct call (in a unit test) from crashing when run() never
+            # initialized the set.
             sink = getattr(self, "_agent_mutated_keys", None)
             if sink is not None and isinstance(delta, dict):
                 for dotted in delta:

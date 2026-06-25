@@ -1,14 +1,19 @@
 # Deterministic Coded Tool Transitions (issue #87)
 
-**Status: phase 2 — full corpus coverage.** Phase 1a shipped the registry, the
-interface contract, three exemplar transitions, and the unit tests. **Phase 2
-(this PR) builds coded transitions for every remaining `(domain, tool_name)` in
-the corpus** — all 41 distinct tool pairs are now registered (3 from phase 1a +
-38 new), and a coverage test (`test_every_corpus_tool_has_a_registered_transition`)
-asserts the registry covers the whole corpus so a future tool cannot silently
-miss. This PR still does NOT touch the runner — runner wiring (with an LLM
-fallback) remains phase 1b, on a separate branch, to avoid colliding with an
-in-flight PR.
+**Status: phase 1b — runner wired.** Phase 1a shipped the registry, the
+interface contract, three exemplar transitions, and the unit tests. Phase 2 built
+coded transitions for every `(domain, tool_name)` in the corpus — all 41 distinct
+tool pairs are registered (3 from phase 1a + 38 new), with a coverage test
+(`test_every_corpus_tool_has_a_registered_transition`) asserting the registry
+covers the whole corpus so a future tool cannot silently miss. **Phase 1b (this
+PR) wires the registry into the runner:** `_simulate_tool_stateful` now serves a
+registered tool with its deterministic coded transition and only falls back to the
+LLM tool-sim for an unregistered tool. Because all 41 corpus tools are registered,
+the LLM no longer has authority over any graded-world mutation in the public
+corpus. The coded and LLM paths share one commit path (`_commit_tool_result`), so
+the write-scope clamp, the applier, and the dual-control attribution are identical
+regardless of who authored the delta. Each run reports the split via
+`coded_transition_calls` / `llm_tool_sim_calls` on the result row + artifact.
 
 See [Phase 2 coverage and per-tool assumptions](#phase-2-coverage-and-per-tool-assumptions)
 below.
@@ -154,13 +159,19 @@ format the LLM sim emits, so:
 
 - **Phase 1a (this PR) — foundation.** Registry + interface contract + 3
   exemplars + pure unit tests + this doc. No runner change.
-- **Phase 1b — runner wiring with LLM fallback.** Wire `get_transition(domain,
-  tool_name)` into `_simulate_tool_stateful`: if a coded transition exists, call
-  it and use its `{response, state_delta}`; otherwise fall back to the LLM sim
-  exactly as today. Tools without a coded transition behave identically to now,
-  so the wiring is safe to land before the full tool set is coded. (Phase 1b
-  edits the runner; phase 1a deliberately does not, so the two reviews stay
-  independent.)
+- **Phase 1b (this PR) — runner wiring with LLM fallback.** `get_transition(domain,
+  tool_name)` is wired into `_simulate_tool_stateful`: if a coded transition
+  exists, the runner calls it and uses its `{response, state_delta}` (no LLM
+  call); otherwise it falls back to the LLM sim exactly as before. A tool without
+  a coded transition behaves identically to now, so the wiring is incremental by
+  design. Both paths funnel through one commit helper (`_commit_tool_result`) that
+  applies the write-scope clamp, the `apply_state_delta` applier, and the
+  dual-control attribution — so authorship of the delta (coded vs LLM) never
+  changes how it is clamped, applied, or attributed. The per-run split is reported
+  as `coded_transition_calls` / `llm_tool_sim_calls` (result row + artifact, with
+  resume round-trip). Because the corpus declares no tool-level `writes`, the clamp
+  is inert for every current scenario, so coded deltas (including the #102
+  `transfers_executed` mirror-write) apply in full.
 - **Phase 2 (this PR) — full corpus coverage (reads AND mutations).** Coded
   transitions for the rest of the corpus — every remaining `(domain,
   tool_name)`, reads included — reconciled against each tool's scenarios' arg

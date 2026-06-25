@@ -185,6 +185,13 @@ def build_artifact(
             # grade non-gradable (the row's state_score is nulled and excluded
             # from state aggregates). 0 for a clean run / artifacts predating it.
             "tool_sim_parse_failures": int(getattr(sim_result, "tool_sim_parse_failures", 0) or 0),
+            # Coded-vs-LLM tool authority split (#87 phase 1b): how many stateful
+            # tool calls this run were served by a deterministic coded transition
+            # vs. the LLM tool-sim fallback. Persisted so a published run can report
+            # the fraction of the graded world that was deterministically mutated.
+            # Both 0 for a stateless run / artifacts predating this field.
+            "coded_transition_calls": int(getattr(sim_result, "coded_transition_calls", 0) or 0),
+            "llm_tool_sim_calls": int(getattr(sim_result, "llm_tool_sim_calls", 0) or 0),
         },
     }
     if state is not None:

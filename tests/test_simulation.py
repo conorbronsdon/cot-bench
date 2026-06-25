@@ -506,6 +506,184 @@ class TestStatefulSimulation:
 
 
 # --------------------------------------------------------------------------- #
+# Coded tool transitions wired into the runner (issue #87, phase 1b)
+# --------------------------------------------------------------------------- #
+def _coded_transfer_scenario():
+    """Stateful banking scenario whose tool (``initiate_transfer``) is a REGISTERED
+    coded transition, so the runner mutates the world deterministically without
+    ever calling the LLM tool-sim."""
+    return Scenario(
+        id="coded_0001",
+        domain=Domain.BANKING,
+        persona={"name": "Test"},
+        user_goals=["Transfer money"],
+        tools=[
+            {
+                "name": "initiate_transfer",
+                "description": "Move funds between two accounts",
+                "parameters": [
+                    {"name": "from_account_id", "type": "string", "required": True},
+                    {"name": "to_account_id", "type": "string", "required": True},
+                    {"name": "amount", "type": "number", "required": True},
+                ],
+            }
+        ],
+        category="adaptive_tool_use",
+        initial_message="Move $500 from BUS-CHK-001 to BUS-SAV-001.",
+        ground_truth={
+            "accounts": {
+                "BUS-CHK-001": {"balance": 1000.0},
+                "BUS-SAV-001": {"balance": 0.0},
+            },
+            "transfers_executed": [],
+        },
+        expected_state_changes=[
+            {"assert": "accounts.BUS-SAV-001.balance", "op": "increased_by", "value": 500.0},
+        ],
+    )
+
+
+_TRANSFER_ARGS = {
+    "from_account_id": "BUS-CHK-001",
+    "to_account_id": "BUS-SAV-001",
+    "amount": 500.0,
+}
+
+
+class TestCodedTransitionWiring:
+    """Phase 1b: a registered coded transition is the sole authority over the
+    world mutation; the LLM tool-sim is bypassed entirely for that tool."""
+
+    def test_coded_transition_mutates_world_and_bypasses_llm(self, monkeypatch):
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("initiate_transfer", _TRANSFER_ARGS, "call_1"),
+                _ai_text("Transfer complete."),
+            ]
+        )
+        # Tool-sim returns GARBAGE. If the coded path is taken the garbage is
+        # never read, so the world still mutates correctly and no parse failure
+        # is counted. If the LLM path were (wrongly) taken, the garbage would
+        # fail to parse, the balance would not move, and parse_failures would be 1.
+        runner, _ = _make_runner([], tool_text="garbage not json")
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_coded_transfer_scenario(), SPEC)
+
+        assert result.final_world["accounts"]["BUS-CHK-001"]["balance"] == 500.0
+        assert result.final_world["accounts"]["BUS-SAV-001"]["balance"] == 500.0
+        # The #102 mirror-write survives (it is in scope: no tool declares writes).
+        assert len(result.final_world["transfers_executed"]) == 1
+        assert result.tool_sim_parse_failures == 0
+        assert result.coded_transition_calls == 1
+        assert result.llm_tool_sim_calls == 0
+
+    def test_agent_sees_coded_response_not_delta(self, monkeypatch):
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("initiate_transfer", _TRANSFER_ARGS, "call_1"),
+                _ai_text("Done."),
+            ]
+        )
+        runner, _ = _make_runner([], tool_text="garbage not json")
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_coded_transfer_scenario(), SPEC)
+        tool_turn = next(t for t in result.turns if t.role == "tool")
+        assert "state_delta" not in tool_turn.content
+        # The coded transition's contract-shaped response reaches the agent.
+        assert "completed" in tool_turn.content
+
+    def test_coded_transition_is_deterministic_across_runs(self, monkeypatch):
+        # Two runs with an unstable (garbage) tool-sim still produce a
+        # byte-identical graded world — the determinism #87 exists to guarantee.
+        worlds = []
+        for _ in range(2):
+            agent = ScriptedAgent(
+                responses=[
+                    _ai_with_tool_call("initiate_transfer", _TRANSFER_ARGS, "call_1"),
+                    _ai_text("Done."),
+                ]
+            )
+            runner, _ = _make_runner([], tool_text="garbage not json")
+            _patch_create_model(monkeypatch, agent)
+            worlds.append(runner.run(_coded_transfer_scenario(), SPEC).final_world)
+        import json as _json
+
+        assert _json.dumps(worlds[0], sort_keys=True) == _json.dumps(worlds[1], sort_keys=True)
+
+    def test_coded_in_task_error_leaves_world_untouched(self, monkeypatch):
+        # Insufficient funds: the coded transition returns an error with an empty
+        # delta. The world is untouched, the agent reads the error, and NO parse
+        # failure is counted (the coded path never parses LLM output).
+        over_budget = {**_TRANSFER_ARGS, "amount": 999999.0}
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("initiate_transfer", over_budget, "call_1"),
+                _ai_text("Sorry, that failed."),
+            ]
+        )
+        runner, _ = _make_runner([], tool_text="garbage not json")
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_coded_transfer_scenario(), SPEC)
+        assert result.final_world["accounts"]["BUS-CHK-001"]["balance"] == 1000.0
+        assert result.final_world["transfers_executed"] == []
+        assert result.tool_sim_parse_failures == 0
+        assert result.coded_transition_calls == 1
+        tool_turn = next(t for t in result.turns if t.role == "tool")
+        assert "error" in tool_turn.content.lower()
+
+    def test_unregistered_tool_falls_back_to_llm(self, monkeypatch):
+        # The scenario's tool ("transfer") has no coded transition, so the run
+        # falls back to the LLM tool-sim — counters reflect the split.
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("transfer", {"amount": 500}, "call_1"),
+                _ai_text("Done."),
+            ]
+        )
+        delta_json = (
+            '{"response": {"status": "ok"}, "state_delta": {"accounts.SAV.balance": 500.0}}'
+        )
+        runner, _ = _make_runner([], tool_text=delta_json)
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_stateful_scenario(), SPEC)
+        assert result.final_world["accounts"]["SAV"]["balance"] == 500.0
+        assert result.coded_transition_calls == 0
+        assert result.llm_tool_sim_calls == 1
+
+    def test_read_only_coded_transition_leaves_world_unchanged(self, monkeypatch):
+        # get_account_balance is a registered READ transition: empty delta, world
+        # unchanged, contract-shaped response, coded counter incremented.
+        scenario = _coded_transfer_scenario()
+        scenario.tools = [
+            {
+                "name": "get_account_balance",
+                "description": "Get an account balance",
+                "parameters": [{"name": "account_id", "type": "string", "required": True}],
+            }
+        ]
+        scenario.initial_message = "What is my balance?"
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("get_account_balance", {"account_id": "BUS-CHK-001"}, "call_1"),
+                _ai_text("Your balance is $1000."),
+            ]
+        )
+        runner, _ = _make_runner([], tool_text="garbage not json")
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(scenario, SPEC)
+        assert result.final_world["accounts"]["BUS-CHK-001"]["balance"] == 1000.0
+        assert result.coded_transition_calls == 1
+        assert result.llm_tool_sim_calls == 0
+        tool_turn = next(t for t in result.turns if t.role == "tool")
+        assert "current_balance" in tool_turn.content
+
+
+# --------------------------------------------------------------------------- #
 # Legacy (no ground_truth) path is unchanged: stateless, final_world is None
 # --------------------------------------------------------------------------- #
 class TestLegacyStatelessPath:

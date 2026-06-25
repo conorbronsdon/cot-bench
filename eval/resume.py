@@ -155,6 +155,10 @@ def _sim_namespace(payload: dict):
         # state-gradability, so a resumed row reconstructs the same state_gradable
         # decision and the same nulling as the live path.
         tool_sim_parse_failures=int(meta.get("tool_sim_parse_failures", 0) or 0),
+        # Coded-vs-LLM tool authority split (#87 phase 1b). Older artifacts predate
+        # the fields and default to 0.
+        coded_transition_calls=int(meta.get("coded_transition_calls", 0) or 0),
+        llm_tool_sim_calls=int(meta.get("llm_tool_sim_calls", 0) or 0),
     )
 
 
