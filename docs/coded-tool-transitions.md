@@ -1,18 +1,22 @@
 # Deterministic Coded Tool Transitions (issue #87)
 
-**Status: phase 1b — runner wired.** Phase 1a shipped the registry, the
-interface contract, three exemplar transitions, and the unit tests. Phase 2 built
-coded transitions for every `(domain, tool_name)` in the corpus — all 41 distinct
-tool pairs are registered (3 from phase 1a + 38 new), with a coverage test
-(`test_every_corpus_tool_has_a_registered_transition`) asserting the registry
-covers the whole corpus so a future tool cannot silently miss. **Phase 1b (this
-PR) wires the registry into the runner:** `_simulate_tool_stateful` now serves a
-registered tool with its deterministic coded transition and only falls back to the
-LLM tool-sim for an unregistered tool. Because all 41 corpus tools are registered,
-the LLM no longer has authority over any graded-world mutation in the public
-corpus. The coded and LLM paths share one commit path (`_commit_tool_result`), so
-the write-scope clamp, the applier, and the dual-control attribution are identical
-regardless of who authored the delta. Each run reports the split via
+**Status: phase 3 — spine trusts only coded mutations.** Phase 1a shipped the
+registry, the interface contract, three exemplar transitions, and the unit tests.
+Phase 2 built coded transitions for every `(domain, tool_name)` in the corpus —
+all 41 distinct tool pairs are registered (3 from phase 1a + 38 new), with a
+coverage test (`test_every_corpus_tool_has_a_registered_transition`) asserting the
+registry covers the whole corpus so a future tool cannot silently miss. Phase 1b
+wired the registry into the runner: `_simulate_tool_stateful` serves a registered
+tool with its deterministic coded transition and only falls back to the LLM
+tool-sim for an unregistered tool, both paths sharing one commit path
+(`_commit_tool_result`) so the write-scope clamp, applier, and dual-control
+attribution are identical regardless of who authored the delta. **Phase 3 (this
+PR) closes the trust loop:** if the LLM fallback ever applies a non-empty
+`state_delta` to the graded world, that AI-authored mutation makes the state grade
+non-gradable (counted in `llm_tool_sim_mutations`, nulled by `is_state_gradable`,
+round-tripped through the artifact + resume). Because every corpus tool is coded,
+the guard is inert today — but the state spine now *provably* grades only
+deterministic, coded mutations. Each run reports the authority split via
 `coded_transition_calls` / `llm_tool_sim_calls` on the result row + artifact.
 
 See [Phase 2 coverage and per-tool assumptions](#phase-2-coverage-and-per-tool-assumptions)
@@ -179,10 +183,25 @@ format the LLM sim emits, so:
   mutations) so the LLM sim can no longer feed the agent fabricated world data;
   they are cheap deterministic world-slice returns with an empty delta. See the
   coverage-and-assumptions section below.
-- **Phase 3 — state spine trusts only coded mutations.** Once every
-  graded-state-mutating tool has a coded transition, tighten the state grade so
-  it trusts only coded mutations for graded keys; the LLM sim stays only for
-  read-only narration of tools that do not touch graded state.
+- **Phase 3 (this PR) — state spine trusts only coded mutations.** Every
+  graded-state-mutating tool now has a coded transition, so the state grade is
+  tightened to trust ONLY coded mutations: if the LLM tool-sim fallback applies a
+  non-empty `state_delta` to the graded world (an unregistered tool authored a
+  mutation), the run is counted into `llm_tool_sim_mutations` and
+  `is_state_gradable` nulls the state grade — exactly as a tool-sim parse failure
+  does. A read-only LLM fallback (empty delta) mutated nothing and does not taint
+  the grade, so the sim still narrates non-graded reads freely. The guard is inert
+  on the current corpus (the coverage test guarantees every tool is coded, so
+  `llm_tool_sim_mutations` is always 0) but is a standing tripwire: the day a
+  stateful scenario introduces an unregistered tool, its state grade auto-nullifies
+  instead of silently trusting an AI-improvised world. The count round-trips
+  through the artifact + resume so live and resumed rows decide gradability
+  identically.
+
+  Not yet done (follow-up): pinning the tool-sim model+version into the corpus
+  hash. With phase 3 the sim model no longer affects any *state* grade (an LLM
+  mutation is non-gradable), so this is about reproducibility of the *judge* input
+  (sim-authored prose), a separate and softer concern — tracked for a later PR.
 
 ## Phase 2 coverage and per-tool assumptions
 

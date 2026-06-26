@@ -278,18 +278,28 @@ def _round_or_none(value, ndigits):
 
 
 def is_state_gradable(state_result, sim_result) -> bool:
-    """Whether a run's deterministic state grade can be trusted (S3).
+    """Whether a run's deterministic state grade can be trusted (S3 + #87 phase 3).
 
-    A stateful scenario (``state_result`` is not None) is NOT gradable when the
-    run had ≥1 tool-sim parse failure: a parse failure applied no state_delta, so
-    the final world is missing a mutation and grading it would be misleading. A
-    stateless scenario (``state_result`` is None — no ground_truth) is always
+    A stateful scenario (``state_result`` is not None) is NOT gradable when either:
+
+    - **Tool-sim parse failure (S3).** A parse failure applied no state_delta, so
+      the final world is missing a mutation and grading it would be misleading.
+    - **LLM-authored mutation (#87 phase 3 — spine trusts only coded mutations).**
+      An unregistered tool fell back to the LLM tool-sim, which authored a real
+      mutation of the graded world. That mutation is unseeded and not reproducible,
+      so the spine refuses to grade a world it partly improvised. (A read-only LLM
+      fallback does not count — it mutated nothing.) Inert on the current corpus,
+      where every tool is a deterministic coded transition.
+
+    A stateless scenario (``state_result`` is None — no ground_truth) is always
     "gradable" in the trivial sense that there is nothing to null. Pure so the
     live (run_eval) and resume (rows_from_artifacts) paths decide identically.
     """
     if state_result is None:
         return True
-    return int(getattr(sim_result, "tool_sim_parse_failures", 0) or 0) == 0
+    if int(getattr(sim_result, "tool_sim_parse_failures", 0) or 0) != 0:
+        return False
+    return int(getattr(sim_result, "llm_tool_sim_mutations", 0) or 0) == 0
 
 
 # Episode outcome is a first-class three-valued result (issue #88), not pass/fail
@@ -432,6 +442,11 @@ def build_result_row(
         # mutations that were deterministic (the audit-S2 claim #87 makes true).
         "coded_transition_calls": int(getattr(sim_result, "coded_transition_calls", 0) or 0),
         "llm_tool_sim_calls": int(getattr(sim_result, "llm_tool_sim_calls", 0) or 0),
+        # LLM-fallback mutations of the graded world (#87 phase 3): the raw count
+        # behind a non-gradable decision when an unregistered tool's mutation was
+        # AI-authored. 0 on the all-coded corpus; surfaced so the exclusion is
+        # auditable per row, exactly like tool_sim_parse_failures.
+        "llm_tool_sim_mutations": int(getattr(sim_result, "llm_tool_sim_mutations", 0) or 0),
         # First-class episode outcome (issue #88): pass / fail / ungradable. An
         # ungradable row was left unscoreable by a harness fault (simulator error,
         # no valid judge, or an incomplete graded world) — never a silent 0. The
@@ -702,11 +717,13 @@ def evaluate_scenario(
     state_gradable = is_state_gradable(state_result, sim_result)
     if not state_gradable:
         logger.warning(
-            "Scenario %s / %s: %d tool-sim parse failure(s) on a stateful scenario "
+            "Scenario %s / %s: non-gradable stateful world "
+            "(%d tool-sim parse failure(s), %d LLM-authored mutation(s)) "
             "— marking state grade non-gradable and excluding it from state aggregates.",
             scenario.id,
             agent_spec.name,
             int(getattr(sim_result, "tool_sim_parse_failures", 0) or 0),
+            int(getattr(sim_result, "llm_tool_sim_mutations", 0) or 0),
         )
 
     # State score feeding efficacy is nulled when the world is non-gradable, so

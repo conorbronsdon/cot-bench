@@ -684,6 +684,67 @@ class TestCodedTransitionWiring:
 
 
 # --------------------------------------------------------------------------- #
+# Phase 3: the spine trusts ONLY coded mutations (issue #87)
+# --------------------------------------------------------------------------- #
+class TestSpineTrustGuard:
+    """An LLM-fallback tool call that MUTATES the graded world is counted so the
+    state grade can be marked non-gradable; coded mutations and read-only
+    fallbacks are not counted."""
+
+    def test_llm_fallback_mutation_is_counted(self, monkeypatch):
+        # "transfer" is unregistered -> LLM fallback. The sim authors a mutating
+        # delta, so llm_tool_sim_mutations is 1 (and the world did change).
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("transfer", {"amount": 500}, "call_1"),
+                _ai_text("Done."),
+            ]
+        )
+        delta_json = (
+            '{"response": {"status": "ok"}, "state_delta": {"accounts.SAV.balance": 500.0}}'
+        )
+        runner, _ = _make_runner([], tool_text=delta_json)
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_stateful_scenario(), SPEC)
+        assert result.llm_tool_sim_mutations == 1
+        assert result.llm_tool_sim_calls == 1
+
+    def test_llm_fallback_read_only_is_not_counted(self, monkeypatch):
+        # Unregistered tool, but the sim returns an EMPTY delta (a lookup). It
+        # mutated nothing, so it does not taint the graded world.
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("transfer", {"amount": 0}, "call_1"),
+                _ai_text("Nothing to do."),
+            ]
+        )
+        delta_json = '{"response": {"status": "noop"}, "state_delta": {}}'
+        runner, _ = _make_runner([], tool_text=delta_json)
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_stateful_scenario(), SPEC)
+        assert result.llm_tool_sim_mutations == 0
+        assert result.llm_tool_sim_calls == 1
+
+    def test_coded_mutation_is_not_counted_as_llm(self, monkeypatch):
+        # A registered coded transition mutates deterministically -> it is NOT an
+        # LLM mutation, so the spine-trust counter stays 0 and the grade is trusted.
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("initiate_transfer", _TRANSFER_ARGS, "call_1"),
+                _ai_text("Done."),
+            ]
+        )
+        runner, _ = _make_runner([], tool_text="garbage not json")
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_coded_transfer_scenario(), SPEC)
+        assert result.coded_transition_calls == 1
+        assert result.llm_tool_sim_mutations == 0
+
+
+# --------------------------------------------------------------------------- #
 # Legacy (no ground_truth) path is unchanged: stateless, final_world is None
 # --------------------------------------------------------------------------- #
 class TestLegacyStatelessPath:

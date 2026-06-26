@@ -192,6 +192,11 @@ def build_artifact(
             # Both 0 for a stateless run / artifacts predating this field.
             "coded_transition_calls": int(getattr(sim_result, "coded_transition_calls", 0) or 0),
             "llm_tool_sim_calls": int(getattr(sim_result, "llm_tool_sim_calls", 0) or 0),
+            # LLM-fallback mutations of the graded world (#87 phase 3). Persisted so
+            # a resumed run reconstructs the same state-gradability decision, and so
+            # the non-gradable exclusion is auditable from the artifact. 0 on the
+            # all-coded corpus / artifacts predating the field.
+            "llm_tool_sim_mutations": int(getattr(sim_result, "llm_tool_sim_mutations", 0) or 0),
         },
     }
     if state is not None:

@@ -159,6 +159,11 @@ def _sim_namespace(payload: dict):
         # the fields and default to 0.
         coded_transition_calls=int(meta.get("coded_transition_calls", 0) or 0),
         llm_tool_sim_calls=int(meta.get("llm_tool_sim_calls", 0) or 0),
+        # LLM-fallback mutations of the graded world (#87 phase 3). is_state_gradable
+        # reads this on resume, so it MUST be reconstructed or a resumed row would
+        # decide gradability differently from the live path. Default 0 for older
+        # artifacts (all-coded corpus → always 0 anyway).
+        llm_tool_sim_mutations=int(meta.get("llm_tool_sim_mutations", 0) or 0),
     )
 
 
