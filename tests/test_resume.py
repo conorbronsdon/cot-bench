@@ -36,7 +36,19 @@ def _scenario(i=0):
     )
 
 
-def _write_artifact(artifacts_root, run_id, model, scenario_id, run_index, *, efficacy_judges=0.8):
+def _write_artifact(
+    artifacts_root,
+    run_id,
+    model,
+    scenario_id,
+    run_index,
+    *,
+    efficacy_judges=0.8,
+    tool_sim_parse_failures=0,
+    llm_tool_sim_mutations=0,
+    coded_transition_calls=0,
+    llm_tool_sim_calls=0,
+):
     """Write one per-evaluation artifact in the eval/artifacts.py schema."""
     out_dir = Path(artifacts_root) / run_id / model_slug(model)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -86,6 +98,11 @@ def _write_artifact(artifacts_root, run_id, model, scenario_id, run_index, *, ef
             "premature_end": False,
             "user_sim_model": "gpt-4.1-mini-2025-04-14",
             "tool_sim_model": "gpt-4.1-mini-2025-04-14",
+            # Coded-vs-LLM authority split (#87 1b) + spine-trust guard (#87 ph3).
+            "coded_transition_calls": coded_transition_calls,
+            "llm_tool_sim_calls": llm_tool_sim_calls,
+            "tool_sim_parse_failures": tool_sim_parse_failures,
+            "llm_tool_sim_mutations": llm_tool_sim_mutations,
         },
         "state": {
             "score": 1.0,
@@ -330,3 +347,43 @@ def test_reconstructed_rows_classify_failure_modes(tmp_path):
     assert passed["failure_mode_source"] is None
     assert failed["failure_mode"] == "incomplete-task"
     assert failed["failure_mode_source"] == "fallback"
+
+
+def test_resume_reconstructs_state_gradability_from_artifact(tmp_path):
+    """Resume parity for the state-gradability gates (#87 ph3 + S3): a resumed row
+    must reconstruct ``llm_tool_sim_mutations`` / ``tool_sim_parse_failures`` from
+    the artifact's sim_meta and decide ``is_state_gradable`` IDENTICALLY to the live
+    path. A missing/typo'd key or a wrong default here would silently regrade an
+    excluded run and ship a corrupted leaderboard number — the exact failure phase 3
+    exists to prevent. The default _write_artifact (both counters 0) is the gradable
+    control; the two tainted artifacts must null state.
+    """
+    from eval.config import MODELS_UNDER_TEST
+    from eval.resume import rows_from_artifacts
+
+    name = MODELS_UNDER_TEST[0]["name"]
+    run_id = "results_test"
+    # Control: a fully-coded, clean run is gradable and keeps its state score.
+    _write_artifact(tmp_path, run_id, name, "banking_x_0000_aaaa1111", 0)
+    # Phase 3: an LLM-authored mutation taints the world -> non-gradable.
+    _write_artifact(tmp_path, run_id, name, "banking_x_0001_aaaa1111", 0, llm_tool_sim_mutations=1)
+    # S3: a tool-sim parse failure also taints the world -> non-gradable.
+    _write_artifact(tmp_path, run_id, name, "banking_x_0002_aaaa1111", 0, tool_sim_parse_failures=1)
+
+    rows = {r["scenario_id"]: r for r in rows_from_artifacts(tmp_path, run_id, [name])}
+    clean = rows["banking_x_0000_aaaa1111"]
+    llm_mut = rows["banking_x_0001_aaaa1111"]
+    parse_fail = rows["banking_x_0002_aaaa1111"]
+
+    # Control row: gradable, state score survives, both counters reconstruct to 0.
+    assert clean["state_gradable"] is True
+    assert clean["state_score"] == 1.0
+    assert clean["llm_tool_sim_mutations"] == 0
+    # LLM-mutation row: non-gradable, state nulled, count reconstructed.
+    assert llm_mut["state_gradable"] is False
+    assert llm_mut["state_score"] is None
+    assert llm_mut["llm_tool_sim_mutations"] == 1
+    # Parse-failure row: non-gradable for the pre-existing S3 reason (not an LLM mutation).
+    assert parse_fail["state_gradable"] is False
+    assert parse_fail["state_score"] is None
+    assert parse_fail["llm_tool_sim_mutations"] == 0

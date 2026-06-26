@@ -185,6 +185,22 @@ class TestBuildArtifact:
         assert art["sim_meta"]["state_progress_at_end"] == 0.5
         assert art["sim_meta"]["premature_end"] is True
 
+    def test_sim_meta_carries_coded_authority_split(self):
+        # Coded-vs-LLM authority split (#87 1b) + spine-trust mutation count
+        # (#87 ph3) persist in sim_meta. This is the first half of the resume
+        # round-trip: if build_artifact drops or misnames any of these, the resume
+        # path silently reads 0 and a non-gradable run is regraded as gradable.
+        tc = _consensus("task_completion", [_judge("Kimi", 0.8, "task_completion")])
+        ts = _consensus("tool_selection", [_judge("Kimi", 0.7, "tool_selection")])
+        sim = _sim_result()
+        sim.coded_transition_calls = 3
+        sim.llm_tool_sim_calls = 2
+        sim.llm_tool_sim_mutations = 1
+        art = build_artifact("banking_001", "GPT-4.1", 0, sim, tc, ts)
+        assert art["sim_meta"]["coded_transition_calls"] == 3
+        assert art["sim_meta"]["llm_tool_sim_calls"] == 2
+        assert art["sim_meta"]["llm_tool_sim_mutations"] == 1
+
     def test_sim_meta_carries_dual_control(self):
         # Dual control (#58): dual_control / user_actions_fired /
         # user_actions_suppressed / coordination_ok are persisted in sim_meta so

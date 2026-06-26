@@ -6,6 +6,7 @@ All chat models are stubbed; NO real API calls are made.
 
 from typing import Any
 
+import pytest
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
@@ -742,6 +743,164 @@ class TestSpineTrustGuard:
         result = runner.run(_coded_transfer_scenario(), SPEC)
         assert result.coded_transition_calls == 1
         assert result.llm_tool_sim_mutations == 0
+
+
+class TestCounterPartitioningAndGuards:
+    """A run mixing coded + LLM-fallback calls partitions the counters correctly;
+    the clamp interacts with counting as documented; and a malformed coded return
+    fails loud instead of silently mis-grading."""
+
+    def test_mixed_run_partitions_counters(self, monkeypatch):
+        # One coded call (initiate_transfer) + one unregistered call (legacy_note)
+        # that the LLM sim mutates. The counters must split 1/1 with exactly one
+        # LLM-authored mutation, and BOTH mutations land in the world.
+        scenario = Scenario(
+            id="mixed_0001",
+            domain=Domain.BANKING,
+            persona={"name": "Test"},
+            user_goals=["Transfer and note"],
+            tools=[
+                {"name": "initiate_transfer", "description": "x", "parameters": []},
+                {"name": "legacy_note", "description": "x", "parameters": []},
+            ],
+            category="adaptive_tool_use",
+            initial_message="Transfer then note.",
+            ground_truth={
+                "accounts": {
+                    "BUS-CHK-001": {"balance": 1000.0},
+                    "BUS-SAV-001": {"balance": 0.0},
+                },
+                "transfers_executed": [],
+                "notes": [],
+            },
+        )
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("initiate_transfer", _TRANSFER_ARGS, "call_1"),
+                _ai_with_tool_call("legacy_note", {"text": "hi"}, "call_2"),
+                _ai_text("Both done."),
+            ]
+        )
+        # The sim text is used ONLY for the unregistered legacy_note call.
+        note_delta = (
+            '{"response": {"ok": true}, "state_delta": {"notes": {"__append__": {"t": 1}}}}'
+        )
+        runner, _ = _make_runner([], tool_text=note_delta)
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(scenario, SPEC)
+        assert result.coded_transition_calls == 1
+        assert result.llm_tool_sim_calls == 1
+        assert result.llm_tool_sim_mutations == 1
+        # Both authorities mutated the one world.
+        assert result.final_world["accounts"]["BUS-CHK-001"]["balance"] == 500.0
+        assert result.final_world["notes"] == [{"t": 1}]
+
+    def test_coded_calls_accumulate(self, monkeypatch):
+        # Two coded transfers in one run -> coded_transition_calls == 2, no LLM
+        # mutation (proves accumulation, not a per-call reset).
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("initiate_transfer", _TRANSFER_ARGS, "call_1"),
+                _ai_with_tool_call("initiate_transfer", _TRANSFER_ARGS, "call_2"),
+                _ai_text("Both done."),
+            ]
+        )
+        runner, _ = _make_runner([], tool_text="garbage not json")
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(_coded_transfer_scenario(), SPEC)
+        assert result.coded_transition_calls == 2
+        assert result.llm_tool_sim_mutations == 0
+        # 500 + 500 moved out of a 1000 balance -> 0 left.
+        assert result.final_world["accounts"]["BUS-CHK-001"]["balance"] == 0.0
+
+    def test_llm_delta_fully_clamped_is_not_counted_as_mutation(self, monkeypatch):
+        # An unregistered tool that declares a `writes` allow-list; the LLM sim
+        # writes ONLY an out-of-scope key. The clamp empties the delta BEFORE the
+        # count, so nothing is applied and llm_tool_sim_mutations stays 0 — the
+        # "LLM tried to mutate but was fully clamped -> world untainted" boundary.
+        scenario = Scenario(
+            id="clamp_0001",
+            domain=Domain.BANKING,
+            persona={"name": "Test"},
+            user_goals=["x"],
+            tools=[
+                {
+                    "name": "scoped_tool",
+                    "description": "x",
+                    "parameters": [],
+                    "writes": ["allowed"],
+                }
+            ],
+            category="adaptive_tool_use",
+            initial_message="go",
+            ground_truth={"allowed": {}, "forbidden": {"key": 0}},
+        )
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("scoped_tool", {}, "call_1"),
+                _ai_text("done"),
+            ]
+        )
+        out_of_scope = '{"response": {"ok": true}, "state_delta": {"forbidden.key": 99}}'
+        runner, _ = _make_runner([], tool_text=out_of_scope)
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(scenario, SPEC)
+        assert result.llm_tool_sim_calls == 1
+        assert result.llm_tool_sim_mutations == 0
+        # The out-of-scope write was dropped, not applied.
+        assert result.final_world["forbidden"]["key"] == 0
+
+    def test_customer_success_tool_routes_to_coded(self, monkeypatch):
+        # CS-domain routing through the runner: a registered CS tool is served by
+        # its coded transition (no LLM call), proving routing is domain-agnostic.
+        scenario = Scenario(
+            id="cs_0001",
+            domain=Domain.CUSTOMER_SUCCESS,
+            persona={"name": "Test"},
+            user_goals=["Look up account"],
+            tools=[{"name": "get_account", "description": "x", "parameters": []}],
+            category="adaptive_tool_use",
+            initial_message="Look up Acme.",
+            ground_truth={"account": {"id": "ACC-1", "name": "Acme"}},
+        )
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("get_account", {"query": "Acme"}, "call_1"),
+                _ai_text("Found it."),
+            ]
+        )
+        runner, _ = _make_runner([], tool_text="garbage not json")
+        _patch_create_model(monkeypatch, agent)
+
+        result = runner.run(scenario, SPEC)
+        assert result.coded_transition_calls == 1
+        assert result.llm_tool_sim_calls == 0
+        tool_turn = next(t for t in result.turns if t.role == "tool")
+        assert "Acme" in tool_turn.content
+
+    def test_malformed_coded_return_raises(self, monkeypatch):
+        # Defense-in-depth: a coded transition that returns a dict MISSING
+        # 'response' would otherwise silently leak / mis-grade. The runner must
+        # fail loud (the spine trusts coded returns completely, so a programmer
+        # error there cannot be allowed to degrade quietly).
+        monkeypatch.setattr(
+            "eval.simulation.runner.get_transition",
+            lambda domain, tool: lambda args, world: {"state_delta": {}},
+        )
+        agent = ScriptedAgent(
+            responses=[
+                _ai_with_tool_call("initiate_transfer", _TRANSFER_ARGS, "call_1"),
+                _ai_text("done"),
+            ]
+        )
+        runner, _ = _make_runner([], tool_text="garbage not json")
+        _patch_create_model(monkeypatch, agent)
+
+        with pytest.raises(ValueError, match="malformed"):
+            runner.run(_coded_transfer_scenario(), SPEC)
 
 
 # --------------------------------------------------------------------------- #

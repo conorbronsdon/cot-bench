@@ -1259,6 +1259,26 @@ class SimulationRunner:
         if transition is not None:
             self._coded_transition_calls = getattr(self, "_coded_transition_calls", 0) + 1
             parsed = transition(dict(tool_call.arguments or {}), world)
+            # A coded transition's return is trusted COMPLETELY: its delta is never
+            # counted as an LLM mutation, so the state grade stays gradable. That
+            # makes a malformed return a SILENT mis-grade — a missing/typo'd
+            # ``state_delta`` drops the mutation while the run is still graded, and a
+            # missing ``response`` makes ``_commit_tool_result`` serialize the whole
+            # ``{response, state_delta}`` dict back to the agent (leaking internal
+            # state). Fail loud on a programmer error in a transition instead. The
+            # corpus coverage + per-transition purity tests keep this inert, so it is
+            # a defense-in-depth backstop, not a path real transitions hit. (Empty
+            # ``state_delta`` {} is VALID — read-only / in-task-error shape.)
+            if not (
+                isinstance(parsed, dict)
+                and isinstance(parsed.get("state_delta"), dict)
+                and "response" in parsed
+            ):
+                raise ValueError(
+                    f"Coded transition for {tool_call.tool_name!r} returned a malformed "
+                    f"result; expected a dict with a dict 'state_delta' and a 'response', "
+                    f"got: {parsed!r}"
+                )
             return self._commit_tool_result(
                 parsed, tool_schema, world, tool_call.tool_name, coded=True
             )
