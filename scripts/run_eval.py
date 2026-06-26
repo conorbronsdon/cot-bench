@@ -50,7 +50,11 @@ from eval.resume import (
     verify_corpus_unchanged,
 )
 from eval.scoring.failure_modes import classify_failure, judge_reasoning_text
-from eval.scoring.judge import score_with_all_judges, score_with_all_judges_combined
+from eval.scoring.judge import (
+    ConsensusResult,
+    score_with_all_judges,
+    score_with_all_judges_combined,
+)
 from eval.scoring.rubrics import (
     JUDGE_SYSTEM_PROMPT,
     PASS_THRESHOLD,
@@ -65,7 +69,7 @@ from eval.scoring.state_check import score_state_changes
 from eval.simulation.dual_control import DualControl
 from eval.simulation.probes import RecoveryProbe
 from eval.simulation.profiles import DEFAULT_SIM_PROFILE, SIM_PROFILES
-from eval.simulation.runner import Scenario, SimulationRunner
+from eval.simulation.runner import Scenario, SimulationResult, SimulationRunner
 from eval.templating import DEFAULT_INSTANTIATION_SEED, instantiate
 from eval.tracing import (
     get_tracer,
@@ -820,6 +824,64 @@ def evaluate_scenario(
     return row, eval_cost_usd
 
 
+def ungradable_row(scenario, agent_spec, error_msg: str) -> dict:
+    """Build a schema-correct ``ungradable`` row for an evaluation that RAISED.
+
+    Resilience for a paid run (issue #88): without this, one scenario's harness
+    exception (a provider 5xx, a scoring bug, a malformed coded transition)
+    propagates out of the worker thread and the model's already-completed —
+    already-paid-for — rows are discarded (only per-eval artifacts survive for
+    ``--resume``). Instead the run loop records the failed run as a single
+    ``ungradable`` row and continues.
+
+    The row is built through the SAME ``build_result_row`` the live path uses, over
+    a degenerate error ``SimulationResult`` (``error`` set, ``ended_by="error"``)
+    and two zero-valid consensuses, so it carries every column a normal row has and
+    is classified ``ungradable`` (both the simulator-error and the no-valid-judge
+    triggers fire). It is therefore excluded from the published aggregates
+    (``exclude_ungradable``) yet still counts toward the run's ungradable RATE,
+    which the publish gate caps — so a few transient failures degrade gracefully
+    while a systemic failure still blocks publish. ``cost_usd`` is 0 (the partial
+    spend before the raise is unrecoverable here; the slight under-count only
+    loosens the budget guard, never the published Cost dimension)."""
+    sim_result = SimulationResult(
+        scenario_id=scenario.id,
+        domain=scenario.domain.value,
+        model_name=agent_spec.name,
+        turns=[],
+        total_turns=0,
+        total_latency_ms=0.0,
+        total_input_tokens=0,
+        total_output_tokens=0,
+        completed=False,
+        error=error_msg,
+        ended_by="error",
+    )
+
+    def _empty(rubric: str) -> ConsensusResult:
+        return ConsensusResult(
+            scenario_id=scenario.id,
+            rubric_type=rubric,
+            judge_results=[],
+            consensus_score=0.0,
+            agreement_rate=None,
+            max_disagreement=None,
+            n_judges_requested=0,
+            n_judges_valid=0,
+        )
+
+    return build_result_row(
+        scenario,
+        agent_spec,
+        sim_result,
+        _empty("task_completion"),
+        _empty("tool_selection"),
+        efficacy=0.0,
+        cost_usd=0.0,
+        state_result=None,
+    )
+
+
 def _run_model_scenarios(
     model_cfg,
     domains,
@@ -908,17 +970,35 @@ def _run_model_scenarios(
                     run_idx + 1,
                     reliability_runs,
                 )
-                result, eval_cost = evaluate_scenario(
-                    runner,
-                    scenario,
-                    agent_spec,
-                    tracer,
-                    judge_keys,
-                    run_id=run_id,
-                    run_index=run_idx,
-                    artifacts_root=artifacts_root,
-                    separate_judge_calls=separate_judge_calls,
-                )
+                try:
+                    result, eval_cost = evaluate_scenario(
+                        runner,
+                        scenario,
+                        agent_spec,
+                        tracer,
+                        judge_keys,
+                        run_id=run_id,
+                        run_index=run_idx,
+                        artifacts_root=artifacts_root,
+                        separate_judge_calls=separate_judge_calls,
+                    )
+                except Exception as exc:  # noqa: BLE001 — isolate one scenario's fault
+                    # Per-scenario isolation (issue #88): a harness exception on ONE
+                    # evaluation must not kill the whole model's run and discard its
+                    # other completed (paid-for) rows. Record this run as ungradable
+                    # and continue; the ungradable-rate publish gate still catches a
+                    # systemic failure. KeyboardInterrupt/SystemExit derive from
+                    # BaseException and are deliberately NOT caught here.
+                    logger.exception(
+                        "  %s / %s run %d/%d raised a harness exception — recording "
+                        "ungradable and continuing",
+                        agent_spec.name,
+                        scenario.id,
+                        run_idx + 1,
+                        reliability_runs,
+                    )
+                    result = ungradable_row(scenario, agent_spec, f"{type(exc).__name__}: {exc}")
+                    eval_cost = 0.0
                 result["run_index"] = run_idx
                 result["evaluated_at"] = datetime.now(timezone.utc).isoformat()
                 results.append(result)
