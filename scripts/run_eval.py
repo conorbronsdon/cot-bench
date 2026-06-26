@@ -426,6 +426,12 @@ def build_result_row(
         # decision, surfaced so the exclusion is auditable per row.
         "state_gradable": state_gradable,
         "tool_sim_parse_failures": int(getattr(sim_result, "tool_sim_parse_failures", 0) or 0),
+        # Coded-vs-LLM tool authority split (#87 phase 1b): per-row count of tool
+        # calls served by a deterministic coded transition vs. the LLM tool-sim
+        # fallback. Surfaced so a run can report the fraction of graded-world
+        # mutations that were deterministic (the audit-S2 claim #87 makes true).
+        "coded_transition_calls": int(getattr(sim_result, "coded_transition_calls", 0) or 0),
+        "llm_tool_sim_calls": int(getattr(sim_result, "llm_tool_sim_calls", 0) or 0),
         # First-class episode outcome (issue #88): pass / fail / ungradable. An
         # ungradable row was left unscoreable by a harness fault (simulator error,
         # no valid judge, or an incomplete graded world) — never a silent 0. The
