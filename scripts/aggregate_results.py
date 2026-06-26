@@ -309,16 +309,32 @@ def _min_max_norm(values: np.ndarray, invert: bool = False) -> np.ndarray:
     Guards division by zero: when every model has the same value (or there is a
     single model) the range is 0 and we return 0.5 for all, matching the
     point-estimate path. ``invert`` flips the scale for lower-is-better dims.
+
+    NaN-safe (issue #109). A single model with a NaN dimension mean (e.g. every
+    one of its rows recorded NaN latency/cost on provider errors) must not poison
+    the whole field: ``np.min``/``np.max`` would propagate that NaN to ``rng``,
+    the ``rng <= 0`` guard is False for NaN (``NaN <= 0`` is False), and EVERY
+    model's norm becomes NaN — which then rounds to NaN and ships as a bare ``NaN``
+    token in leaderboard.json that browser ``JSON.parse`` rejects, breaking the
+    whole board. So the range is computed with ``nanmin``/``nanmax`` (the spread
+    of the finite models), a fully-NaN/degenerate range still falls back to 0.5
+    for all, and any individual model whose value was NaN is set to the neutral
+    0.5 rather than left NaN.
     """
-    vmin = float(np.min(values))
-    vmax = float(np.max(values))
+    finite = values[np.isfinite(values)]
+    if finite.size == 0:
+        return np.full(values.shape, 0.5)
+    vmin = float(np.nanmin(finite))
+    vmax = float(np.nanmax(finite))
     rng = vmax - vmin
     if rng <= 0:
         return np.full(values.shape, 0.5)
     norm = (values - vmin) / rng
     if invert:
         norm = 1.0 - norm
-    return norm
+    # A model whose own value was non-finite gets the neutral 0.5, so its missing
+    # dimension neither ranks it nor (via NaN) poisons the serialized board.
+    return np.where(np.isfinite(norm), norm, 0.5)
 
 
 def _clear_from_means(
@@ -1615,11 +1631,16 @@ def main():
 
     leaderboard = compute_leaderboard(df)
 
-    # Save leaderboard JSON
+    # Save leaderboard JSON. allow_nan=False (issue #109): Python's json writes a
+    # NaN/Infinity as the bare token `NaN`, which is invalid JSON that the frontend
+    # `JSON.parse` rejects — silently breaking the WHOLE board for one stray NaN.
+    # Fail loud here instead: the parquet is already on disk, so re-running
+    # aggregate after fixing the NaN source is cheap, whereas shipping an
+    # unparseable leaderboard is not recoverable client-side.
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     leaderboard_path = RESULTS_DIR / "leaderboard.json"
     with open(leaderboard_path, "w") as f:
-        json.dump(leaderboard, f, indent=2)
+        json.dump(leaderboard, f, indent=2, allow_nan=False)
     logger.info("Leaderboard saved to %s", leaderboard_path)
 
     # Append to history for trend tracking

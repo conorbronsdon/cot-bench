@@ -301,3 +301,55 @@ class TestClearWeightsSingleSource:
         lb = compute_leaderboard(df)
         m = lb["models"][0]
         assert m["clear_score"] == round(m["efficacy"], 4)
+
+
+class TestMinMaxNormNaNSafety:
+    """One model with a NaN dimension must not poison the whole field's
+    normalization (issue #109) — the bug that ships a bare ``NaN`` token in
+    leaderboard.json and breaks browser JSON.parse for the entire board."""
+
+    def test_one_nan_value_does_not_poison_others(self):
+        from scripts.aggregate_results import _min_max_norm
+
+        # Model B's dimension is NaN; A and C are finite. The result must be
+        # all-finite: A/C normalized over the finite spread, B -> neutral 0.5.
+        out = _min_max_norm(np.array([0.2, np.nan, 0.6]))
+        assert np.all(np.isfinite(out))
+        assert out[0] == pytest.approx(0.0)  # min of the finite values
+        assert out[2] == pytest.approx(1.0)  # max of the finite values
+        assert out[1] == pytest.approx(0.5)  # the NaN model -> neutral
+
+    def test_all_nan_falls_back_to_half(self):
+        from scripts.aggregate_results import _min_max_norm
+
+        out = _min_max_norm(np.array([np.nan, np.nan]))
+        assert np.all(out == 0.5)
+
+    def test_finite_path_unchanged(self):
+        from scripts.aggregate_results import _min_max_norm
+
+        out = _min_max_norm(np.array([0.0, 0.5, 1.0]))
+        assert out == pytest.approx([0.0, 0.5, 1.0])
+        # invert flips the scale (lower-is-better dims).
+        inv = _min_max_norm(np.array([0.0, 1.0]), invert=True)
+        assert inv == pytest.approx([1.0, 0.0])
+
+    def test_one_model_nan_latency_does_not_poison_others_clear(self):
+        # The core fix: a model (B) whose latency mean is NaN must not NaN-out
+        # EVERY model's clear_score via _min_max_norm. Both models keep a finite
+        # composite (B's missing latency is neutralized to 0.5 in the norm).
+        df = _make_df({"A": 0.8, "B": 0.6})
+        df.loc[df["model"] == "B", "latency_ms"] = np.nan
+        lb = compute_leaderboard(df)
+        for m in lb["models"]:
+            assert np.isfinite(m["clear_score"]), f"{m['name']} clear_score is NaN"
+
+    def test_normal_board_serializes_under_strict_allow_nan_false(self):
+        # The fail-loud net must not false-trip on a clean run: a normal board has
+        # no NaN/Infinity tokens, so strict serialization succeeds. (A board that
+        # DOES contain a residual NaN is meant to raise here rather than ship
+        # invalid JSON — that is the intended behavior, not a regression.)
+        import json
+
+        lb = compute_leaderboard(_make_df({"A": 0.8, "B": 0.6, "C": 0.5}))
+        json.dumps(lb, allow_nan=False)  # must not raise
