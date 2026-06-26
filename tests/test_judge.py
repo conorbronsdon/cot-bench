@@ -787,6 +787,84 @@ class TestBuildResultRow:
         assert row["state_checks_total"] is None
         assert row["tool_sim_parse_failures"] == 1
 
+    def test_state_nongradable_when_llm_authored_mutation(self):
+        # #87 phase 3: a stateful scenario whose graded world was mutated by the
+        # LLM tool-sim fallback (an unregistered tool) is NOT gradable — the spine
+        # trusts only coded mutations. State columns null, count surfaced.
+        from scripts.run_eval import build_result_row
+
+        @dataclass
+        class _SimWithLLMMutation:
+            total_latency_ms: float = 1234.5
+            total_turns: int = 4
+            total_input_tokens: int = 100
+            total_output_tokens: int = 50
+            completed: bool = True
+            tool_sim_parse_failures: int = 0
+            llm_tool_sim_mutations: int = 1
+
+        tc = _consensus(judge_results=[_valid("Kimi", 0.8)], consensus_score=0.8, n_judges_valid=1)
+        ts = _consensus(rubric_type="tool_selection", n_judges_valid=1)
+        state_result = {
+            "score": 1.0,
+            "checks": [{"passed": True, "detail": "x"}],
+            "n_passed": 1,
+            "n_total": 1,
+        }
+        row = build_result_row(
+            _FakeScenario(),
+            _FakeSpec(),
+            _SimWithLLMMutation(),
+            tc,
+            ts,
+            efficacy=0.5,
+            cost_usd=0.001,
+            state_result=state_result,
+        )
+        assert row["state_gradable"] is False
+        assert row["state_score"] is None
+        assert row["llm_tool_sim_mutations"] == 1
+        # A clean parse-failure count must NOT be what nulled it.
+        assert row["tool_sim_parse_failures"] == 0
+
+    def test_state_gradable_when_llm_fallback_was_read_only(self):
+        # #87 phase 3: a read-only LLM fallback (no mutation) does NOT taint the
+        # world — llm_tool_sim_mutations stays 0 and the state grade is trusted.
+        from scripts.run_eval import build_result_row
+
+        @dataclass
+        class _SimReadOnlyFallback:
+            total_latency_ms: float = 1.0
+            total_turns: int = 2
+            total_input_tokens: int = 10
+            total_output_tokens: int = 5
+            completed: bool = True
+            tool_sim_parse_failures: int = 0
+            llm_tool_sim_calls: int = 1
+            llm_tool_sim_mutations: int = 0
+
+        tc = _consensus(judge_results=[_valid("Kimi", 0.8)], consensus_score=0.8, n_judges_valid=1)
+        ts = _consensus(rubric_type="tool_selection", n_judges_valid=1)
+        state_result = {
+            "score": 1.0,
+            "checks": [{"passed": True, "detail": "x"}],
+            "n_passed": 1,
+            "n_total": 1,
+        }
+        row = build_result_row(
+            _FakeScenario(),
+            _FakeSpec(),
+            _SimReadOnlyFallback(),
+            tc,
+            ts,
+            efficacy=0.5,
+            cost_usd=0.001,
+            state_result=state_result,
+        )
+        assert row["state_gradable"] is True
+        assert row["state_score"] == 1.0
+        assert row["llm_tool_sim_mutations"] == 0
+
     def test_stateless_scenario_gradable_with_parse_failure(self):
         # S3: a parse failure on a STATELESS scenario (no state_result) leaves
         # nothing to null — state_gradable stays True, state columns stay None.

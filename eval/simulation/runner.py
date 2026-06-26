@@ -215,6 +215,13 @@ class SimulationResult:
     # either path.
     coded_transition_calls: int = 0
     llm_tool_sim_calls: int = 0
+    # Phase-3 spine-trust guard (#87): how many of the LLM-fallback tool calls
+    # actually MUTATED the graded world (applied a non-empty state_delta). A
+    # read-only fallback does not count. >0 on a stateful scenario makes the state
+    # grade non-gradable (see is_state_gradable) — the spine refuses to grade a
+    # world an unseeded LLM partly authored. 0 for a stateless run and for any run
+    # whose every tool was a deterministic coded transition (the corpus norm).
+    llm_tool_sim_mutations: int = 0
 
 
 @dataclass
@@ -671,6 +678,7 @@ class SimulationRunner:
         # SimulationResult construction below.
         self._coded_transition_calls = 0
         self._llm_tool_sim_calls = 0
+        self._llm_tool_sim_mutations = 0
         user_mutated_keys: set = set()
         user_actions_fired = 0
         user_actions_suppressed = 0
@@ -780,6 +788,7 @@ class SimulationRunner:
                         tool_sim_parse_failures=self._tool_sim_parse_failures,
                         coded_transition_calls=self._coded_transition_calls,
                         llm_tool_sim_calls=self._llm_tool_sim_calls,
+                        llm_tool_sim_mutations=self._llm_tool_sim_mutations,
                     )
                 agent_latency = (time.perf_counter() - start) * 1000
                 total_latency_ms += agent_latency
@@ -1095,6 +1104,8 @@ class SimulationRunner:
             # Coded-vs-LLM tool authority split (#87 phase 1b).
             coded_transition_calls=self._coded_transition_calls,
             llm_tool_sim_calls=self._llm_tool_sim_calls,
+            # Phase-3 spine-trust guard (#87): LLM-fallback mutations of the world.
+            llm_tool_sim_mutations=self._llm_tool_sim_mutations,
         )
 
     def _extract_tool_calls(self, response, content: str, turn: int) -> tuple[list[ToolCall], bool]:
@@ -1248,7 +1259,29 @@ class SimulationRunner:
         if transition is not None:
             self._coded_transition_calls = getattr(self, "_coded_transition_calls", 0) + 1
             parsed = transition(dict(tool_call.arguments or {}), world)
-            return self._commit_tool_result(parsed, tool_schema, world, tool_call.tool_name)
+            # A coded transition's return is trusted COMPLETELY: its delta is never
+            # counted as an LLM mutation, so the state grade stays gradable. That
+            # makes a malformed return a SILENT mis-grade — a missing/typo'd
+            # ``state_delta`` drops the mutation while the run is still graded, and a
+            # missing ``response`` makes ``_commit_tool_result`` serialize the whole
+            # ``{response, state_delta}`` dict back to the agent (leaking internal
+            # state). Fail loud on a programmer error in a transition instead. The
+            # corpus coverage + per-transition purity tests keep this inert, so it is
+            # a defense-in-depth backstop, not a path real transitions hit. (Empty
+            # ``state_delta`` {} is VALID — read-only / in-task-error shape.)
+            if not (
+                isinstance(parsed, dict)
+                and isinstance(parsed.get("state_delta"), dict)
+                and "response" in parsed
+            ):
+                raise ValueError(
+                    f"Coded transition for {tool_call.tool_name!r} returned a malformed "
+                    f"result; expected a dict with a dict 'state_delta' and a 'response', "
+                    f"got: {parsed!r}"
+                )
+            return self._commit_tool_result(
+                parsed, tool_schema, world, tool_call.tool_name, coded=True
+            )
 
         # LLM fallback path (v0.2): the simulator authors the response + delta.
         self._llm_tool_sim_calls = getattr(self, "_llm_tool_sim_calls", 0) + 1
@@ -1302,10 +1335,17 @@ class SimulationRunner:
             )
             return raw
 
-        return self._commit_tool_result(parsed, tool_schema, world, tool_call.tool_name)
+        return self._commit_tool_result(
+            parsed, tool_schema, world, tool_call.tool_name, coded=False
+        )
 
     def _commit_tool_result(
-        self, parsed: dict, tool_schema: dict | None, world: dict, tool_name: str
+        self,
+        parsed: dict,
+        tool_schema: dict | None,
+        world: dict,
+        tool_name: str,
+        coded: bool,
     ) -> str:
         """Clamp, apply, attribute, and serialize a ``{response, state_delta}``.
 
@@ -1315,6 +1355,18 @@ class SimulationRunner:
         consumes) and a ``response`` (what the agent sees). Whoever authored the
         delta, it is funneled through the identical write-scope clamp, applier, and
         dual-control attribution, then the response is serialized and returned.
+
+        ``coded`` says who authored ``parsed``: a deterministic coded transition
+        (``True``) or the LLM tool-sim fallback (``False``). It governs the phase-3
+        spine-trust guard only — when the LLM fallback applies a NON-EMPTY delta to
+        the graded world (``coded=False`` and a post-clamp ``delta``), that mutation
+        is AI-improvised and not reproducible, so it is counted into
+        ``_llm_tool_sim_mutations``; ``is_state_gradable`` then nulls the state
+        grade exactly as a parse failure does. A read-only LLM fallback (empty
+        delta) does not taint the world and is not counted. Coded mutations are
+        deterministic and never counted. Inert on the current corpus, where every
+        tool is registered (the coverage test guarantees no LLM mutation), but a
+        standing tripwire the moment a stateful scenario uses an unregistered tool.
         """
         delta = parsed.get("state_delta")
         if delta and isinstance(delta, dict):
@@ -1353,6 +1405,14 @@ class SimulationRunner:
                 delta = in_scope
 
         if delta:
+            if not coded:
+                # Phase-3 spine-trust guard (#87): the LLM fallback just authored a
+                # real mutation of the graded world. That mutation is unseeded and
+                # not reproducible, so the state grade computed from this world can
+                # no longer be trusted — count it so is_state_gradable nulls the
+                # state grade (mirrors the parse-failure path). getattr default
+                # keeps a direct unit-test call from crashing pre-run().
+                self._llm_tool_sim_mutations = getattr(self, "_llm_tool_sim_mutations", 0) + 1
             apply_state_delta(world, delta)
             # Dual-control attribution (issue #58): record the top-level keys this
             # AGENT tool call mutated, so the coordination verdict can tell whether
