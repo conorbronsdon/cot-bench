@@ -880,7 +880,13 @@ def _run_model_scenarios(
                     scenario.id,
                 )
                 return results
-            run_scores = []
+            # ``gradable_scores`` feeds reliability; ``scored_indices`` tracks every
+            # fresh row of this scenario to annotate. Reliability (pass_rate /
+            # consistency / pass^k) is computed over GRADABLE runs only (#88): an
+            # ungradable run is a harness fault carrying a placeholder ~0.0 efficacy,
+            # not a real failure, so counting it would understate reliability exactly
+            # as it would understate the efficacy mean.
+            gradable_scores = []
             scored_indices = []
             for run_idx in range(reliability_runs):
                 # Resume: skip a (model, scenario, run) tuple already completed in
@@ -916,8 +922,9 @@ def _run_model_scenarios(
                 result["run_index"] = run_idx
                 result["evaluated_at"] = datetime.now(timezone.utc).isoformat()
                 results.append(result)
-                run_scores.append(result["efficacy"])
                 scored_indices.append(len(results) - 1)
+                if result.get("outcome") != OUTCOME_UNGRADABLE:
+                    gradable_scores.append(result["efficacy"])
 
                 if cost_acc is not None:
                     running = cost_acc.add(agent_spec.name, eval_cost)
@@ -930,10 +937,13 @@ def _run_model_scenarios(
 
             # Reliability is only computable over the runs scored THIS session;
             # a resumed run reattaches reliability from artifacts on merge, and a
-            # fully-skipped scenario has no fresh rows to annotate here.
-            if not scored_indices:
+            # fully-skipped scenario has no fresh rows to annotate here. When every
+            # fresh run of this scenario was ungradable there is no honest
+            # reliability to compute — leave those rows' reliability columns unset
+            # (they are excluded from the board anyway, #88).
+            if not scored_indices or not gradable_scores:
                 continue
-            reliability = compute_reliability(run_scores)
+            reliability = compute_reliability(gradable_scores)
             for idx in scored_indices:
                 r = results[idx]
                 r["reliability_pass_rate"] = reliability["pass_rate"]
@@ -968,8 +978,16 @@ def _recompute_reliability(rows: list[dict], reliability_runs: int) -> None:
         groups[(r["model"], r["scenario_id"])].append(r)
 
     for group_rows in groups.values():
-        run_scores = [r["efficacy"] for r in group_rows]
-        reliability = compute_reliability(run_scores)
+        # Reliability over GRADABLE runs only (#88), matching the live path: an
+        # ungradable run is a harness fault, not a real failure, so it must not
+        # drag pass_rate / consistency / pass^k. A group with no gradable runs has
+        # no honest reliability to compute (its rows are excluded from the board).
+        gradable_scores = [
+            r["efficacy"] for r in group_rows if r.get("outcome") != OUTCOME_UNGRADABLE
+        ]
+        if not gradable_scores:
+            continue
+        reliability = compute_reliability(gradable_scores)
         for r in group_rows:
             r["reliability_pass_rate"] = reliability["pass_rate"]
             r["reliability_consistency"] = reliability["consistency"]

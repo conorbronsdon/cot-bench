@@ -48,6 +48,46 @@ def exclude_non_contestants(df: pd.DataFrame) -> pd.DataFrame:
     return df[keep]
 
 
+# Episode-outcome value for a harness-fault row (must match
+# scripts.run_eval.OUTCOME_UNGRADABLE; kept as a literal here to avoid a circular
+# import — run_eval imports this module to aggregate).
+_OUTCOME_UNGRADABLE = "ungradable"
+
+
+def exclude_ungradable(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop ``ungradable`` rows before any published aggregate (issue #88).
+
+    An ``ungradable`` episode is one the HARNESS — not the agent — left
+    unscoreable (a simulator/agent error mid-run, a judge dimension with zero
+    valid judges, or a stateful world left incomplete by a dropped mutation). Such
+    a row still carries a placeholder ``efficacy`` near 0.0 (e.g. zero valid judges
+    yields ``consensus_score=0.0`` -> ``efficacy~0.0``). ``episode_outcome``'s own
+    contract says folding that 0.0 into the board "would understate the model and
+    poison the board" — but nothing enforced it: every efficacy/CLEAR/pass^k/
+    corpus-health aggregate here read the full frame. So a routine judge-provider
+    hiccup hitting a few percent of episodes silently dragged a model's PUBLISHED
+    score toward zero, capped only by the separate ungradable-RATE publish gate.
+
+    This drops them at the single aggregation entry point — exactly like the
+    null-agent and non-cooperative exclusions — so the published numbers reflect
+    only episodes that were actually gradable. The ungradable RATE is reported
+    elsewhere (the run manifest, computed in run_eval) and is unaffected. Rows
+    predating the ``outcome`` column (legacy artifacts / hand-built test frames)
+    have nothing to drop and pass through unchanged.
+    """
+    if df.empty or "outcome" not in df.columns:
+        return df
+    keep = df["outcome"].astype(str) != _OUTCOME_UNGRADABLE
+    dropped = int((~keep).sum())
+    if dropped:
+        logger.info(
+            "Excluding %d ungradable row(s) (harness fault, no trustworthy grade) "
+            "from the published leaderboard aggregates (issue #88).",
+            dropped,
+        )
+    return df[keep]
+
+
 def _cooperative_mask(df: pd.DataFrame) -> pd.Series:
     """Boolean mask of rows produced under the cooperative (default) sim profile.
 
@@ -1074,6 +1114,16 @@ def compute_leaderboard(df: pd.DataFrame) -> dict:
     # Strip non-contestants (e.g. the do-nothing null-agent) before any
     # aggregation so they never appear on the board or skew normalization.
     df = exclude_non_contestants(df)
+    if df.empty:
+        return {"models": [], "updated": "", "domains": []}
+
+    # Strip ungradable rows (issue #88) before EVERY downstream surface — the
+    # robustness / dual-control / recovery tables below and the efficacy / CLEAR /
+    # pass^k / corpus-health aggregates. A harness-fault row has no trustworthy
+    # grade regardless of sim profile, so it must not count as a ~0.0 fail in any
+    # published rate. The ungradable RATE itself is reported from the run manifest,
+    # not here, so dropping the rows here does not hide it.
+    df = exclude_ungradable(df)
     if df.empty:
         return {"models": [], "updated": "", "domains": []}
 
